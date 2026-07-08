@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -270,6 +272,48 @@ func TestConfigEditOpensEditorOnConfigFile(t *testing.T) {
 
 	_, err := os.Stat(touchedPath)
 	assert.NoError(t, err, "expected the configured $EDITOR to have run")
+}
+
+func TestConfigTestLLMPrintsProviderModelAndLatency(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"gpt-5.4-mini","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+
+	stdout, _, err := execRootSplit(t, "dev", "config", "test-llm")
+	require.NoError(t, err)
+
+	assert.Equal(t, "Bearer test-key", gotAuth)
+	assert.Contains(t, stdout, "provider=openai_compat")
+	assert.Contains(t, stdout, "model=gpt-5.4-mini")
+	assert.Contains(t, stdout, "latency=")
+}
+
+func TestConfigTestLLMIsHiddenFromHelp(t *testing.T) {
+	out := execRoot(t, "dev", "config", "--help")
+	assert.NotContains(t, out, "test-llm")
+}
+
+func TestConfigTestLLMReportsHelpfulErrorOnMissingKey(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	_, _, err := execRootSplit(t, "dev", "config", "test-llm")
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "ANTHROPIC_API_KEY")
 }
 
 func TestRootHelpFlagStillPrintsUsage(t *testing.T) {

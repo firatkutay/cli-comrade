@@ -8,10 +8,12 @@ import (
 	"runtime"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/llm"
 )
 
 // loaderFactory builds a fresh *config.Loader for a single command
@@ -39,9 +41,59 @@ func newConfigCmd(newLoader loaderFactory) *cobra.Command {
 		newConfigListCmd(newLoader),
 		newConfigEditCmd(newLoader),
 		newConfigPathCmd(newLoader),
+		newConfigTestLLMCmd(newLoader),
 	)
 
 	return root
+}
+
+// newConfigTestLLMCmd sends a minimal "ping" completion through the full
+// llm.Client (fallback chain included) built from the effective config,
+// and prints the responding provider, model, and latency on success.
+// Hidden per UYGULAMA_PLANI.md FAZ 2 item 6 — this is a diagnostic aid,
+// not a user-facing feature to advertise in --help.
+func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
+	return &cobra.Command{
+		Use:    "test-llm",
+		Short:  "Send a tiny test completion through the configured LLM provider chain",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			loader, err := newLoader()
+			if err != nil {
+				return err
+			}
+
+			cfg, created, err := loader.Load()
+			if err != nil {
+				return err
+			}
+			if created {
+				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), firstRunNoticeFormat, loader.Path()); err != nil {
+					return err
+				}
+			}
+
+			client, err := llm.New(*cfg)
+			if err != nil {
+				return fmt.Errorf("test-llm: %w", err)
+			}
+
+			start := time.Now()
+			resp, err := client.Complete(cmd.Context(), llm.CompletionRequest{
+				Messages:  []llm.Message{{Role: "user", Content: "ping"}},
+				MaxTokens: 16,
+			})
+			if err != nil {
+				return fmt.Errorf("test-llm: %w", err)
+			}
+			latency := time.Since(start)
+
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "provider=%s model=%s latency=%s\n",
+				client.Name(), resp.Model, latency.Round(time.Millisecond))
+			return err
+		},
+	}
 }
 
 func newConfigGetCmd(newLoader loaderFactory) *cobra.Command {

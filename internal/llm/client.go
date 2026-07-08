@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/redact"
 )
 
 // clientAttempt is one entry in a Client's fallback chain: a connector
@@ -29,6 +30,16 @@ type clientAttempt struct {
 type Client struct {
 	attempts []clientAttempt
 	timeout  time.Duration
+
+	// redactor masks secrets out of every outgoing payload (System +
+	// every Message.Content) before Complete/Stream ever reach a
+	// connector. It is set exclusively by New, from cfg.Privacy — never
+	// injectable from outside this package (there is no exported
+	// setter and the field is unexported), so an external caller cannot
+	// construct a Client with a nil/no-op redactor. See redactPayload
+	// and docs/phases/FAZ-03.md for the non-bypassable-middleware
+	// rationale (CLAUDE.md security rule #3).
+	redactor *redact.Redactor
 }
 
 // compile-time assertion: Client itself satisfies Provider, so a caller
@@ -62,7 +73,11 @@ func New(cfg config.Config) (*Client, error) {
 		attempts = append(attempts, clientAttempt{providerName: providerName, provider: provider})
 	}
 
-	return &Client{attempts: attempts, timeout: httpTimeout(cfg.LLM.TimeoutSeconds)}, nil
+	return &Client{
+		attempts: attempts,
+		timeout:  httpTimeout(cfg.LLM.TimeoutSeconds),
+		redactor: redact.New(cfg.Privacy.RedactEmails, cfg.Privacy.RedactIPs),
+	}, nil
 }
 
 // httpTimeout wraps timeoutSeconds (llm.timeout_seconds) as a
@@ -181,6 +196,7 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (Completio
 	if len(c.attempts) == 0 {
 		return CompletionResponse{}, fmt.Errorf("llm: no provider configured")
 	}
+	req = c.redactPayload(req)
 
 	var lastErr error
 	for _, attempt := range c.attempts {
@@ -201,6 +217,41 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (Completio
 		}
 	}
 	return CompletionResponse{}, fmt.Errorf("llm: all providers failed: %w", lastErr)
+}
+
+// redactPayload returns a copy of req with System and every message's
+// Content passed through c.redactor, so no connector — anthropic,
+// openai_compat, google, or ollama — ever receives an unredacted
+// secret. Complete and Stream are the sole entry points into this
+// package's connectors (the connector constructors are unexported per
+// FAZ 2), and both call this unconditionally before doing anything
+// else with req, so there is no code path from a caller to a connector
+// that skips redaction (CLAUDE.md security rule #3;
+// docs/phases/FAZ-03.md).
+//
+// c.redactor is nil only for a *Client built by struct literal instead
+// of New (this package's own tests do this to stub connectors
+// directly, bypassing the public API entirely) — that path is not
+// reachable by an external caller, but redactPayload still fails
+// closed rather than skipping redaction: a nil redactor lazily becomes
+// redact.New(false, false), which keeps every mandatory pattern family
+// (api_key/jwt/private_key/credential/bearer) active even though the
+// optional email/IP flags default off without a real cfg.Privacy to
+// read them from. This guarantees Complete/Stream never send an
+// unredacted payload, regardless of how the Client was constructed.
+func (c *Client) redactPayload(req CompletionRequest) CompletionRequest {
+	if c.redactor == nil {
+		c.redactor = redact.New(false, false)
+	}
+	req.System = c.redactor.Apply(req.System)
+	if len(req.Messages) > 0 {
+		redacted := make([]Message, len(req.Messages))
+		for i, m := range req.Messages {
+			redacted[i] = Message{Role: m.Role, Content: c.redactor.Apply(m.Content)}
+		}
+		req.Messages = redacted
+	}
+	return req
 }
 
 // tryComplete runs one attempt: it applies the per-attempt timeout (honoring
@@ -238,6 +289,7 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (<-chan Chun
 	if len(c.attempts) == 0 {
 		return nil, fmt.Errorf("llm: no provider configured")
 	}
+	req = c.redactPayload(req)
 
 	var lastErr error
 	for _, attempt := range c.attempts {

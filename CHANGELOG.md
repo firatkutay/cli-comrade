@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FAZ 3: context collector + redaction — `internal/context`: DI-friendly
+  `Collector`/`Collect(ctx, Options) Context` gathering OS/arch, shell
+  type + best-effort version, working/home dir, admin/root status
+  (windows honestly reports "not checked" rather than guessing),
+  detected package managers (`apt`/`dnf`/`pacman`/`zypper`/`brew`/`port`/
+  `winget`/`scoop`/`choco`), `last_command.json` reader (format now
+  defined here; FAZ 4's shell hooks will write it), and opt-in shell
+  history (bash/zsh/fish/PowerShell PSReadLine) + env-var *names*
+  (never values). `internal/redact`: `Redactor.Apply` masks API keys
+  (`sk-`/`ghp_`/`gho_`/`AKIA`/`xox[baprs]-`), JWTs, PEM private-key
+  blocks, `password=`/`token=`/etc. credential kv pairs (value only,
+  key name kept visible), and `Authorization: Bearer` tokens — plus
+  optional email/IP masking (never masking `127.0.0.1`/`0.0.0.0`/`::1`).
+  Wired as a **non-bypassable middleware** in `internal/llm.Client`:
+  `Complete`/`Stream` redact `System` + every message's `Content` before
+  any connector call, hardwired from `cfg.Privacy` inside `New(cfg)` with
+  no external way to inject a no-op redactor — proven by an `httptest`
+  based test asserting a real secret never reaches the wire.
 - FAZ 2: LLM provider layer — `internal/llm`: the CLAUDE.md `Provider`
   interface plus four unexported connectors talking raw `net/http` (no
   SDKs, zero new go.mod dependencies): `anthropic` (Messages API, SSE

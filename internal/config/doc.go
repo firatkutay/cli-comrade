@@ -1,4 +1,5 @@
-// Package config will hold cli-comrade's configuration loading and schema,
-// backed by viper and stored as TOML under the user's config directory
-// (introduced in FAZ 1). It is an empty placeholder in FAZ 0.
+// Package config implements cli-comrade's configuration schema, file
+// persistence (TOML, via viper), path resolution and env-var overrides. See
+// UYGULAMA_PLANI.md "FAZ 1" for the normative schema this package must
+// match exactly.
 package config

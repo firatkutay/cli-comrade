@@ -40,19 +40,6 @@ func newChatCmd() *cobra.Command {
 	}
 }
 
-// newConfigCmd stubs configuration management. Real behavior lands in
-// FAZ 1.
-func newConfigCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "config",
-		Short: "View and edit cli-comrade configuration",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			printNotReady(cmd.OutOrStdout(), "config")
-			return nil
-		},
-	}
-}
-
 // newInitCmd stubs shell integration setup. Real behavior lands in FAZ 4.
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{

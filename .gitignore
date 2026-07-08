@@ -1,0 +1,21 @@
+# Built binaries
+/comrade
+/comrade.exe
+/dist/
+
+# Coverage
+*.out
+coverage.txt
+coverage.html
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Local scratch state (never versioned)
+.remember/
+.claude/

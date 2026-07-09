@@ -77,6 +77,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newHistoryCmd(),
 		newHookCmd(),
 		newDoCmd(newLoader),
+		newAuthCmd(newLoader),
 	)
 
 	return root

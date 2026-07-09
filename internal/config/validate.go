@@ -68,6 +68,25 @@ var keyDefs = []KeyDef{
 	{Key: "executor.step_timeout_seconds", Kind: KindPositiveInt},
 }
 
+// ProviderNames returns the fixed set of valid llm.provider values, in the
+// same order keyDefs declares them — the same enum `comrade config set
+// llm.provider` validates a new value against. It is exported so other
+// packages (e.g. internal/secrets, which needs "every provider minus
+// ollama" to know which providers can hold a stored credential) derive
+// this list from keyDefs instead of hand-copying the enum, per this
+// project's derive-or-guard rule: TestProviderNamesMatchesLLMProviderEnum
+// in validate_test.go pins the exact returned slice, so keyDefs'
+// llm.provider entry cannot drift from this function silently.
+func ProviderNames() []string {
+	kd, ok := lookup("llm.provider")
+	if !ok {
+		return nil
+	}
+	out := make([]string, len(kd.Enum))
+	copy(out, kd.Enum)
+	return out
+}
+
 // Keys returns every settable config key, sorted.
 func Keys() []string {
 	keys := make([]string, 0, len(keyDefs))

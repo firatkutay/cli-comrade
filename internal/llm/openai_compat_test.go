@@ -129,3 +129,61 @@ func TestOpenAICompatStreamConcatenatesDeltasUntilDoneSentinel(t *testing.T) {
 	_, open := <-ch
 	assert.False(t, open, "channel must be closed after the final chunk")
 }
+
+func TestOpenAICompatListModelsParsesIDsLeniently(t *testing.T) {
+	var gotPath, gotAuth string
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("content-type", "application/json")
+		// Extra fields ("object", "created", "owned_by") a real
+		// OpenAI-compatible /models response carries must not break
+		// parsing — only "id" is read.
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5.4-mini","object":"model","created":1,"owned_by":"openai"},{"id":"gpt-5.4"}]}`))
+	})
+
+	names, err := c.ListModels(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "/models", gotPath)
+	assert.Equal(t, "Bearer test-key", gotAuth)
+	assert.Equal(t, []string{"gpt-5.4-mini", "gpt-5.4"}, names)
+}
+
+func TestOpenAICompatListModelsSkipsEmptyIDs(t *testing.T) {
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":""},{"id":"gpt-5.4"}]}`))
+	})
+
+	names, err := c.ListModels(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"gpt-5.4"}, names)
+}
+
+func TestOpenAICompatListModels401IsAuthRejected(t *testing.T) {
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"bad key"}}`))
+	})
+
+	_, err := c.ListModels(context.Background())
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrAuthRejected))
+}
+
+func TestListOpenAICompatModelsWrapperDefaultsHTTPClient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer wrapper-key", r.Header.Get("Authorization"))
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5.4-mini"}]}`))
+	}))
+	defer srv.Close()
+
+	names, err := ListOpenAICompatModels(context.Background(), srv.URL, "wrapper-key", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"gpt-5.4-mini"}, names)
+}

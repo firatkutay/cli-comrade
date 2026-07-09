@@ -6,6 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestProviderNamesMatchesLLMProviderEnum(t *testing.T) {
+	assert.Equal(t, []string{"anthropic", "openai_compat", "google", "ollama"}, ProviderNames())
+}
+
 func TestValidateUnknownKeyListsValidKeys(t *testing.T) {
 	_, err := Validate("general.nonexistent", "x")
 

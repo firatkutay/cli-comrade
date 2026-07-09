@@ -218,6 +218,46 @@ func TestNewBuildsPrimaryAndFallbackAttemptsInOrder(t *testing.T) {
 	assert.Equal(t, "ollama", client.Name())
 }
 
+func TestNewWithKeyResolverOverridesEnvLookup(t *testing.T) {
+	// No env var set for anthropic at all — proves the key New's
+	// connector ends up holding came from the resolver, not from
+	// resolveAPIKey's env fallback.
+	t.Setenv("COMRADE_ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	cfg := config.Default()
+	cfg.LLM.Provider = "anthropic"
+	cfg.LLM.Model = "m"
+
+	var seenProvider string
+	client, err := New(cfg, WithKeyResolver(func(provider string) (string, error) {
+		seenProvider = provider
+		return "resolver-supplied-key", nil
+	}))
+	require.NoError(t, err)
+	require.Len(t, client.attempts, 1)
+	assert.Equal(t, "anthropic", seenProvider)
+
+	conn, ok := client.attempts[0].provider.(*anthropicConnector)
+	require.True(t, ok, "expected the anthropic attempt to be a real *anthropicConnector, not a missingKeyProvider")
+	assert.Equal(t, "resolver-supplied-key", conn.apiKey)
+}
+
+func TestNewWithKeyResolverNilOptionKeepsDefaultEnvResolver(t *testing.T) {
+	t.Setenv("COMRADE_ANTHROPIC_API_KEY", "env-key")
+
+	cfg := config.Default()
+	cfg.LLM.Provider = "anthropic"
+
+	client, err := New(cfg, WithKeyResolver(nil))
+	require.NoError(t, err)
+	require.Len(t, client.attempts, 1)
+	// A nil resolver must not turn into a "missing key" provider — proof
+	// the env-based default resolver was kept, not replaced with nil.
+	_, isMissingKey := client.attempts[0].provider.(*missingKeyProvider)
+	assert.False(t, isMissingKey, "WithKeyResolver(nil) must not disable the default env resolver")
+}
+
 func TestSplitProviderModel(t *testing.T) {
 	provider, model := splitProviderModel("ollama/llama3.1")
 	assert.Equal(t, "ollama", provider)

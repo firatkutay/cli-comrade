@@ -156,6 +156,70 @@ func openAIStatusError(status int, body []byte) error {
 	return &StatusError{Provider: "openai_compat", StatusCode: status, Message: msg, Sentinel: sentinel}
 }
 
+// openAIModelsResponse mirrors GET /models's response shape (only the
+// field ListModels needs) — this is the OpenAI-compatible "list models"
+// convention every connector target on this connector (OpenAI, Mistral,
+// Groq, GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter, LM Studio) is expected
+// to share, matching /chat/completions itself.
+type openAIModelsResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+// ListModels queries GET {baseURL}/models for the model ids this
+// endpoint serves, for `comrade config models`'s picker
+// (UYGULAMA_PLANI.md FAZ 8 item 4). Parsing is deliberately lenient: only
+// each entry's "id" field is read, so an endpoint whose /models response
+// carries extra provider-specific fields this package doesn't know about
+// still yields a usable id list instead of a decode error.
+func (c *openAICompatConnector) ListModels(ctx context.Context) ([]string, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("openai_compat: build request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("openai_compat: request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("openai_compat: read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, openAIStatusError(resp.StatusCode, raw)
+	}
+
+	var parsed openAIModelsResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, fmt.Errorf("openai_compat: decode models response: %w", err)
+	}
+
+	names := make([]string, 0, len(parsed.Data))
+	for _, m := range parsed.Data {
+		if m.ID != "" {
+			names = append(names, m.ID)
+		}
+	}
+	return names, nil
+}
+
+// ListOpenAICompatModels queries baseURL's GET /models for the model ids
+// it serves, authenticating with apiKey. A nil httpClient defaults to a
+// plain &http.Client{}, matching every other connector construction path
+// in this package.
+func ListOpenAICompatModels(ctx context.Context, baseURL, apiKey string, httpClient *http.Client) ([]string, error) {
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
+	conn := newOpenAICompatConnector(apiKey, "", baseURL, httpClient)
+	return conn.ListModels(ctx)
+}
+
 func (c *openAICompatConnector) Stream(ctx context.Context, req CompletionRequest) (<-chan Chunk, error) {
 	body := openAIRequest{Model: c.model, Messages: c.messages(req), MaxTokens: req.MaxTokens, Stream: true}
 	resp, err := c.doRequest(ctx, body)

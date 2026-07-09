@@ -92,11 +92,12 @@ func runChatDo(ctx context.Context, cfg config.Config, client engine.Completer, 
 		return engine.RunSummary{}, fmt.Errorf("chat /do: %w", err)
 	}
 
+	tr := newTranslator(cfg)
 	deps := engine.RunDeps{
 		Executor:           executor.New(stdout, stderr),
 		Safety:             safety.NewEngine(cfg),
 		LLM:                client,
-		Prompt:             &tuiPromptUI{in: stdin, out: stdout, colorEnabled: colorEnabled, llm: client},
+		Prompt:             &tuiPromptUI{in: stdin, out: stdout, colorEnabled: colorEnabled, llm: client, tr: tr},
 		Stdout:             stdout,
 		Stderr:             stderr,
 		ColorEnabled:       colorEnabled,
@@ -104,7 +105,7 @@ func runChatDo(ctx context.Context, cfg config.Config, client engine.Completer, 
 		ConfirmElevated:    cfg.Safety.ConfirmElevated,
 		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
 		Request:            "chat /do: " + request,
-		Translator:         newTranslator(cfg),
+		Translator:         tr,
 	}
 
 	summary, err := engine.Execute(ctx, plan, mode, deps)

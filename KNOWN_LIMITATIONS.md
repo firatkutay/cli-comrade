@@ -62,11 +62,16 @@ hidden or downplayed.
 - **`anthropic`/`google` model listeleri statik bir anlık görüntüdür**
   (FAZ 8) — `ollama`/`openai_compat` gibi canlı `/models` sorgusu
   yapılmaz; dokümantasyon linkiyle birlikte sunulur.
-- **i18n istisnaları**: `internal/cli/confirm.go`'daki onay harfleri
-  (`[e]vet/[h]ayır/...`), cobra `Use` komut adları, `hook.go`'nun gizli
+- **i18n istisnaları**: cobra `Use` komut adları, `hook.go`'nun gizli
   `COMRADE_DEBUG` satırı, `promptui.go`'nun LLM prompt metni, ve ~40
   adet "işlem: %w" hata sarmalama zinciri — CLAUDE.md'nin kendi
   belgelediği, gerekçeli istisnalardır (bkz. `docs/phases/FAZ-09.md`).
+  (`internal/tui/confirm.go`'nun onay harfleri — `[e]vet/[h]ayır/...` —
+  daha önce burada listeliydi: sabit Türkçe idi ve `general.language`'ı
+  takip etmiyordu. Düzeltildi — artık `internal/i18n` üzerinden, dile
+  göre kesinlikle ayrık bir tuş kümesiyle çözülüyor: TR
+  `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü`, EN
+  `[y]es [n]o [e]dit [x]plain [a]ll`.)
 - **`go install github.com/firatkutay/cli-comrade/cmd/comrade@<sürüm>`
   bu RC'de desteklenmez**: FAZ 11'in vendorlanmış clipboard soğuk-başlangıç
   düzeltmesi (`go.mod`'daki yerel-dosya-yolu `replace` direktifi) Go'nun
@@ -136,11 +141,16 @@ hidden or downplayed.
 - **`anthropic`/`google` model lists are a static snapshot** (FAZ 8) —
   unlike `ollama`/`openai_compat`, there is no live `/models` query;
   a docs link is shown alongside the snapshot instead.
-- **i18n exceptions**: `internal/cli/confirm.go`'s confirmation-option
-  letters (`[e]vet/[h]ayır/...`), cobra `Use` command names, `hook.go`'s
-  hidden `COMRADE_DEBUG` diagnostic line, `promptui.go`'s LLM prompt
-  text, and ~40 "doing X: %w" error-wrap chains are CLAUDE.md's own
-  documented, justified exceptions (see `docs/phases/FAZ-09.md`).
+- **i18n exceptions**: cobra `Use` command names, `hook.go`'s hidden
+  `COMRADE_DEBUG` diagnostic line, `promptui.go`'s LLM prompt text, and
+  ~40 "doing X: %w" error-wrap chains are CLAUDE.md's own documented,
+  justified exceptions (see `docs/phases/FAZ-09.md`).
+  (`internal/tui/confirm.go`'s confirmation-option letters —
+  `[e]vet/[h]ayır/...` — used to be listed here too: hardcoded Turkish,
+  ignoring `general.language`. Fixed — it now resolves through
+  `internal/i18n` with a strictly per-language, disjoint key set: TR
+  `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü`, EN
+  `[y]es [n]o [e]dit [x]plain [a]ll`.)
 - **`go install github.com/firatkutay/cli-comrade/cmd/comrade@<version>`
   is unsupported at this RC**: FAZ 11's vendored clipboard cold-start fix
   (a local-filesystem `replace` directive in `go.mod`) is hard-rejected

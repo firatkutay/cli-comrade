@@ -70,6 +70,7 @@ type Diagnoser struct {
 	llm          Completer
 	cfg          config.Config
 	getenv       func(string) string
+	systemLocale func() string
 	safetyEngine *safety.Engine
 }
 
@@ -80,6 +81,7 @@ func NewDiagnoser(client Completer, cfg config.Config) *Diagnoser {
 		llm:          client,
 		cfg:          cfg,
 		getenv:       os.Getenv,
+		systemLocale: i18n.SystemLocale,
 		safetyEngine: safety.NewEngine(cfg),
 	}
 }
@@ -103,7 +105,7 @@ func NewDiagnoser(client Completer, cfg config.Config) *Diagnoser {
 // handed to FAZ 6's engine.Execute by internal/cli's `comrade fix`,
 // exactly as `comrade do` hands GeneratePlan's Plan to it.
 func (d *Diagnoser) Diagnose(ctx context.Context, errCtx ErrorContext) (Diagnosis, error) {
-	lang := i18n.ResolveLanguage(d.cfg.General.Language, d.getenv).String()
+	lang := i18n.ResolveLanguage(d.cfg.General.Language, d.getenv, d.systemLocale).String()
 	systemPrompt := buildDiagnoseSystemPrompt(lang, errCtx)
 
 	resp, err := d.llm.Complete(ctx, llm.CompletionRequest{

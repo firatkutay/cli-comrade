@@ -34,6 +34,7 @@ type Planner struct {
 	llm          Completer
 	cfg          config.Config
 	getenv       func(string) string
+	systemLocale func() string
 	safetyEngine *safety.Engine
 }
 
@@ -45,6 +46,7 @@ func NewPlanner(client Completer, cfg config.Config) *Planner {
 		llm:          client,
 		cfg:          cfg,
 		getenv:       os.Getenv,
+		systemLocale: i18n.SystemLocale,
 		safetyEngine: safety.NewEngine(cfg),
 	}
 }
@@ -101,7 +103,7 @@ const (
 // verified plan for `comrade do --dry-run` (FAZ 5) and, later, FAZ 6's
 // executor to act on.
 func (p *Planner) GeneratePlan(ctx context.Context, request string, sysCtx contextpkg.Context) (Plan, error) {
-	lang := i18n.ResolveLanguage(p.cfg.General.Language, p.getenv).String()
+	lang := i18n.ResolveLanguage(p.cfg.General.Language, p.getenv, p.systemLocale).String()
 	systemPrompt := buildSystemPrompt(lang, sysCtx)
 
 	raw, err := p.requestRawPlan(ctx, systemPrompt, []llm.Message{

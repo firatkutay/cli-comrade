@@ -16,24 +16,28 @@ import (
 // user-facing output through, from cfg's already-loaded general.language —
 // i18n.ResolveLanguage/i18n.NewTranslator, injected here rather than kept
 // as global state (CLAUDE.md's "Global state yok" rule; see
-// internal/i18n's own package doc comment).
+// internal/i18n's own package doc comment). i18n.SystemLocale is
+// ResolveLanguage's last-resort step (only reached for "auto" with no
+// COMRADE_LANG/LANG/LC_ALL set): a real OS-locale probe on Windows, a
+// guaranteed no-op everywhere else.
 func newTranslator(cfg config.Config) i18n.Translator {
-	return i18n.NewTranslator(i18n.ResolveLanguage(cfg.General.Language, os.Getenv))
+	return i18n.NewTranslator(i18n.ResolveLanguage(cfg.General.Language, os.Getenv, i18n.SystemLocale))
 }
 
 // envOnlyTranslator resolves the active language from COMRADE_LANG/LANG/
-// LC_ALL only, skipping config general.language entirely — used for the
-// handful of error/help paths that must report BEFORE any config is ever
-// loaded (executionFlags.modeFlagValue's mutually-exclusive-flags error;
-// auth.go's ollama/unknown-provider fast rejections; init.go's --print/
-// --remove exclusivity and shell-detection errors; the root command's own
+// LC_ALL, then (on Windows only) the OS locale, skipping config
+// general.language entirely — used for the handful of error/help paths
+// that must report BEFORE any config is ever loaded (executionFlags.
+// modeFlagValue's mutually-exclusive-flags error; auth.go's ollama/
+// unknown-provider fast rejections; init.go's --print/--remove
+// exclusivity and shell-detection errors; the root command's own
 // bare-invocation version banner), so a CLI usage mistake is reported
 // without ever touching the filesystem. Documented, minor, deliberate
-// inconsistency: these specific messages honor COMRADE_LANG/LANG/LC_ALL
-// but not a config general.language=tr with no matching env var set — see
-// docs/phases/FAZ-09.md.
+// inconsistency: these specific messages honor COMRADE_LANG/LANG/LC_ALL/
+// the OS locale but not a config general.language=tr with no matching
+// env var or OS locale set — see docs/phases/FAZ-09.md.
 func envOnlyTranslator() i18n.Translator {
-	return i18n.NewTranslator(i18n.ResolveLanguage("", os.Getenv))
+	return i18n.NewTranslator(i18n.ResolveLanguage("", os.Getenv, i18n.SystemLocale))
 }
 
 // loadConfigWithNotice loads newLoader's effective config, printing the

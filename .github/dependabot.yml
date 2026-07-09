@@ -1,0 +1,45 @@
+# Dependabot version-update configuration.
+#
+# Two ecosystems in this repo:
+#   - gomod: go.mod at repo root. The local `replace github.com/atotto/clipboard
+#     => ./third_party/atotto-clipboard` directive (see go.mod's own comment
+#     trail) points a required module at a vendored local path — Dependabot
+#     has no registry version to propose for a `replace`-redirected module, so
+#     it simply never opens a PR for that one entry. No `ignore` block is
+#     needed to suppress it and none of the fields below reference it.
+#   - github-actions: .github/workflows/{ci,release}.yml. Every `uses:` step
+#     in both workflows is already pinned to a full commit SHA with a
+#     trailing `# vX.Y.Z` comment (per supply-chain-pinning); Dependabot's
+#     GitHub Actions updater bumps both the SHA and that trailing version
+#     comment together, so the SHA-pin convention survives every update PR
+#     unchanged.
+version: 2
+
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      go-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"

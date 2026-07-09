@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"text/template"
 
@@ -114,13 +115,18 @@ func TestReleaseArchiveNamingIsConsistentAcrossGoreleaserInstallScriptsAndUpdate
 }
 
 // readRepoFile reads root/parts... as a string, failing the test if it's
-// missing.
+// missing. CRLF line endings are normalized to LF: .gitattributes forces
+// `*.ps1 text eol=crlf`, so a fresh checkout materializes install.ps1
+// with \r\n while a working tree that predates that attribute (or was
+// never renormalized) still has \n — this guard's regexes anchor on `$`
+// (end of line) and must match either way, not just whichever the
+// checkout happens to have.
 func readRepoFile(t *testing.T, root string, parts ...string) string {
 	t.Helper()
 	path := filepath.Join(append([]string{root}, parts...)...)
 	data, err := os.ReadFile(path)
 	require.NoError(t, err, "read %s", path)
-	return string(data)
+	return strings.ReplaceAll(string(data), "\r\n", "\n")
 }
 
 // extractOne runs pattern (which must have exactly one capture group)

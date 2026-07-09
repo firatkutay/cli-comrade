@@ -107,9 +107,24 @@ func TestSnippetGoldenContent(t *testing.T) {
 		t.Run(string(tc.shell), func(t *testing.T) {
 			got, err := shellinit.Snippet(tc.shell)
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
+			// snippets/powershell.ps1 is forced to CRLF line endings by
+			// .gitattributes (the native/correct convention for a file
+			// written into a Windows $PROFILE) — a fresh checkout embeds
+			// it with \r\n, while the golden literal above is an LF-only
+			// Go string literal. Normalize \r\n -> \n on both sides
+			// before comparing so this test pins actual content, not the
+			// checkout's line-ending state; it is a no-op for the other
+			// three shells, which are never CRLF.
+			assert.Equal(t, normalizeCRLF(tc.want), normalizeCRLF(got))
 		})
 	}
+}
+
+// normalizeCRLF strips \r immediately before \n so golden comparisons are
+// insensitive to whether the source file was checked out with LF or
+// CRLF line endings (see .gitattributes' `*.ps1 text eol=crlf`).
+func normalizeCRLF(s string) string {
+	return strings.ReplaceAll(s, "\r\n", "\n")
 }
 
 func TestBlockWrapsSnippetInExactMarkers(t *testing.T) {

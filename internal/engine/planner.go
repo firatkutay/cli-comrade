@@ -9,6 +9,7 @@ import (
 
 	"github.com/firatkutay/cli-comrade/internal/config"
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
@@ -100,7 +101,7 @@ const (
 // verified plan for `comrade do --dry-run` (FAZ 5) and, later, FAZ 6's
 // executor to act on.
 func (p *Planner) GeneratePlan(ctx context.Context, request string, sysCtx contextpkg.Context) (Plan, error) {
-	lang := resolveLanguage(p.cfg.General.Language, p.getenv)
+	lang := i18n.ResolveLanguage(p.cfg.General.Language, p.getenv).String()
 	systemPrompt := buildSystemPrompt(lang, sysCtx)
 
 	raw, err := p.requestRawPlan(ctx, systemPrompt, []llm.Message{

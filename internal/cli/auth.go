@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 	"github.com/firatkutay/cli-comrade/internal/secrets"
 )
@@ -32,8 +33,8 @@ func newAuthCmd(newLoader loaderFactory) *cobra.Command {
 	}
 	root.AddCommand(
 		newAuthLoginCmd(newLoader, term.ReadPassword),
-		newAuthLogoutCmd(),
-		newAuthStatusCmd(),
+		newAuthLogoutCmd(newLoader),
+		newAuthStatusCmd(newLoader),
 	)
 	return root
 }
@@ -56,14 +57,27 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader) *cobr
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
+			// The ollama/unknown-provider checks intentionally run BEFORE
+			// any config is ever loaded — this must stay a zero-config-
+			// touch fast rejection (auth_test.go's TestAuthLoginRejectsOllama/
+			// RejectsUnknownProvider never isolate a config dir at all,
+			// relying on exactly that) — so their error text is translated
+			// via envOnlyTranslator (runtime.go: COMRADE_LANG/LANG/LC_ALL
+			// only, no config general.language), not the config-aware `tr`
+			// built below for every other prompt in this command.
 			if provider == "ollama" {
-				return fmt.Errorf("auth login: ollama needs no API key — it talks to a local server directly; set llm.ollama.base_url instead")
+				return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgAuthOllamaNoKeyError))
 			}
 			if !isKnownKeyProvider(provider) {
-				return fmt.Errorf("auth login: unknown provider %q (expected one of: %s)", provider, strings.Join(secrets.KnownProviders, ", "))
+				return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgAuthUnknownProviderError, provider, strings.Join(secrets.KnownProviders, ", ")))
 			}
 
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Enter API key for %s: ", provider); err != nil {
+			_, tr, err := loadConfigWithNotice(cmd, newLoader)
+			if err != nil {
+				return err
+			}
+
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthEnterKeyPrompt, provider)); err != nil {
 				return err
 			}
 			raw, err := readPassword(int(os.Stdin.Fd()))
@@ -75,7 +89,7 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader) *cobr
 			}
 			key := strings.TrimSpace(string(raw))
 			if key == "" {
-				return fmt.Errorf("auth login: no key entered")
+				return fmt.Errorf("%s", tr.T(i18n.MsgAuthNoKeyEnteredError))
 			}
 
 			store, err := newSecretsStore(cmd.ErrOrStderr())
@@ -95,13 +109,11 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader) *cobr
 			// command error, for the same reason.
 			resp, latency, pingErr := pingProvider(cmd, newLoader, provider, key)
 			if pingErr != nil {
-				_, err := fmt.Fprintf(cmd.OutOrStdout(),
-					"Stored key for %s. Test request failed (%v) — the key may still be correct; this can also mean the network or provider is unreachable right now.\n",
-					provider, pingErr)
+				_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyPingFailed, provider, pingErr))
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Stored key for %s. Test request succeeded (model=%s, latency=%s).\n",
-				provider, resp.Model, latency.Round(time.Millisecond))
+			_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyPingSucceeded,
+				provider, resp.Model, latency.Round(time.Millisecond)))
 			return err
 		},
 	}
@@ -142,13 +154,18 @@ func pingProvider(cmd *cobra.Command, newLoader loaderFactory, provider, key str
 	return resp, time.Since(start), err
 }
 
-func newAuthLogoutCmd() *cobra.Command {
+func newAuthLogoutCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout <provider>",
 		Short: "Remove a stored API key",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
+			_, tr, err := loadConfigWithNotice(cmd, newLoader)
+			if err != nil {
+				return err
+			}
+
 			store, err := newSecretsStore(cmd.ErrOrStderr())
 			if err != nil {
 				return err
@@ -156,23 +173,28 @@ func newAuthLogoutCmd() *cobra.Command {
 
 			if err := store.Delete(cmd.Context(), provider); err != nil {
 				if errors.Is(err, secrets.ErrNoCredential) {
-					_, err := fmt.Fprintf(cmd.OutOrStdout(), "No stored key for %s.\n", provider)
+					_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthNoStoredKey, provider))
 					return err
 				}
 				return fmt.Errorf("auth logout: %w", err)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Removed stored key for %s.\n", provider)
+			_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthRemovedStoredKey, provider))
 			return err
 		},
 	}
 }
 
-func newAuthStatusCmd() *cobra.Command {
+func newAuthStatusCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show which providers have a stored or environment API key",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, tr, err := loadConfigWithNotice(cmd, newLoader)
+			if err != nil {
+				return err
+			}
+
 			store, err := newSecretsStore(cmd.ErrOrStderr())
 			if err != nil {
 				return err
@@ -188,15 +210,15 @@ func newAuthStatusCmd() *cobra.Command {
 			}
 
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			if _, err := fmt.Fprintln(tw, "PROVIDER\tSTATUS"); err != nil {
+			if _, err := fmt.Fprintln(tw, tr.T(i18n.MsgAuthStatusHeader)); err != nil {
 				return err
 			}
 			for _, provider := range secrets.KnownProviders {
-				if _, err := fmt.Fprintf(tw, "%s\t%s\n", provider, providerStatusLabel(byProvider[provider])); err != nil {
+				if _, err := fmt.Fprintf(tw, "%s\t%s\n", provider, providerStatusLabel(byProvider[provider], tr)); err != nil {
 					return err
 				}
 			}
-			if _, err := fmt.Fprintln(tw, "ollama\t(no key required)"); err != nil {
+			if _, err := fmt.Fprintln(tw, tr.T(i18n.MsgAuthStatusOllamaRow)); err != nil {
 				return err
 			}
 			return tw.Flush()
@@ -208,15 +230,18 @@ func newAuthStatusCmd() *cobra.Command {
 // "set (keychain)"/"set (file)" from the Store, or "set (env: NAME)"
 // falling back to an environment-variable check, or "not set" — without
 // ever printing the key's own value (CLAUDE.md security rule #3's "never
-// log key values", extended here to every FAZ 8 command's output).
-func providerStatusLabel(st secrets.ProviderStatus) string {
+// log key values", extended here to every FAZ 8 command's output). The
+// credential source name itself (st.Source: "keychain"/"file") is left
+// untranslated, like a risk-class name — it is Store's own internal
+// vocabulary, not prose.
+func providerStatusLabel(st secrets.ProviderStatus, tr i18n.Translator) string {
 	if st.Source != "" && st.Source != secrets.SourceNone {
-		return fmt.Sprintf("set (%s)", st.Source)
+		return tr.T(i18n.MsgAuthStatusSet, st.Source)
 	}
 	if envVar, ok := firstSetEnvVar(st.Provider); ok {
-		return fmt.Sprintf("set (env: %s)", envVar)
+		return tr.T(i18n.MsgAuthStatusSetEnv, envVar)
 	}
-	return "not set"
+	return tr.T(i18n.MsgAuthStatusNotSet)
 }
 
 // firstSetEnvVar returns the first of provider's known environment

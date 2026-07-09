@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/firatkutay/cli-comrade/internal/engine"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
 
@@ -171,6 +172,7 @@ func TestDoAutoModeRunsBenignStepAndBlocksDenylistedStepAgainstRealExecutor(t *t
 // TestDoIsVisibleInHelp proves `do` is FAZ 6's real, user-facing entry
 // point (no longer the FAZ 5 hidden diagnostic command).
 func TestDoIsVisibleInHelp(t *testing.T) {
+	withIsolatedConfigDir(t)
 	out := execRoot(t, "dev")
 	assert.Contains(t, out, "do          Generate a plan", "`do` must be a visible subcommand as of FAZ 6")
 }
@@ -201,7 +203,7 @@ func TestRenderPlanShowsEffectiveRiskNotDeclaredRisk(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	require.NoError(t, renderPlan(&buf, plan))
+	require.NoError(t, renderPlan(&buf, plan, i18n.NewTranslator(i18n.LangEN)))
 	out := buf.String()
 
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")

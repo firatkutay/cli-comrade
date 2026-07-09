@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 )
 
@@ -21,11 +22,6 @@ import (
 // each subcommand resolves the config path (which depends on
 // process-environment state) at the moment it actually runs.
 type loaderFactory func() (*config.Loader, error)
-
-// firstRunNoticeFormat is the single hardcoded English line printed the
-// first time cli-comrade creates a config file for the user. FAZ 9 moves
-// this into the i18n catalog like every other user-facing string.
-const firstRunNoticeFormat = "Created default config at %s\n"
 
 // newConfigCmd builds the "comrade config" command tree: get, set, list,
 // edit and path.
@@ -69,8 +65,9 @@ func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			tr := newTranslator(*cfg)
 			if created {
-				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), firstRunNoticeFormat, loader.Path()); err != nil {
+				if _, err := fmt.Fprint(cmd.ErrOrStderr(), tr.T(i18n.MsgFirstRunNotice, loader.Path())); err != nil {
 					return err
 				}
 			}
@@ -94,8 +91,8 @@ func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
 			}
 			latency := time.Since(start)
 
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "provider=%s model=%s latency=%s\n",
-				client.Name(), resp.Model, latency.Round(time.Millisecond))
+			_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgTestLLMResult,
+				client.Name(), resp.Model, latency.Round(time.Millisecond)))
 			return err
 		},
 	}
@@ -175,9 +172,14 @@ func newConfigListCmd(newLoader loaderFactory) *cobra.Command {
 			if err := ensureLoaded(loader, cmd.ErrOrStderr()); err != nil {
 				return err
 			}
+			cfg, _, err := loader.Load()
+			if err != nil {
+				return err
+			}
+			tr := newTranslator(*cfg)
 
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			if _, err := fmt.Fprintln(tw, "KEY\tVALUE\tSOURCE"); err != nil {
+			if _, err := fmt.Fprintln(tw, tr.T(i18n.MsgConfigListHeader)); err != nil {
 				return err
 			}
 			for _, key := range config.Keys() {
@@ -249,12 +251,13 @@ func newConfigPathCmd(newLoader loaderFactory) *cobra.Command {
 // re-reads individual keys afterward through loader.Get/Source, so the
 // struct itself isn't needed.
 func ensureLoaded(loader *config.Loader, w io.Writer) error {
-	_, created, err := loader.Load()
+	cfg, created, err := loader.Load()
 	if err != nil {
 		return err
 	}
 	if created {
-		if _, err := fmt.Fprintf(w, firstRunNoticeFormat, loader.Path()); err != nil {
+		tr := newTranslator(*cfg)
+		if _, err := fmt.Fprint(w, tr.T(i18n.MsgFirstRunNotice, loader.Path())); err != nil {
 			return err
 		}
 	}

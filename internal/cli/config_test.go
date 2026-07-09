@@ -307,6 +307,7 @@ func TestConfigTestLLMPrintsProviderModelAndLatency(t *testing.T) {
 }
 
 func TestConfigTestLLMIsHiddenFromHelp(t *testing.T) {
+	withIsolatedConfigDir(t)
 	out := execRoot(t, "dev", "config", "--help")
 	assert.NotContains(t, out, "test-llm")
 }
@@ -327,6 +328,7 @@ func TestRootHelpFlagStillPrintsUsage(t *testing.T) {
 	// duplicate error-output bug) accidentally suppressing the
 	// explicitly-requested --help output too: SilenceUsage only affects
 	// the automatic usage dump on a RunE error, not a deliberate --help.
+	withIsolatedConfigDir(t)
 	out := execRoot(t, "dev", "--help")
 
 	assert.Contains(t, out, "Usage:")

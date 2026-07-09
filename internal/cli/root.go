@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 )
 
 // NewRootCmd builds the "comrade" root command. version is injected at
@@ -60,7 +61,15 @@ func NewRootCmd(version string) *cobra.Command {
 	rootFlags := addExecutionFlags(root)
 	root.RunE = func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "comrade version %s\n\n", cmd.Version); err != nil {
+			// A bare `comrade` invocation never loads config (no
+			// first-run config-file side effect just from asking for
+			// help) — the version banner's language is resolved from
+			// COMRADE_LANG/LANG/LC_ALL only (envOnlyTranslator,
+			// runtime.go), skipping the config general.language layer
+			// every other command's loadConfigWithNotice/setupCLIRuntime
+			// applies once it has actually loaded one.
+			tr := envOnlyTranslator()
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgVersionBanner, cmd.Version)); err != nil {
 				return err
 			}
 			return cmd.Help()
@@ -70,15 +79,21 @@ func NewRootCmd(version string) *cobra.Command {
 
 	root.AddCommand(
 		newFixCmd(newLoader),
-		newExplainCmd(),
-		newChatCmd(),
+		newExplainCmd(newLoader),
+		newChatCmd(newLoader),
 		newConfigCmd(newLoader),
-		newInitCmd(defaultInitDeps()),
-		newHistoryCmd(),
+		newInitCmd(defaultInitDeps(), newLoader),
+		newHistoryCmd(newLoader),
 		newHookCmd(),
 		newDoCmd(newLoader),
 		newAuthCmd(newLoader),
 	)
+
+	// Localizes every command's --help/usage output (help.go) — must run
+	// after every AddCommand above, since applyTranslatedHelp walks the
+	// whole tree by CommandPath(), which only resolves correctly once
+	// every child is actually attached.
+	registerTranslatedHelp(root, newLoader)
 
 	return root
 }

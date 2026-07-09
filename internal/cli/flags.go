@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 )
 
 // executionFlags bundles the flags that control how a free-text request
@@ -24,24 +26,36 @@ type executionFlags struct {
 }
 
 // addExecutionFlags registers executionFlags on cmd and returns the
-// struct cobra will populate when cmd runs.
+// struct cobra will populate when cmd runs. Each flag's description is
+// registered with its ENGLISH catalog value (enUsageDefault, help.go) —
+// not a raw string literal — since no per-invocation Translator exists
+// yet at command-construction time; internal/cli/help.go's
+// applyTranslatedHelp overwrites every one of these with the resolved
+// language's own text immediately before cobra actually renders the
+// "Flags:" section, exactly like it does for Short text.
 func addExecutionFlags(cmd *cobra.Command) *executionFlags {
 	f := &executionFlags{}
-	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "print the generated plan without executing it")
-	cmd.Flags().BoolVar(&f.auto, "auto", false, "run in auto mode for this invocation (overrides COMRADE_MODE/config)")
-	cmd.Flags().BoolVar(&f.ask, "ask", false, "run in ask mode for this invocation (overrides COMRADE_MODE/config)")
-	cmd.Flags().BoolVar(&f.info, "info", false, "print the plan and explain it without executing anything")
-	cmd.Flags().BoolVar(&f.yolo, "yolo", false, "DANGEROUS: bypass destructive/elevated confirmation in auto mode when safety.confirm_destructive/confirm_elevated is also disabled in config")
+	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, enUsageDefault(i18n.MsgFlagDryRun))
+	cmd.Flags().BoolVar(&f.auto, "auto", false, enUsageDefault(i18n.MsgFlagAuto))
+	cmd.Flags().BoolVar(&f.ask, "ask", false, enUsageDefault(i18n.MsgFlagAsk))
+	cmd.Flags().BoolVar(&f.info, "info", false, enUsageDefault(i18n.MsgFlagInfo))
+	cmd.Flags().BoolVar(&f.yolo, "yolo", false, enUsageDefault(i18n.MsgFlagYolo))
 	return f
 }
 
 // modeFlagValue collapses the three mutually exclusive mode flags into
 // the single string engine.ResolveMode's flagValue parameter expects
-// ("" when none of the three was given).
+// ("" when none of the three was given). This runs BEFORE any config is
+// ever loaded (it is the first thing runDo/runFix/root's RunE do), so
+// its one error message is translated via envOnlyTranslator (runtime.go)
+// — COMRADE_LANG/LANG/LC_ALL only, deliberately skipping config
+// general.language — rather than requiring the config load that would
+// otherwise be needed just to report a CLI usage mistake, exactly like
+// root.go's bare-invocation version banner.
 func (f *executionFlags) modeFlagValue() (string, error) {
 	switch {
 	case f.auto && f.ask, f.auto && f.info, f.ask && f.info:
-		return "", fmt.Errorf("only one of --auto, --ask, or --info may be given")
+		return "", fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgFlagsModeExclusiveError))
 	case f.auto:
 		return "auto", nil
 	case f.ask:

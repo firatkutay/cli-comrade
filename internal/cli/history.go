@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/firatkutay/cli-comrade/internal/audit"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 )
 
 // newHistoryCmd builds "comrade history": a read-only view over the
@@ -19,7 +20,7 @@ import (
 // concern, lazily, once per invocation that actually executes something;
 // see runDo/buildAuditSink) — so simply viewing history can never mutate
 // it.
-func newHistoryCmd() *cobra.Command {
+func newHistoryCmd(newLoader loaderFactory) *cobra.Command {
 	var (
 		asJSON bool
 		limit  int
@@ -30,6 +31,11 @@ func newHistoryCmd() *cobra.Command {
 		Short: "Show recently executed commands from the audit log",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, tr, err := loadConfigWithNotice(cmd, newLoader)
+			if err != nil {
+				return err
+			}
+
 			path, err := audit.DefaultPath()
 			if err != nil {
 				return err
@@ -47,12 +53,12 @@ func newHistoryCmd() *cobra.Command {
 			if asJSON {
 				return printHistoryJSON(cmd.OutOrStdout(), entries)
 			}
-			return printHistoryTable(cmd.OutOrStdout(), entries)
+			return printHistoryTable(cmd.OutOrStdout(), entries, tr)
 		},
 	}
 
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print each entry as a JSON object, one per line, instead of a table")
-	cmd.Flags().IntVar(&limit, "limit", 20, "maximum number of most-recent entries to show")
+	cmd.Flags().BoolVar(&asJSON, "json", false, enUsageDefault(i18n.MsgFlagJSON))
+	cmd.Flags().IntVar(&limit, "limit", 20, enUsageDefault(i18n.MsgFlagLimit))
 	return cmd
 }
 
@@ -68,7 +74,7 @@ func lastN(entries []audit.Entry, n int) []audit.Entry {
 
 // printHistoryJSON prints entries as one compact JSON object per line
 // (JSONL) — UYGULAMA_PLANI.md FAZ 6 item 4's "--json flag'i ham çıktı
-// verir".
+// verir". Raw data, not prose, so it is never translated.
 func printHistoryJSON(w io.Writer, entries []audit.Entry) error {
 	enc := json.NewEncoder(w)
 	for _, e := range entries {
@@ -81,10 +87,16 @@ func printHistoryJSON(w io.Writer, entries []audit.Entry) error {
 
 // printHistoryTable prints entries as a tabwriter-aligned
 // TIME/MODE/RISK/EXIT/COMMAND table, timestamps rendered in the local
-// zone as RFC3339.
-func printHistoryTable(w io.Writer, entries []audit.Entry) error {
+// zone as RFC3339 — or, when entries is empty, MsgHistoryEmpty instead of
+// a bare header row with nothing under it.
+func printHistoryTable(w io.Writer, entries []audit.Entry, tr i18n.Translator) error {
+	if len(entries) == 0 {
+		_, err := fmt.Fprintln(w, tr.T(i18n.MsgHistoryEmpty))
+		return err
+	}
+
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "TIME\tMODE\tRISK\tEXIT\tCOMMAND"); err != nil {
+	if _, err := fmt.Fprintln(tw, tr.T(i18n.MsgHistoryTableHeader)); err != nil {
 		return err
 	}
 	for _, e := range entries {

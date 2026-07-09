@@ -15,26 +15,6 @@ var planSystemPromptEN string
 //go:embed prompts/plan_lang_tr.txt
 var planLangTR string
 
-// resolveLanguage implements CLAUDE.md's plan-generation language
-// resolution: config general.language ("tr"/"en") wins outright; "auto"
-// (the schema default) falls through to the LANG environment variable —
-// a tr_* value (e.g. "tr_TR.UTF-8") resolves to "tr", anything else
-// (including unset) resolves to "en". This is deliberately only the
-// LLM-facing instruction language for this phase; the full i18n catalog
-// covering cli-comrade's own CLI output lands in FAZ 9.
-func resolveLanguage(configLanguage string, getenv func(string) string) string {
-	if configLanguage != "" && configLanguage != "auto" {
-		return configLanguage
-	}
-	if getenv == nil {
-		return "en"
-	}
-	if strings.HasPrefix(getenv("LANG"), "tr") {
-		return "tr"
-	}
-	return "en"
-}
-
 // buildSystemPrompt assembles the full system prompt sent with every plan
 // request: the English core instruction (JSON schema, OS/shell targeting,
 // risk labeling, chaining/splitting rule, non-interactive-flag rule), the

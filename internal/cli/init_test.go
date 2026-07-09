@@ -35,9 +35,18 @@ func testInitDeps(goos string, env map[string]string) initDeps {
 // execInitCmd runs "comrade init" (via its own cobra command, not the
 // full root tree — hook.go/config.go etc. are irrelevant here) with
 // args and stdin, returning combined stdout+stderr output.
+//
+// withIsolatedConfigDir isolates the config dir newTestLoaderFactory()
+// resolves against (a SEPARATE thing from deps.getenv, which is initDeps'
+// own controlled map used only for shell/rc-path resolution — no
+// interference between the two): install/remove now load config for
+// their own translated output (see runInitInstall/runInitRemove), so
+// every init test must not touch whatever the real test-process
+// environment's config directory happens to be.
 func execInitCmd(t *testing.T, deps initDeps, stdin string, args ...string) string {
 	t.Helper()
-	cmd := newInitCmd(deps)
+	withIsolatedConfigDir(t)
+	cmd := newInitCmd(deps, newTestLoaderFactory())
 	buf := &bytes.Buffer{}
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
@@ -52,7 +61,8 @@ func execInitCmd(t *testing.T, deps initDeps, stdin string, args ...string) stri
 // execInitCmdErr is execInitCmd for the error-returning cases.
 func execInitCmdErr(t *testing.T, deps initDeps, args ...string) error {
 	t.Helper()
-	cmd := newInitCmd(deps)
+	withIsolatedConfigDir(t)
+	cmd := newInitCmd(deps, newTestLoaderFactory())
 	buf := &bytes.Buffer{}
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)

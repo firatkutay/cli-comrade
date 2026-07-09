@@ -9,6 +9,7 @@ import (
 
 	"github.com/firatkutay/cli-comrade/internal/config"
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
@@ -102,7 +103,7 @@ func NewDiagnoser(client Completer, cfg config.Config) *Diagnoser {
 // handed to FAZ 6's engine.Execute by internal/cli's `comrade fix`,
 // exactly as `comrade do` hands GeneratePlan's Plan to it.
 func (d *Diagnoser) Diagnose(ctx context.Context, errCtx ErrorContext) (Diagnosis, error) {
-	lang := resolveLanguage(d.cfg.General.Language, d.getenv)
+	lang := i18n.ResolveLanguage(d.cfg.General.Language, d.getenv).String()
 	systemPrompt := buildDiagnoseSystemPrompt(lang, errCtx)
 
 	resp, err := d.llm.Complete(ctx, llm.CompletionRequest{

@@ -15,6 +15,7 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/audit"
 	"github.com/firatkutay/cli-comrade/internal/config"
 	"github.com/firatkutay/cli-comrade/internal/executor"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
@@ -654,6 +655,29 @@ func TestExecuteAutoAbortsRemainingStepsOnBlock(t *testing.T) {
 	assert.Equal(t, OutcomeBlocked, summary.Results[0].Outcome)
 	assert.Equal(t, OutcomeSkipped, summary.Results[1].Outcome)
 	assert.True(t, summary.Aborted)
+}
+
+// TestExecuteAutoBlockRendersTurkishWhenRunDepsTranslatorIsTurkish is
+// FAZ 9's TR smoke test for the engine layer: the exact same Block/abort
+// scenario as TestExecuteAutoAbortsRemainingStepsOnBlock above, but with
+// deps.Translator set to a Turkish Translator, proving the BLOCKED
+// line/AbortReason actually route through it — and that every OTHER test
+// in this file (which never sets Translator) keeps getting byte-for-byte
+// English output, since RunDeps.tr() defaults to English for a zero-value
+// Translator.
+func TestExecuteAutoBlockRendersTurkishWhenRunDepsTranslatorIsTurkish(t *testing.T) {
+	exec := &fakeExecutor{}
+	deps, stdout, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.Translator = i18n.NewTranslator(i18n.LangTR)
+
+	plan := Plan{Steps: []Step{blockStep("rm -rf /")}}
+	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
+
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "ENGELLENDİ(")
+	assert.NotContains(t, stdout.String(), "BLOCKED(")
+	assert.True(t, summary.Aborted)
+	assert.Contains(t, summary.AbortReason, "engellendi")
 }
 
 // TestExecuteStepWithSelfCorrectionRefusesToRunBlockedStepDirectly is the

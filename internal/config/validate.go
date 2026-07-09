@@ -64,6 +64,8 @@ var keyDefs = []KeyDef{
 
 	{Key: "audit.enabled", Kind: KindBool},
 	{Key: "audit.retention_days", Kind: KindPositiveInt},
+
+	{Key: "executor.step_timeout_seconds", Kind: KindPositiveInt},
 }
 
 // Keys returns every settable config key, sorted.

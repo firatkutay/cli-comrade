@@ -39,15 +39,3 @@ func newChatCmd() *cobra.Command {
 		},
 	}
 }
-
-// newHistoryCmd stubs the audit-log viewer. Real behavior lands in FAZ 6.
-func newHistoryCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "history",
-		Short: "Show recently executed commands",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			printNotReady(cmd.OutOrStdout(), "history")
-			return nil
-		},
-	}
-}

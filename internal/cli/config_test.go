@@ -13,16 +13,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// withIsolatedConfigDir points the config path resolution at a fresh
-// temp directory for the duration of the test, so config subcommand
-// tests never touch the real user's config.toml.
+// withIsolatedConfigDir points the config path resolution AND (as of FAZ
+// 6) the audit log path resolution at a fresh temp directory for the
+// duration of the test, so config/do/history tests never touch the real
+// user's config.toml or audit.jsonl. XDG_STATE_HOME/LOCALAPPDATA are set
+// explicitly (not left to internal/audit.PathFor's HOME fallback) so this
+// helper isolates both resolvers symmetrically regardless of which one a
+// given test actually exercises.
 func withIsolatedConfigDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	if runtime.GOOS == "windows" {
 		t.Setenv("APPDATA", dir)
+		t.Setenv("LOCALAPPDATA", dir)
 	} else {
 		t.Setenv("XDG_CONFIG_HOME", dir)
+		t.Setenv("XDG_STATE_HOME", dir)
 		t.Setenv("HOME", dir)
 	}
 	return dir

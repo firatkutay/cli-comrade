@@ -52,6 +52,9 @@ telemetry = false
 [audit]
 enabled = true
 retention_days = 90
+
+[executor]
+step_timeout_seconds = 300   # max seconds a single executed step may run before being killed
 `
 
 // GeneralConfig holds the [general] section.
@@ -110,14 +113,22 @@ type AuditConfig struct {
 	RetentionDays int  `mapstructure:"retention_days"`
 }
 
+// ExecutorConfig holds the [executor] section — introduced in FAZ 6 for
+// internal/executor's per-step timeout (UYGULAMA_PLANI.md FAZ 6 item 1:
+// "timeout (adım başına config'den)").
+type ExecutorConfig struct {
+	StepTimeoutSeconds int `mapstructure:"step_timeout_seconds"`
+}
+
 // Config is the full, in-memory configuration schema for cli-comrade.
 type Config struct {
-	General GeneralConfig `mapstructure:"general"`
-	LLM     LLMConfig     `mapstructure:"llm"`
-	Safety  SafetyConfig  `mapstructure:"safety"`
-	Context ContextConfig `mapstructure:"context"`
-	Privacy PrivacyConfig `mapstructure:"privacy"`
-	Audit   AuditConfig   `mapstructure:"audit"`
+	General  GeneralConfig  `mapstructure:"general"`
+	LLM      LLMConfig      `mapstructure:"llm"`
+	Safety   SafetyConfig   `mapstructure:"safety"`
+	Context  ContextConfig  `mapstructure:"context"`
+	Privacy  PrivacyConfig  `mapstructure:"privacy"`
+	Audit    AuditConfig    `mapstructure:"audit"`
+	Executor ExecutorConfig `mapstructure:"executor"`
 }
 
 // Default returns the schema's default configuration, parsed from

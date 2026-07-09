@@ -39,7 +39,7 @@ Yerel kural motoru denylist içerir: `rm -rf /`, `rm -rf ~`, `mkfs`, `dd of=/dev
 
 ## Teknoloji Stack'i
 
-- **Dil:** Go 1.23+ (tek statik binary, cross-compile)
+- **Dil:** Go 1.25+ (tek statik binary, cross-compile)
 - **CLI framework:** spf13/cobra
 - **Config:** spf13/viper (TOML: `~/.config/cli-comrade/config.toml`; Windows: `%APPDATA%\cli-comrade\config.toml`)
 - **TUI/etkileşim:** charmbracelet/bubbletea + lipgloss (onay promptları, spinner, diff görünümü)

@@ -1,0 +1,767 @@
+# cli-comrade — Teknik Referans
+
+> English version → [TECHNICAL.md](TECHNICAL.md)
+
+Bu belge `comrade`'ın gerçekte nasıl çalıştığını, bu depodaki kaynak koda
+göre doğrulanmış şekilde, paket paket anlatır. Config anahtarlarının tam
+listesi için [CONFIGURATION.md](CONFIGURATION.md)'a, güvenlik/tehdit
+modeli için [SECURITY.md](SECURITY.md)'a, faz faz geliştirme kaydı için
+[docs/phases/](phases/) ve [CHANGELOG.md](../CHANGELOG.md)'a bakın.
+
+## 1. Genel bakış ve tasarım felsefesi
+
+`comrade`, kullanıcı ile terminal arasına giren, cross-platform
+(Linux/macOS/Windows) tek-binary bir Go CLI aracıdır. Kullanıcı ne
+istediğini doğal dille tarif eder; comrade bunu risk etiketli, adım adım
+bir plana çevirir ve aktif **davranış moduna** göre ya çalıştırır, ya
+onay ister ya da sadece açıklar.
+
+### Davranış modları
+
+| Mod | Davranış |
+|---|---|
+| `auto` | comrade her adımı kendisi çalıştırır, her adımda ne yaptığını tek satırda özetler. |
+| `ask` | **Varsayılan.** Her adımdan önce comrade gerekçesini ve komutu gösterir, `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` sorar (aşağıya bakın). |
+| `info` | Hiçbir şey çalıştırılmaz. comrade nedeni ve çözümü, kopyalanabilir komutlarla açıklar. |
+
+Kaynak: `internal/engine/mode.go` (`Mode` tipi ve `ResolveMode`'un
+önceliği: `--auto`/`--ask`/`--info` flag'i > `COMRADE_MODE` ortam
+değişkeni > `general.mode` config değeri, varsayılan `ask`).
+
+**Ask-modu onay prompt'unun tuş kümesi, `general.language`'tan
+bağımsız olarak sabit Türkçedir** (`internal/tui/confirm.go`: basılan
+prompt tam olarak `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü`'dür, ve
+`mapKey` yalnızca bu beş tek-harfli tuşu kabul eder):
+
+| Tuş | Kelime | Anlamı |
+|---|---|---|
+| `e` | evet | Adımı gösterildiği gibi çalıştır |
+| `h` | hayır | Bu adımı atla |
+| `d` | düzenle | Komutu yeniden onaylamadan önce satır içinde düzenle |
+| `a` | açıkla | Bu adım için ayrıntılı bir açıklama göster, sonra tekrar sor |
+| `t` | tümü | Bu adımı ve kalan her read/write/network adımını tekrar sormadan onayla — destructive/elevated adımlar yine de tek tek sorulur |
+
+Bu prompt'un İngilizce yapılandırılmış bir arayüzde bile
+`general.language`'ı takip etmemesi bilinen, takip edilen bir eksiktir
+(bkz. `docs/PROGRESS.md` notları) — burada çözülmüş gibi belgelenen bir
+gözden kaçırma değil.
+
+### Pazarlık edilemeyen tek kural
+
+`auto` modda bile, **effective risk sınıfı `destructive`** olan bir
+komut her zaman onay için durur. Bu davranış ancak config'de **hem**
+`safety.confirm_destructive=false` **hem de** `--yolo` flag'i birlikte
+verildiğinde kapanır — ve o çalıştırmada gerçekten bir şeyi atlatıp
+atlatmadığından bağımsız olarak, **her** `--yolo` kullanımı kırmızı bir
+uyarı basar (`internal/i18n`'deki `flag_yolo`/`yolo_warning` mesajları;
+`internal/engine`'in mod-dağıtım döngüsünde, `internal/safety.Engine`'in
+verdiğinin üstüne uygulanır).
+
+### Dil tutumu
+
+comrade'ın **arayüzü** — binary'nin kendi ürettiği her kullanıcıya
+görünen metin — tam olarak iki dilde gelir, Türkçe ve İngilizce,
+`internal/i18n` kataloğu üzerinden (`internal/i18n/catalog.go`'daki
+`catalogEN`/`catalogTR`, her string için bir `MessageID`,
+`TestCatalogsCoverIdenticalKeys` testiyle iki katalog birbirinden asla
+kopmayacak şekilde tutulur). Arayüz dili şu sırayla çözülür: açık
+`general.language` config değeri (`tr`/`en`) > `COMRADE_LANG` ortam
+değişkeni > `LANG`/`LC_ALL` (glibc tarzı locale önek eşleşmesi) >
+İngilizce varsayılan (`internal/i18n/lang.go`, `ResolveLanguage`).
+
+**Kullanıcının doğal dilde yazdığı istek** ise Türkçe veya İngilizce ile
+sınırlı değildir — kullanıcının yazdığı herhangi bir serbest metindir ve
+yapılandırılmış LLM bunu, o modelin anladığı hangi dil(ler) olursa
+olsun yorumlar. comrade'ın kontrol ettiği şey, LLM'in yapılandırılmış
+yanıtındaki kendi yazılı alanlarının dilidir (bir planın `summary`'si ve
+her adımın `rationale`'ı, bir açıklamanın özeti/parçaları, bir tanının
+açıklaması): çözülen arayüz dili Türkçe olduğunda comrade system
+prompt'a bir dil talimatı ekler — bkz.
+`internal/engine/prompts/plan_lang_tr.txt`, `explain_lang_tr.txt`,
+`diagnose_lang_tr.txt` — modele bu düz-metin alanları Türkçe yazmasını,
+ama JSON alan adlarını, `risk` enum değerlerini ve komutun kendisini
+(komutlar dilden bağımsızdır) değiştirmeden bırakmasını söyler.
+İngilizce için böyle bir ek eklenmez; temel system prompt'lar
+(`plan_system.txt`, `explain_system.txt`, `diagnose_system.txt`)
+varsayılan olarak zaten İngilizcedir. Dolayısıyla: **comrade'ı "sadece
+Türkçe/İngilizce" diye tanımlamayın** — comrade'ı, TR/EN arayüze sahip,
+bu aynı TR/EN çözümlemesini LLM'in düz-metin çıktı diline de uygulayan,
+ama kullanıcının seçtiği modelin desteklediği herhangi bir dilde
+doğal-dil isteği yazabildiği bir araç olarak tanımlayın.
+
+## 2. Uçtan uca çalışma prensibi
+
+```mermaid
+flowchart TD
+    A[Kullanıcı girdisi: comrade fix / do / explain / chat] --> B[internal/context: Collector.Collect]
+    B --> C[internal/redact: her giden payload'a Redactor.Apply]
+    C --> D[internal/engine/prompts: system prompt + gerekiyorsa _lang_tr eki]
+    D --> E[internal/llm.Client: connector fallback zinciri]
+    E --> F[internal/llm/parse.go: markdown fence temizliği, JSON çıkarma+doğrulama]
+    F --> G[internal/safety.Engine: denylist + escalation, LLM'in beyan ettiği riskten bağımsız]
+    G --> H{Mod: internal/engine dağıtımı}
+    H -->|auto| I[internal/executor: çalıştır, sadece destructive'te onay iste]
+    H -->|ask| J[internal/tui: her adım için onay prompt'u]
+    H -->|info| K[Sadece planı yazdır, hiçbir şey çalıştırma]
+    I --> L[internal/audit: JSONL kaydı ekle]
+    J --> L
+```
+
+1. **Bağlam toplama** (`internal/context`) — OS/mimari
+   (`runtime.GOOS`), shell adı/versiyonu, çalışma dizini, son başarısız
+   komutu (shell hook'unun yazdığı `last_command.json`'dan — bkz. §9),
+   exit code'u ve yakalanan stderr/stdout kuyruğunu, tespit edilen paket
+   yöneticisi/yöneticilerini (`LookPath` ile apt/dnf/pacman/brew/winget/
+   scoop/choco), ve — yalnızca `context.send_history`/
+   `context.send_env_names` config'i açıkça etkinleştirilmişse — son
+   shell geçmişini ve ortam değişkeni **isimlerini** (asla değerlerini)
+   toplar.
+2. **Redaction** (`internal/redact`) — bir LLM çağrısı için hazırlanan
+   her istek payload'ı, süreçten çıkmadan önce `Redactor.Apply`'dan
+   geçer; tam pattern listesi için §8'e bakın. Bu,
+   `internal/llm.Client.Complete`/`Stream` içinde sabitlenmiş bir adım
+   olarak bağlanmıştır (`redactPayload`) — her çağrı noktasının
+   hatırlaması gereken opsiyonel bir adım değildir.
+3. **Prompt oluşturma** (`internal/engine/prompts`, Go `embed`) —
+   `plan_system.txt` (`do`/`fix` için), `explain_system.txt` (`explain`
+   için) veya `diagnose_system.txt` (`fix`'in tanı adımı için), uygun
+   olduğunda §1'de anlatılan Türkçe ek, ve tanı için birkaç örnekli bir
+   few-shot dosyası (`diagnose_fewshot.txt`).
+4. **Fallback'li provider çağrısı** (`internal/llm.Client`) —
+   `llm.provider + "/" + llm.model` ilk deneme olarak, ardından
+   `llm.fallback`'teki her girdi sırayla (`client.go`'daki `New`).
+   `Complete`/`Stream`, her denemeyi bir per-attempt timeout ile
+   (`llm.timeout_seconds`, varsayılan 60sn) sırayla dener; bir auth
+   reddi (401/403, `ErrAuthRejected`) dışındaki her hata bir sonraki
+   denemeye geçer, bir auth reddi zinciri hemen durdurur, ve — her
+   deneme transport seviyesinde (`ErrOffline`) başarısız olduysa ve
+   hiçbir deneme zaten `ollama` değilse — son hata, offline kullanım
+   için `llm.fallback`'e `ollama` eklemeyi önerir.
+5. **Yapılandırılmış JSON ayrıştırma + doğrulama**
+   (`internal/llm/parse.go`) — modelin eklemiş olabileceği Markdown
+   code-fence sarmalamasını temizler, tek bir üst-seviye JSON nesnesini
+   çıkarır, ve çağıranın `CompletionRequest.RequiredFields`'ta beyan
+   ettiği her alanın mevcut ve boş olmadığını doğrular — hepsi tek bir
+   paylaşılan kod yolundan, böylece her komutun JSON işleme davranışı
+   tutarlıdır.
+6. **Yerel güvenlik ikinci kontrolü** (`internal/safety.Engine.Evaluate`)
+   — LLM'in beyan ettiği risk etiketini asla bir taban değerin ötesinde
+   güvenmez. Komutu bir normalizer/tokenizer'dan geçirir
+   (`tokenize.go`), ardından: (a) yerleşik denylist — herhangi bir
+   eşleşme, mod veya beyan edilen risk ne olursa olsun koşulsuz
+   `Block`'tur; (b) kullanıcının `safety.denylist_extra` regex'leri, aynı
+   etkiyle; (c) yalnızca effective risk sınıfını yükseltebilen, asla
+   düşüremeyen sabit bir escalation kural seti. Somut kural seti için
+   §8'e bakın.
+7. **Mod tabanlı yürütme döngüsü** (`internal/engine`,
+   `internal/executor`) — §1'deki mod tablosuna göre dağıtır. Yürütmenin
+   kendisi Windows dışında `sh -c <komut>`, Windows'ta `powershell
+   -NoProfile -Command <komut>` çalıştırır
+   (`internal/executor/executor.go`, `buildCommand`), bu seçim bir build
+   tag yerine kurulum anında `runtime.GOOS`'a göre yapılır (`New`) —
+   böylece her üç platformun mantığı tek bir binary'den test edilebilir
+   (CLAUDE.md'nin platform-dallanma kuralı gereği).
+8. **Audit log** (`internal/audit`) — çalıştırılan her adım tek bir JSONL
+   satırı olarak eklenir: `timestamp`, `request` (orijinal serbest metin
+   istek), `command`, `risk`, `mode`, `exit_code`, `duration_ms`.
+   `comrade history` ile geri okunur.
+
+## 3. Mimari / paket haritası
+
+```
+cmd/comrade/            main() — internal/cli.NewRootCmd'i kurar ve Execute'u çağırır
+internal/
+  cli/                  cobra alt komutları, flag bağlama, config/runtime bağlama, i18n-help bağlama
+  config/                viper yükleme, şema, OS'e özel yol çözümleme, doğrulama
+  context/               ortam/son-komut/geçmiş/paket-yöneticisi toplama
+  redact/                sır maskeleme regex boru hattı, her giden LLM payload'ına uygulanır
+  engine/                 mod dağıtımı, plan/explain/diagnose üretimi, gömülü prompt'lar, güvenlik-kontrollü adım koşucusu
+  executor/               sh -c / powershell -Command process çalıştırma, OS'e özel process-group yönetimi
+  safety/                 risk sınıflandırma, denylist, escalation kuralları, Decision tipi
+  audit/                  JSONL yürütme logu + comrade history'nin okuyucusu
+  llm/                    Provider arayüzü, 4 connector, Client fallback zinciri, JSON ayrıştırma/doğrulama, SSE streaming
+  i18n/                   TR/EN mesaj kataloğu, MessageID disiplini, dil çözümleme
+  secrets/                keychain öncelikli (go-keyring) / 0600-dosya-fallback API key depolama
+  shellinit/               comrade init'in shell-başına snippet üretimi ve rc-dosyası blok yönetimi
+  tui/                    bubbletea/lipgloss onay prompt'u ve durum gösterimi
+  update/                  comrade upgrade: GitHub release sorgulama, checksum-doğrulamalı indirme, atomik kendi-kendini-değiştirme
+scripts/                 install.sh / install.ps1 (checksum-doğrulamalı curl/iwr kurulum betikleri)
+docs/                    CONFIGURATION.md, SECURITY.md, phases/ (FAZ-00..11 geliştirme kaydı), bu dosya
+third_party/              vendored atotto-clipboard fork'u (bkz. §4)
+```
+
+`internal/` altındaki her önemsiz olmayan paket, paket-seviyesi tasarım
+yorumunu taşıyan bir `doc.go` ile başlar — bir pakette yön bulmaya bu
+dosyayı okuyarak başlayın. Not: `internal/executor/doc.go` ve
+`internal/audit/doc.go`'nun paket yorumları, her iki paket de tamamen
+uygulanmış olmasına rağmen hâlâ "FAZ 0'da boş bir yer tutucu" yazıyor —
+erken fazlardan kalma güncel olmayan bir yorum (bu görevin raporundaki
+"Discrepancies" bölümüne bakın; bu görevin kapsamı gereği burada
+düzeltilmedi).
+
+## 4. Teknoloji yığını
+
+| Konu | Seçim | Neden (depodaki dokümantasyona göre) |
+|---|---|---|
+| Dil / toolchain | Go 1.25 (modül), toolchain `go1.26.5` (`go.mod`) | Tek statik, cross-compile edilebilir binary |
+| CLI framework | `spf13/cobra` v1.10.2 | Alt komut ağacı, flag ayrıştırma, help üretimi |
+| Config | `spf13/viper` v1.21.0 | TOML dosya yükleme/birleştirme; OS'e özel yol çözümlemesi viper'ın değil comrade'ın kendisinindir (`internal/config/paths.go`) |
+| TUI | `charm.land/bubbletea/v2` v2.0.8 + `charm.land/bubbles/v2` + `charm.land/lipgloss/v2` | Onay prompt'ları, chat girdisi, renkli durum çıktısı |
+| Keychain | `github.com/zalando/go-keyring` v0.2.8 | macOS Keychain / Windows Credential Manager / Linux Secret Service, hiçbir keychain backend'i mevcut olmadığında 0600 obfuscated-dosya fallback'i ile (`internal/secrets`) |
+| HTTP | sadece stdlib `net/http` | Provider SDK'sı yok — `internal/llm`'in dört connector'ı elle yazılmış ham REST istemcileridir, bağımlılık yüzeyini minimumda tutmak için (CLAUDE.md) |
+| Release | `goreleaser/v2` v2.16.0 (`Makefile`'da pinlenmiş) | Cross-platform arşivler, `.deb`/`.rpm` (nfpm), Homebrew Cask, Scoop bucket, winget manifest — bkz. §11 |
+| Test | stdlib `testing` + `stretchr/testify` v1.11.1 | LLM connector'ları gerçek ağa asla dokunmadan `httptest` sunucularına karşı test edilir |
+
+### Vendored fork: `third_party/atotto-clipboard`
+
+`go.mod`'da bir `replace github.com/atotto/clipboard =>
+./third_party/atotto-clipboard` satırı var. Upstream `atotto/clipboard`
+v0.1.4'ün Unix build'i, **paket seviyesinde bir `init()` içinde
+koşulsuz olarak** beşe kadar sıralı `exec.LookPath` PATH taraması
+yapıyor — bunu `bubbles/v2/textinput`'u import eden her `comrade`
+çağrısı ödüyor (yani onay prompt'u ve `comrade chat` bunu dolaylı olarak
+import ettiği için, `--version`/`--help` dahil, hemen hemen her çağrı).
+Çok sayıda girişi olan bir PATH'te (WSL2 shell'inde 100+ gözlemlendi)
+bu, çağrı başına yüzlerce milisaniyeye mal oluyordu. Vendored fork'un
+tek değişikliği, aynı probu `init()`'ten, ilk **gerçek** clipboard
+kullanımında tetiklenen bir `sync.Once`'a ertelemek — bkz.
+`third_party/atotto-clipboard/clipboard_unix.go`'nun doc yorumu,
+`docs/phases/FAZ-11.md`, ve `KNOWN_LIMITATIONS.md`. Bunun yerine eşdeğer
+bir düzeltme alacak daha yeni bir upstream release yok (v0.1.4 en
+sonuncusu).
+
+**Sonuç:** modül yerel bir dosya sistemi yoluna `replace` edildiği için,
+`go install github.com/firatkutay/cli-comrade/cmd/comrade@<versiyon>`
+son kullanıcı için **çalışmaz** — Go'nun modül çözümlemesi bir `replace
+... => ./göreli/yol` direktifini bir `go install` modül sınırının
+ötesinde takip edemez. Kurulum, yayınlanmış bir binary üzerinden
+(`scripts/install.sh` / `install.ps1`), bir paket yöneticisi üzerinden
+(Homebrew Cask / Scoop / winget / `.deb`/`.rpm`), veya tam bir yerel
+clone + `make build` üzerinden yapılmalıdır.
+
+## 5. Komut referansı
+
+Global flag'ler, root komutta, `do`'da ve `fix`'te mevcuttur
+(`internal/cli/flags.go`'nun `addExecutionFlags`'i tarafından kaydedilir;
+`explain`, `chat`, `config`, `history`, `init`, `auth`, `upgrade`'de
+yoktur):
+
+| Flag | Etki |
+|---|---|
+| `--auto` | Bu çağrı için `auto` modu zorla (COMRADE_MODE/config'i geçersiz kılar) |
+| `--ask` | Bu çağrı için `ask` modu zorla |
+| `--info` | Bu çağrı için `info` modu zorla |
+| `--dry-run` | Üretilen planı çalıştırmadan yazdır |
+| `--yolo` | **Tehlikeli.** `auto` modda destructive/elevated onayını atlar, ama yalnızca config'de `safety.confirm_destructive`/`confirm_elevated` da kapalıysa. Verildiğinde her zaman kırmızı bir uyarı basar. |
+| `-h`, `--help` | Standart cobra help |
+| `-v`, `--version` | `comrade version <versiyon>` yazdırır ve çıkar |
+
+`--auto`/`--ask`/`--info` birbirini dışlar; birden fazlasının verilmesi
+bir kullanım hatasıdır (`modeFlagValue`, `flags.go`).
+
+### `comrade` (çıplak, alt komutsuz)
+
+Versiyon banner'ını, ardından cobra help'i yazdırır. `comrade <serbest
+metin>` — hiçbir alt komut adıyla eşleşmeyen metin — `comrade do
+<serbest metin>` ile aynı mantığa dağıtılır (root'un `Args:
+cobra.ArbitraryArgs` + `RunE`'si), böylece örn. `comrade docker kur`
+`do` yazmaya gerek kalmadan "çalışır". Gerçek bir alt komut yazım hatası
+bu yüzden "şunu mu demek istediniz" önerisiyle reddedilmez — bunun
+yerine serbest-metin olarak dağıtılır, FAZ 6'nın bilinçli bir UX
+tercihidir.
+
+```
+comrade docker'ı kur
+comrade --auto şu portu kim kullanıyor bul ve kapat
+```
+
+### `comrade do <istek...>`
+
+Yukarıdaki serbest-metin dağıtımının açık formu. İstek için bir plan
+üretir ve aktif moda göre çalıştırır.
+
+```
+comrade do "8080 portunu kullanan process'i bul ve durdur"
+comrade do --dry-run "install docker"
+```
+
+### `comrade fix [-- komut...]`
+
+Son başarısız komutu (`last_command.json`'dan okunur, bkz. §9) veya açıkça
+verilen bir komutu tanılar, ardından moda göre bir düzeltme önerir ve —
+gerekirse — çalıştırır.
+
+| Flag | Etki |
+|---|---|
+| `--rerun` | Tanılamadan önce son kaydedilen komutu yeniden çalıştırarak taze stderr/stdout yakalar |
+
+```
+comrade fix
+comrade fix --rerun
+comrade fix -- npm install
+```
+
+### `comrade explain <komut...>`
+
+Bir komutu **hiçbir zaman çalıştırmadan** flag flag açıklar — bu
+komutun bağımlılık grafiğinde bir `executor` bile oluşturulmaz. İki
+katman: (1) diğer her komutun kullandığı aynı yerel `safety.Engine`,
+komut destructive veya denylist'te ise önce göze çarpan bir uyarı
+basar; (2) `engine.Explainer` LLM'den sade dilde bir özet, flag flag
+dökümü ve kendi risk notunu ister.
+
+`explain`, `DisableFlagParsing: true` ayarını kullanır — açıklanan
+komut metni sıklıkla bir tire ile başlar (`-rf`, `-la`) ve comrade'ın
+kendi flag'i olarak ayrıştırılmamalıdır. **Sonuç:** `comrade explain -h`
+veya `comrade explain --help`, `-h`/`--help`'i cobra'nın kendi help'i
+için bir istek olarak değil, açıklanacak düz metin olarak ele alır (ve
+sonra bir LLM'e ulaşmaya çalışırken başarısız olur); bu komutun help
+metnini görmek için `comrade help explain` kullanın.
+
+```
+comrade explain "git rebase -i HEAD~5"
+```
+
+### `comrade chat`
+
+Etkileşimli, bağlamı koruyan chat oturumu (bubbletea TUI). `-h` dışında
+kendi flag'i yok.
+
+```
+comrade chat
+```
+
+Oturum içinde (`internal/cli/chatdispatch.go`'nun slash-tarzı komutlarına
+göre — otoriter liste için kataloğun `chat_help` girdisine bakın): mod
+değiştirme, bağlamı temizleme, transkripti kaydetme, ve oturumdan
+çıkmadan `do`-tarzı bir istek gönderme.
+
+### `comrade config <alt komut>`
+
+| Alt komut | Amaç |
+|---|---|
+| `get <anahtar>` | Bir config anahtarının etkin değerini yazdır |
+| `set <anahtar> <değer>` | Bir anahtarı doğrula ve kalıcı hale getir (`config models`'ın kullandığı aynı `SetAndSave` yolu) |
+| `list` | Her anahtarı, etkin değerini ve kaynağını (`env`/`file`/`default`) listele |
+| `edit` | Config dosyasını `$EDITOR`'da aç |
+| `path` | Config dosyasının çözümlenmiş yolunu yazdır |
+| `models` | **O an yapılandırılmış** provider için mevcut modelleri listele ve etkileşimli olarak birini seç, seçimi `llm.model`'e kalıcı hale getir |
+
+```
+comrade config path
+comrade config get llm.provider
+comrade config set general.mode auto
+comrade config models
+```
+
+Tam anahtar referansı: [CONFIGURATION.md](CONFIGURATION.md).
+
+### `comrade auth <alt komut>`
+
+Saklanan provider API key'lerini yönetir (keychain öncelikli, dosya
+fallback'i — §7).
+
+| Alt komut | Amaç |
+|---|---|
+| `login <provider>` | `provider` için bir key sakla, ardından doğrulamak için küçük bir test completion'ı gönder |
+| `logout <provider>` | Saklanan bir key'i kaldır |
+| `status` | Hangi provider'ların saklanan (keychain/dosya) veya ortam değişkeni key'i olduğunu göster |
+
+```
+comrade auth login anthropic
+comrade auth status
+```
+
+### `comrade history`
+
+`internal/audit`'in JSONL logunu okur ve son kayıtları yazdırır.
+
+| Flag | Etki |
+|---|---|
+| `--limit <int>` | Gösterilecek en fazla son kayıt sayısı (varsayılan 20) |
+| `--json` | Her kaydı tablo yerine satır başına bir JSON nesnesi olarak yazdır |
+
+```
+comrade history --limit 50 --json
+```
+
+### `comrade init [bash|zsh|fish|powershell]`
+
+Hedef shell'in rc/profile dosyasına shell entegrasyon bloğunu kurar
+(veya kaldırır). Hook'un çalışma zamanında ne yaptığı için §9'a bakın.
+
+| Flag | Etki |
+|---|---|
+| `--print` | Sadece snippet'i yazdır; hiçbir dosya değişikliği yapma |
+| `--remove` | cli-comrade bloğunu rc/profile dosyasından kaldır |
+| `-y`, `--yes` | Onay prompt'unu atla |
+
+```
+comrade init bash
+comrade init --print zsh
+comrade init --remove powershell
+```
+
+### `comrade upgrade`
+
+GitHub Releases'i çalışan binary'nin build-time versiyonundan daha yeni
+bir versiyon için kontrol eder, ve `--check` verilmediyse eşleşen
+platform arşivini indirir, release'in `checksums.txt`'ine karşı
+checksum'ını doğrular, binary'yi çıkarır, ve o an çalışan executable'ı
+atomik olarak değiştirir (Windows'un çalışan-bir-exe'nin-üstüne-yazamama
+durumu için rename manevrası dahil).
+
+| Flag | Etki |
+|---|---|
+| `--check` | Sadece yeni bir versiyonun mevcut olup olmadığını bildir; indirme/kurulum yapma |
+
+```
+comrade upgrade --check
+comrade upgrade
+```
+
+### Dahili (gizli) komutlar
+
+`comrade hook record --shell <isim> --exit <kod> --command <metin>` —
+`last_command.json`'un tek yazıcısı; yalnızca `comrade init`'in kurduğu
+shell snippet'leri tarafından çağrılır, doğrudan etkileşimli kullanım
+için değildir (`Hidden: true`, bu yüzden `--help`'te asla görünmez).
+Bkz. §9.
+
+## 6. LLM provider'ları
+
+`internal/llm.Provider`, her connector'ın uyguladığı arayüzdür:
+
+```go
+type Provider interface {
+    Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error)
+    Stream(ctx context.Context, req CompletionRequest) (<-chan Chunk, error)
+    Name() string
+}
+```
+
+Connector constructor'ları export edilmemiştir (unexported) — `internal/llm`
+dışından bir `Provider` elde etmenin tek yolu `llm.New(cfg, opts...)`'tur,
+bu da tüm fallback zincirini saran (§2 adım 4) bir `*Client` döner.
+
+| Connector | Backend | Notlar |
+|---|---|---|
+| `anthropic` | Anthropic Messages API | `internal/llm/anthropic.go` |
+| `openai_compat` | Herhangi bir OpenAI-Chat-Completions-uyumlu endpoint | Tek connector, `llm.openai_compat.base_url` ile parametrelenir — OpenAI, Mistral, Groq, GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter ve yerel bir LM Studio sunucusunu aynı wire formatı üzerinden kapsar |
+| `google` | Gemini API | `internal/llm/google.go` |
+| `ollama` | Yerel Ollama (varsayılan `http://localhost:11434`) | Model boş bırakılabilir ve ilk kullanımda `/api/tags`'a karşı tembel olarak çözülür; API key gerekmez |
+
+**Fallback zinciri**: `llm.provider + "/" + llm.model`'den 1. deneme
+olarak kurulur, ardından her `llm.fallback` girdisi (`"provider/model"`
+veya çıplak `"provider"`) sırayla. Bir deneme için eksik bir API key,
+client kurulumunu başarısız kılmaz — o deneme gerçekten ulaşıldığında
+"hangi ortam değişkenini ayarlamalı" hatasını döndüren bir placeholder
+haline gelir, böylece önceki başarılı denemeler etkilenmez ve sonraki
+denemeler hâlâ bir şans elde eder. Bir HTTP 401/403 (`ErrAuthRejected`)
+tüm zinciri hemen durdurur (reddedilen bir kimlik bilgisini başka bir
+provider'a karşı yeniden denemek anlamsızdır); diğer her hata (timeout,
+transport hatası, bozuk yanıt) bir sonraki denemeye geçer.
+
+**Timeout**: `llm.timeout_seconds` (ayarlanmamışsa/pozitif değilse
+varsayılan 60sn), `context.WithTimeout` ile her tek denemeyi bağımsız
+olarak sarar — yavaş bir deneme, bir sonraki denemenin kendi bütçesini
+yemez.
+
+**Streaming**: `Stream`, dört connector'ın hepsi için aynı sözleşmeyi
+taşıyan `<-chan Chunk` döner: sıfır veya daha fazla `{Text, Done:false}`
+chunk'ı, ardından tam olarak bir `{Done:true, Err}` chunk'ı, sonra kanal
+kapanır. Bu son chunk'ta nil bir `Err`, stream'in normal tamamlandığı
+anlamına gelir.
+
+**Idle timeout**: `llm.idle_timeout_seconds` (varsayılan `0`, kapalı),
+yukarıdaki `llm.timeout_seconds`'tan ayrı, ikinci bir timeout'tur —
+`timeout_seconds` isteğin/stream'in tamamını sınırlarken,
+`idle_timeout_seconds` *iki ardışık stream chunk'ı arasındaki boşluğu*
+(ilk chunk'tan öncekini de dahil ederek) sınırlar. Tam olarak tek bir
+yerde uygulanır: `Client.Stream`'in `releaseOnClose`'u, her bir chunk'ı
+ilettiğinde tek bir timer'ı sıfırlar — bu, dört connector'ın kendi okuma
+döngülerine ayrı ayrı kopyalanmak yerine yapılır. Timer, başka bir
+chunk gelmeden ateşlenirse, stream son bir `Chunk{Done:true, Err:
+ErrIdleTimeout}` ile biter (`internal/llm/errors.go`). `0` değeri, bu
+paketin idle-timeout-öncesi davranışını tam olarak yeniden üretir — hiç
+timer başlatılmaz.
+
+**JSON stratejisi**: comrade hiçbir zaman bir provider'ın native
+structured-output parametrelerine güvenmez — her completion isteği
+bunun yerine system prompt'a "tek bir JSON nesnesiyle yanıt ver"
+talimatını gömer, ve `internal/llm/parse.go` bu JSON'ı, dört connector
+genelinde tekdüze olarak, yanıt metninden çıkarır/doğrular (bkz.
+`docs/phases/FAZ-02.md`).
+
+**Redaction**: `internal/llm.Client`, hiçbir connector bir
+`CompletionRequest`'i görmeden önce, her istekte `redactPayload`'ı
+çalıştırır — bu her çağrı noktasında opsiyonel değildir (§8).
+
+## 7. Yapılandırma
+
+Anahtar anahtar tam referans: [CONFIGURATION.md](CONFIGURATION.md).
+
+| Platform | Config dosya yolu |
+|---|---|
+| Linux/macOS | `$XDG_CONFIG_HOME/cli-comrade/config.toml`, yoksa `~/.config/cli-comrade/config.toml`'a düşer |
+| Windows | `%APPDATA%\cli-comrade\config.toml` |
+
+İlk çalıştırmada şema varsayılanlarıyla otomatik oluşturulur
+(`internal/config/loader.go`). Anahtar başına etkin değer önceliği:
+ortam değişkeni (`COMRADE_...`) > dosyadaki değer > yerleşik varsayılan;
+`comrade config list` her anahtarın çözümlenmiş kaynağını gösterir.
+
+## 8. Güvenlik modeli
+
+Tam tehdit-modeli yazısı: [SECURITY.md](SECURITY.md).
+
+### Risk sınıfları (`internal/safety/risk.go`)
+
+Artan şiddet sırası: `read` → `write` → `network` → `elevated` →
+`destructive`. Üretilen her komut LLM tarafından etiketlenir, ardından
+**bağımsız olarak** `safety.Engine.Evaluate` tarafından yeniden
+değerlendirilir — bu, LLM'in etiketine bir taban değerin ötesinde asla
+güvenmez.
+
+### Denylist — koşulsuz `Block`, hangi mod olursa olsun
+
+Yerleşik kural kategorileri (`internal/safety/denylist.go`), bir
+tırnaklama numarasının eşleşmeyi kaçırmasını önlemek için komutun
+normalize edilmiş/token'lanmış haline karşı eşleştirilir:
+
+- `rm -rf /` (ve `~`/`$HOME`-root eşdeğerleri)
+- `mkfs` (dosya sistemi formatlama)
+- `dd of=/dev/<disk>` (ham disk üzerine yazma)
+- `diskpart clean` (bir diskin partition tablosunu siler)
+- PowerShell `Remove-Item`/`ri`/`rd`/`rmdir`/`del`/`erase`/`rm`,
+  `-Recurse` ile bir sürücü kökünü hedefleyerek
+- `format <sürücü>:` (Windows format)
+- fork bomb (`:(){:|:&};:`)
+- `> /dev/<disk>` (gerçek bir disk aygıtına shell redirect'i)
+
+Kullanıcı `safety.denylist_extra` (regex) ile daha fazlasını
+ekleyebilir, aynı koşulsuz-`Block` etkisiyle; bozuk bir kullanıcı
+regex'i, motoru çökertmek yerine bir stderr uyarısıyla atlanır.
+
+### Escalation kuralları — effective risk'i yalnızca yükseltir, asla düşürmez
+
+`internal/safety/escalation.go`'nun sabit kural seti: recursive/force
+silme flag'leri (`rm -r`/`-f`, PowerShell `-Recurse`/`-Force`), `chmod
+-R 777`, disk aygıtı yazmaları, registry silme (`HKLM:`/`HKCU:`),
+`killall`/`taskkill /F`, güvenlik duvarı sıfırlamaları (`iptables -F`,
+`netsh advfirewall reset`), `git push --force`/`-f`, `sudo`/`runas`/
+yükseltme, paket yöneticisi kurulumları, ve bir network-erişim fiili
+içeren herhangi bir komut.
+
+### Redaction (`internal/redact/redact.go`)
+
+Her giden LLM payload'ına uygulanır (`internal/llm.Client`, opsiyonel
+değil). Pattern seti:
+
+- PEM private-key blokları
+- `password=`/`token=`/`secret=`/`api_key=` tarzı key-value çiftleri (ve
+  `:` ile ayrılmış formları)
+- `Authorization: Bearer <token>` header'ları, ve tek başına `Bearer
+  <token>` görülümleri
+- Bilinen API-key formatları: `sk-...` (OpenAI tarzı), `ghp_`/`gho_`
+  (GitHub), `AKIA...` (AWS), `xox[baprs]-...` (Slack)
+- JWT'ler (üç segmentli base64url)
+- E-posta adresleri ve IPv4/IPv6 adresleri — **opsiyonel**,
+  `privacy.redact_emails`/`privacy.redact_ips` ile kapılanır
+
+Ortam değişkeni **değerleri** asla gönderilmez; yalnızca **isimleri**,
+ve yalnızca `context.send_env_names` açıkça etkinleştirildiğinde.
+
+### Kimlik bilgisi depolama (`internal/secrets`)
+
+Önce OS keychain'i (macOS Keychain / Windows Credential Manager / Linux
+Secret Service, `zalando/go-keyring` üzerinden), asla yazılmayan
+ayrılmış bir hesap adı probe edilerek tespit edilir. Hiçbir keychain
+backend'i mevcut değilse, tek bir dosyaya (`<config dizini>/credentials`)
+`0600` izinleriyle oluşturularak fallback yapılır; içindeki her key
+**base64-obfuscated — açıkça ŞİFRELİ DEĞİL** (dosyanın kendi header
+yorumu bunu söylüyor), her okumada izinler `0600`'e sapmışsa onarılarak.
+
+### Audit log (`internal/audit`)
+
+Çalıştırılan her adım için bir JSONL kaydı: `timestamp`, `request`,
+`command`, `risk`, `mode`, `exit_code`, `duration_ms`. `comrade
+history` ile okunur.
+
+### `--yolo`
+
+O çalıştırmada gerçekten bir şeyi atlatıp atlatmadığından bağımsız
+olarak, her kullanımda koşulsuz bir kırmızı uyarı basar. Yalnızca
+config'de `safety.confirm_destructive`/`confirm_elevated` **de**
+kapalıysa etkili olur; destructive-onay kuralının kendisi aksi halde
+pazarlık edilemezdir (§1).
+
+### Telemetri
+
+Varsayılan **kapalı**. Kullanıcı etkinleştirirse, yalnızca anonim
+kullanım sayaçları gönderilir — asla komut içeriği (CLAUDE.md güvenlik
+kuralı #5).
+
+## 9. Shell entegrasyonu
+
+`comrade init [bash|zsh|fish|powershell]`, her komuttan sonra `comrade
+hook record --shell <isim> --exit <kod> --command <metin>`'i exec eden
+shell-başına bir hook kurar — `last_command.json`'un JSON'ını shell
+script içinde elle birleştirmek yerine, ki bu keyfi komut metni için
+(tırnaklar, unicode, satır sonları) shell başına farklı ve güvensiz bir
+kaçış gerektirirdi. Encoding, derlenmiş binary'ye devredilir
+(`encoding/json`), böylece her shell'de doğru ve aynıdır.
+
+| Shell | Hook mekanizması |
+|---|---|
+| bash | `PROMPT_COMMAND` |
+| zsh | `precmd` |
+| fish | `fish_postexec` event'i |
+| PowerShell | `$PROFILE`'a kurulan, `$?`/`$LASTEXITCODE`'u okuyan bir prompt fonksiyonu |
+
+Snippet'lerin hiçbiri stderr/stdout'u genel olarak yakalamaz —
+CLAUDE.md, shell'ler genelinde güvenilmez olduğu için genel bir
+stderr-tee'yi reddeder — bu yüzden `last_command.json` yalnızca
+`command`, `exit_code`, `shell`, ve `timestamp` kaydeder. `comrade fix
+--rerun`, bunun yerine komutu `internal/executor` üzerinden kontrollü
+şekilde yeniden çalıştırarak stderr'i kendisi yakalar.
+
+Durum dosyası konumu (`internal/context/lastcommand.go`):
+
+| Platform | Yol |
+|---|---|
+| Windows | `%LOCALAPPDATA%\cli-comrade\last_command.json` |
+| Linux/macOS | `$XDG_STATE_HOME/cli-comrade/last_command.json`, yoksa `~/.local/state/cli-comrade/last_command.json`'a düşer |
+
+`comrade init` idempotenttir: yeniden çalıştırmak değişmemiş bir bloğu
+olduğu gibi bırakır, eski bir snippet versiyonunu yerinde değiştirir, ve
+eksik bir bloğu ekler — sabit marker satırlarıyla sınırlanmıştır
+(`internal/shellinit/block.go`).
+
+**Hook kurulu değil / fallback**: `comrade fix` yine de çalışır —
+kullanıcıdan hatayı yapıştırmasını ister, veya başarısız komutu
+doğrudan `comrade fix -- <komut>` ile kabul eder, bu da komutu yeniden
+çalıştırır ve kendisi gözlemler.
+
+## 10. i18n mimarisi
+
+Kullanıcıya görünen her metin, bir `Translator.T()` çağrısı üzerinden
+`internal/i18n`'in `MessageID`-anahtarlı kataloğundan geçer
+(`internal/i18n/catalog.go`'daki `catalogEN`/`catalogTR`), veya — henüz
+bir per-invocation `Translator` mevcut olmadan çözümlenen pflag flag
+açıklamaları için — `enUsageDefault` artı `internal/cli/help.go`'nun
+`applyTranslatedHelp`'i, ki bu, her alt komut eklendikten sonra komut
+ağacının tamamını `CommandPath()`'e göre dolaşıp her birinin
+`Short`/flag-usage metnini çözümlenen dile yeniden yazar.
+
+**Denetim**: `internal/i18n/catalog_test.go`'nun
+`TestCatalogsCoverIdenticalKeys`/`TestCatalogsHaveNoEmptyValues`'ı, iki
+kataloğun anahtar setleri veya boş-olmama durumu birbirinden koparsa
+build'i başarısız kılar. Ayrıca, `internal/cli/catalog_coverage_test.go`
+— bir golangci-lint kuralı değil, Go-AST tabanlı bir test — `internal/cli`
+ve `internal/tui` altındaki test-olmayan her `.go` dosyasını dolaşarak
+`Translator.T()`/`enUsageDefault` yollarının dışında `fmt.Print*`/
+`Fprint*`/`Println`/`Printf`'e veya bir pflag açıklamasına verilen ham,
+harf içeren string literal'ları arar ve kendi açık allowlist'inde
+olmayan herhangi bir dosyada başarısız olur.
+
+**Belgelenmiş istisna**: `internal/cli/hook.go`, tek allowlist'lenmiş
+dosyadır — `recordLastCommand`'ın `COMRADE_DEBUG`-kapılı tanı satırı
+(her shell prompt'unda tetiklenir, sıcak bir yol) ve `hook record`'un
+üç flag açıklaması bilinçli olarak çevrilmeden bırakılmıştır: ikisi de
+geliştirici-/dahili-yönelimlidir (açık bir debug ortam değişkeni; yalnızca
+üretilen shell snippet'leri tarafından çağrılan gizli bir komut), ve
+orada bir görüntüleme dilini çözmek için config yüklemek, her tek
+prompt'ta çalışan koda ek yük getirir.
+
+## 11. Paketleme, dağıtım ve kendi kendini güncelleme
+
+`goreleaser/v2` (`Makefile`'da pinlenmiş `v2.16.0`), `.goreleaser.yaml`'dan
+şunları derler:
+
+- Cross-platform binary'ler: linux/darwin (amd64, arm64), windows
+  (amd64, arm64), `.tar.gz` olarak arşivlenir (Windows'ta `.zip`)
+- `nfpm` üzerinden `.deb`/`.rpm` paketleri
+- Bir **Homebrew Cask** (`homebrew_casks:` — `brews:`/Homebrew Formula,
+  goreleaser v2.16 itibarıyla deprecated'dır ve `goreleaser check` bunun
+  üzerinde başarısız olur; CLAUDE.md'nin "brew tap" ifadesi bundan
+  önceye ait ve artık bir Formula değil, bir tap deposuna yayınlanan bir
+  Homebrew Cask anlamına geliyor)
+- Bir **Scoop** bucket manifest'i
+- Bir **winget** manifest'i, staging bir `winget-pkgs` fork'una PR
+  olarak gönderilir
+
+`scripts/install.sh`/`install.ps1` kurulum betikleri, host OS/mimarisine
+uyan release arşivini indirir, release'in yayınladığı `checksums.txt`'e
+karşı doğrular, ve binary'yi çıkarır — hiçbir paket yöneticisi
+gerekmez.
+
+**`comrade upgrade`** (`internal/update`), çalışma zamanında eşdeğerini
+yapar: GitHub Releases'i sorgular, çalışan binary'nin build-time
+versiyonuyla karşılaştırır, eşleşen arşivi indirir ve checksum'ını
+doğrular, ve o an çalışan executable'ı atomik olarak değiştirir
+(Windows'un çalışan-bir-exe'nin-üstüne-yazamama durumunu bir rename
+manevrasıyla ele alarak).
+
+**Drift koruması**: release arşivi isimlendirme şeması kaçınılmaz olarak
+dört yerde tekrarlanır — `.goreleaser.yaml`'ın `archives[].name_template`'i,
+`scripts/install.sh`, `scripts/install.ps1`, ve `internal/update`'in
+`ArchiveName`/`BinaryName`/`ChecksumsFileName`'i. Her kopya bağımsız
+olarak geçerlidir, bu yüzden hiçbir tek-dosya kontrolü birinin diğer
+üçünden kopmasını yakalayamaz;
+`internal/cli/release_names_test.go`'nun
+`TestReleaseArchiveNamingIsConsistentAcrossGoreleaserInstallScriptsAndUpdatePackage`'ı
+dördünü de render eder/grep'ler ve çift yönlü olarak karşılaştırır,
+dördünden herhangi birinin tek başına değişmesinde başarısız olur.
+
+## 12. Test ve CI
+
+- **Tablo tabanlı güvenlik testleri** (`internal/safety/*_test.go`,
+  `hardening_test.go`), denylist ve escalation kurallarını Unix ve
+  PowerShell komut formları genelinde kapsar.
+- **Golden redaction testleri** (`internal/redact/redact_test.go`,
+  `faz11_hardening_test.go`), bilinen her key/token formatı için tam
+  maskelenmiş çıktıyı doğrular.
+- **LLM connector testleri** tamamen `httptest` sunucularına karşı
+  çalışır — hiçbir connector testi gerçek ağa dokunmaz.
+- **Race testleri**: eşzamanlılığa duyarlı paketler (streaming, fallback
+  zinciri) genelinde standart `go test -race` kapsamı.
+- **CI** (`.github/workflows/ci.yml`): `ubuntu-latest`/`macos-latest`/
+  `windows-latest` genelinde bir build-and-test matrisi, artı ayrı bir
+  `govulncheck` job'ı.
+- **Yerel kapı**: `make vet` (`go vet ./...`), `make lint`
+  (`golangci-lint run`, `Makefile`'da `v2.12.2`'ye pinlenmiş araç),
+  `make test` (`go test ./...`) hepsi temiz geçmeli.
+
+`golangci-lint` **GPL-3.0 lisanslıdır** — yalnızca harici bir
+geliştirme/CI aracı olarak çağrılır (`go install
+.../cmd/golangci-lint@<pinlenmiş versiyon>` ile `$GOPATH/bin`'e kurulur,
+asla bir Go modül bağımlılığı olarak import edilmez veya `comrade`
+binary'sinin kendisine bağlanmaz).
+
+## 13. Performans
+
+Cold start, doğal bir dosya sisteminde **~4-5ms olarak ölçülmüştür**
+(`docs/phases/FAZ-11.md` §3'ün önce/sonra rakamları) — FAZ 11'in
+bulduğu ve düzelttiği ~600ms'lik bir regresyona göre kabaca 130 kat
+iyileşme (kök neden için §4'teki vendored-clipboard-fork açıklamasına
+bakın — bir geçişli bağımlılıktaki koşulsuz PATH-tarayan bir
+`init()`'ti). Bu ~4-5ms/<100ms rakamı bir *ölçümdür*, CI'ın zorladığı
+şey değil: gerçek regresyon koruması olan
+`internal/cli.TestFAZ11ColdStartStaysWellUnderOneSecond`, gerçek
+binary'yi derler ve `--version`/`--help`/`config path`'i zamanlar,
+yalnızca bunlardan biri bilinçli olarak gevşek tutulmuş **500ms**'lik
+bir tavanı (`coldStartCeiling`,
+`internal/cli/faz11_coldstart_test.go`) aşarsa başarısız olur — yüklü/
+paylaşılan bir CI runner'ını veya DrvFs-destekli bir checkout'u tolere
+edecek kadar gevşek, ama yine de FAZ 11'in bulduğu türden ciddi bir
+regresyonu yakalayacak kadar sıkı. Tam önce/sonra rakamları ve
+metodoloji için `docs/phases/FAZ-11.md` §3'e bakın.
+
+## 14. İşaretçiler
+
+- [KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) — belgelenmiş eksikler ve tercihler
+- [CHANGELOG.md](../CHANGELOG.md) — release geçmişi
+- [docs/phases/](phases/) — FAZ-00'dan FAZ-11'e geliştirme kaydı, faz başına bir dosya
+- [UYGULAMA_PLANI.md](../UYGULAMA_PLANI.md) — her fazın uyguladığı ana uygulama planı (asla değiştirilmez)
+- [docs/PROGRESS.md](PROGRESS.md) — mevcut faz/durum, "proje nerede" sorusunun tek doğruluk kaynağı

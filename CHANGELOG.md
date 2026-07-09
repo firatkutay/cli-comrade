@@ -51,6 +51,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `Client.Stream`'s `releaseOnClose`, so no connector's own read loop
   needed to change. A new `ErrIdleTimeout` sentinel classifies the
   resulting failure. See `docs/CONFIGURATION.md`.
+- **`.github/dependabot.yml`**: weekly version updates for both ecosystems
+  in this repo — `gomod` (root `go.mod`) and `github-actions`
+  (`.github/workflows/{ci,release}.yml`). Minor/patch bumps are grouped
+  per ecosystem into a single PR to cut review noise; major bumps stay
+  ungrouped so each gets its own reviewable PR. Commit messages use
+  `chore(deps)` (gomod) / `chore(ci)` (github-actions) prefixes to match
+  this repo's Conventional Commits convention. The local `replace
+  github.com/atotto/clipboard => ./third_party/atotto-clipboard`
+  directive in `go.mod` needs no special handling: Dependabot has no
+  registry version to propose for a `replace`-redirected module, so it
+  is silently skipped. Dependabot's GitHub Actions updater bumps both the
+  commit SHA and the trailing `# vX.Y.Z` comment together, so every
+  `uses:` step in both workflows stays SHA-pinned per
+  `supply-chain-pinning` after an update PR merges.
 
 ## [0.1.0-rc1] - 2026-07-09
 

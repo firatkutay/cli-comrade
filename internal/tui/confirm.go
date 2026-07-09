@@ -9,29 +9,37 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
 
-// PromptChoice is the user's response to one ask-mode confirm prompt, per
-// CLAUDE.md's exact TR letters: [e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü.
+// PromptChoice is the user's response to one ask-mode confirm prompt. The
+// accepted keypress for each choice is language-specific (see mapKey) —
+// TR: [e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü; EN: [y]es [n]o [e]dit
+// [x]plain [a]ll. Note the deliberate non-overlap: TR's "e" is Yes while
+// EN's "e" is Edit, and TR's "a" is Explain while EN's "a" is All — mapKey
+// resolves strictly by the active language, never as a union of both key
+// sets, specifically to avoid a user in one language pressing a key that
+// means something dangerously different in the other.
 type PromptChoice int
 
 const (
-	// Yes ("e"vet) runs the step as shown.
+	// Yes (TR "e"vet, EN "y"es) runs the step as shown.
 	Yes PromptChoice = iota
-	// No ("h"ayır) skips this step.
+	// No (TR "h"ayır, EN "n"o) skips this step.
 	No
-	// Edit ("d"üzenle) opens an inline textinput to edit the command
-	// before re-confirming; Confirm's caller must re-run the edited
-	// command through internal/safety before acting on it — this
+	// Edit (TR "d"üzenle, EN "e"dit) opens an inline textinput to edit
+	// the command before re-confirming; Confirm's caller must re-run the
+	// edited command through internal/safety before acting on it — this
 	// package never re-evaluates safety itself.
 	Edit
-	// Explain ("a"çıkla) asks the caller to fetch and display a detailed
-	// explanation for this step, then re-show the prompt.
+	// Explain (TR "a"çıkla, EN e"x"plain) asks the caller to fetch and
+	// display a detailed explanation for this step, then re-show the
+	// prompt.
 	Explain
-	// All ("t"ümü) approves this step and every remaining read/write/
-	// network step without asking again; destructive/elevated steps
-	// still prompt individually — Confirm itself has no notion of
+	// All (TR "t"ümü, EN "a"ll) approves this step and every remaining
+	// read/write/network step without asking again; destructive/elevated
+	// steps still prompt individually — Confirm itself has no notion of
 	// "remaining steps", so this is purely a signal the mode-loop caller
 	// interprets.
 	All
@@ -58,21 +66,46 @@ func (c PromptChoice) String() string {
 
 // mapKey maps a single bubbletea key string (tea.KeyPressMsg.String(), or
 // any other Stringer-shaped key representation) to the PromptChoice it
-// selects. ok is false for any key that doesn't select a choice (the
-// caller should keep waiting for another keypress). This is a pure
-// function specifically so it can be unit-tested directly, with no
-// bubbletea program/PTY involved at all.
-func mapKey(key string) (choice PromptChoice, ok bool) {
+// selects, under the exact accepted key set of lang. ok is false for any
+// key that doesn't select a choice in that language (the caller should
+// keep waiting for another keypress). This is a pure function specifically
+// so it can be unit-tested directly, with no bubbletea program/PTY
+// involved at all.
+//
+// The two switches below are resolved STRICTLY by lang — never merged
+// into one combined switch — by design: TR's "e"=Yes and EN's "e"=Edit
+// collide, as do TR's "a"=Explain and EN's "a"=All. A union would let a
+// TR-trained user press "e" under an EN prompt expecting Yes and silently
+// get Edit instead (or the reverse for "a"/All vs "a"/Explain) — exactly
+// the confirm-prompt hazard this per-language split exists to prevent.
+func mapKey(lang i18n.Lang, key string) (choice PromptChoice, ok bool) {
+	if lang == i18n.LangTR {
+		switch key {
+		case "e":
+			return Yes, true
+		case "h":
+			return No, true
+		case "d":
+			return Edit, true
+		case "a":
+			return Explain, true
+		case "t":
+			return All, true
+		default:
+			return 0, false
+		}
+	}
+
 	switch key {
-	case "e":
+	case "y":
 		return Yes, true
-	case "h":
+	case "n":
 		return No, true
-	case "d":
+	case "e":
 		return Edit, true
-	case "a":
+	case "x":
 		return Explain, true
-	case "t":
+	case "a":
 		return All, true
 	default:
 		return 0, false
@@ -102,6 +135,7 @@ type PromptStep struct {
 type confirmModel struct {
 	step         PromptStep
 	colorEnabled bool
+	tr           i18n.Translator
 
 	editing bool
 	input   textinput.Model
@@ -110,11 +144,11 @@ type confirmModel struct {
 	editedCommand string
 }
 
-func newConfirmModel(step PromptStep, colorEnabled bool) confirmModel {
+func newConfirmModel(step PromptStep, colorEnabled bool, tr i18n.Translator) confirmModel {
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.SetValue(step.Command)
-	return confirmModel{step: step, colorEnabled: colorEnabled, input: ti}
+	return confirmModel{step: step, colorEnabled: colorEnabled, tr: tr, input: ti}
 }
 
 func (m confirmModel) Init() tea.Cmd {
@@ -157,7 +191,7 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	choice, matched := mapKey(key)
+	choice, matched := mapKey(m.tr.Lang(), key)
 	if !matched {
 		return m, nil
 	}
@@ -176,7 +210,7 @@ func (m confirmModel) View() tea.View {
 	var b strings.Builder
 
 	if m.editing {
-		b.WriteString("Edit command (enter to confirm, esc to cancel):\n")
+		b.WriteString(m.tr.T(i18n.MsgConfirmEditHeader))
 		b.WriteString(m.input.View())
 		return tea.NewView(b.String())
 	}
@@ -186,7 +220,7 @@ func (m confirmModel) View() tea.View {
 	if m.step.Rationale != "" {
 		fmt.Fprintf(&b, "  %s\n", m.step.Rationale)
 	}
-	b.WriteString("[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: ")
+	b.WriteString(m.tr.T(i18n.MsgConfirmLegend))
 	return tea.NewView(b.String())
 }
 
@@ -196,12 +230,22 @@ func (m confirmModel) View() tea.View {
 // terminal in production; the caller decides — internal/cli's wiring is
 // the only production caller, so tests never need a real PTY).
 //
+// tr is the injected Translator (per this project's dependency-injection
+// rule — no global/package-level language state anywhere in this
+// package) that resolves both the rendered legend/edit-header text AND,
+// via tr.Lang(), which of the two disjoint per-language key sets mapKey
+// accepts. The caller (internal/cli's tuiPromptUI) builds tr from the
+// exact same general.language/COMRADE_LANG/LANG/LC_ALL resolution chain
+// every other command's output uses (see internal/i18n.ResolveLanguage
+// and internal/cli's newTranslator) — there is no separate, confirm-
+// prompt-specific language decision anywhere.
+//
 // When choice == Edit, editedCommand is the user's edited command text —
 // NOT yet re-evaluated by internal/safety; the caller (internal/engine's
 // Runner) is responsible for re-running it through safety.Engine.Evaluate
 // before acting on it, per UYGULAMA_PLANI.md FAZ 6's ask-mode edit rule.
-func Confirm(ctx context.Context, step PromptStep, colorEnabled bool, in io.Reader, out io.Writer) (choice PromptChoice, editedCommand string, err error) {
-	m := newConfirmModel(step, colorEnabled)
+func Confirm(ctx context.Context, step PromptStep, colorEnabled bool, in io.Reader, out io.Writer, tr i18n.Translator) (choice PromptChoice, editedCommand string, err error) {
+	m := newConfirmModel(step, colorEnabled, tr)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(in), tea.WithOutput(out))
 
 	finalModel, runErr := p.Run()

@@ -105,22 +105,32 @@ var flagRegistrationSelectors = map[string]bool{
 //     raw, letter-containing string literal (as opposed to a variable, a
 //     tr.T(...) call result, or a format string built entirely of verbs/
 //     whitespace/punctuation, e.g. "%s\n" or "%d\t%s\n" — those need no
-//     translation and are exempt by construction, not by allowlist); and
+//     translation and are exempt by construction, not by allowlist);
 //  2. a call to one of flagRegistrationSelectors (a pflag flag
 //     registration) whose LAST argument — the flag's description — is
 //     likewise a raw, letter-containing string literal, rather than an
-//     enUsageDefault(id) call (help.go).
+//     enUsageDefault(id) call (help.go); and
+//  3. a call to any WriteString(...) method (matched by method name only,
+//     regardless of receiver — this catches *strings.Builder.WriteString
+//     just as well as an io.StringWriter) whose single argument is a raw,
+//     letter-containing string literal. Added when internal/tui/
+//     confirm.go's ask-mode prompt (previously this scan's one documented
+//     blind spot — see the historical note below) was migrated to render
+//     through an i18n.Translator: the fix is only as durable as the guard
+//     that keeps it from regressing, so the guard was extended at the
+//     same time the literals it now needs to see were removed.
 //
-// What this DOES catch: a NEW raw literal of EITHER shape added to any
-// file not already in catalogCoverageAllowlist — the drift guard's whole
-// point, so a future contributor who hardcodes a new user-facing message
-// OR a new hardcoded flag description in (say) explain.go or a new
+// What this DOES catch: a NEW raw literal of ANY of the three shapes
+// added to any file not already in catalogCoverageAllowlist — the drift
+// guard's whole point, so a future contributor who hardcodes a new
+// user-facing message, a new hardcoded flag description, or a new
+// WriteString'd prompt line in (say) explain.go, confirm.go, or a new
 // command fails this test immediately.
 //
 // What this CANNOT catch (documented, not silently assumed away):
 //   - A literal built via string concatenation/Sprintf-of-a-Sprintf
-//     before reaching Print* (this scan only inspects the immediate call
-//     argument's AST shape).
+//     before reaching Print*/WriteString (this scan only inspects the
+//     immediate call argument's AST shape).
 //   - The ~12 standalone, full-sentence fmt.Errorf/errors.New user-facing
 //     error messages this phase migrated (see docs/phases/FAZ-09.md) —
 //     Errorf/errors.New are deliberately excluded from fmtPrintSelectors
@@ -135,19 +145,23 @@ var flagRegistrationSelectors = map[string]bool{
 //     enforce that rule going forward. A future added Errorf/errors.New
 //     is NOT caught by this test either way.
 //   - Text embedded in a cobra `Use` command-token string (deliberately
-//     untranslated by design — see docs/phases/FAZ-09.md), or rendered
-//     via any non-"fmt.Print*/Fprint*"/non-flag-registration path at
-//     all — e.g. internal/tui/confirm.go's View builds its output via
-//     strings.Builder.WriteString, not fmt.Fprint*, so its literals are
-//     invisible to this specific scan. Those are a real, known blind
-//     spot (not silently assumed safe) — CLAUDE.md's own explicit
-//     invariant already exempts confirm.go's one always-Turkish prompt
-//     line from translation by design; its "Edit command..." line is
-//     separately-documented pre-existing debt (docs/phases/FAZ-09.md).
+//     untranslated by design — see docs/phases/FAZ-09.md).
 //   - A file already in catalogCoverageAllowlist growing MORE
 //     letter-containing literals — that pre-existing debt is exempted by
 //     file, not by count; see TestCatalogCoverageAllowlistHasNoStaleEntries
 //     for the guard that at least keeps the allowlist itself honest.
+//
+// Historical note: internal/tui/confirm.go's prompt used to be exactly
+// the blind spot rule 3 above closes — it rendered via
+// strings.Builder.WriteString (invisible to a scan that only recognized
+// fmt.Print*/Fprint*), and was hardcoded Turkish regardless of
+// general.language. That was fixed (confirm.go now renders through
+// i18n.MsgConfirmLegend/MsgConfirmEditHeader, resolved per the active
+// Translator, with mapKey accepting a disjoint per-language key set —
+// see confirm.go's own doc comments for the TR/EN key-collision
+// rationale) in the same change that added rule 3, so this scan now
+// actually enforces confirm.go going forward instead of merely
+// documenting that it couldn't.
 func TestCatalogCoverageNoNewHardcodedUserFacingStrings(t *testing.T) {
 	for _, dir := range catalogCoverageScanDirs {
 		entries, err := os.ReadDir(dir)
@@ -171,17 +185,20 @@ func TestCatalogCoverageNoNewHardcodedUserFacingStrings(t *testing.T) {
 			for _, lit := range findRawFlagDescriptions(t, path) {
 				t.Errorf("%s: raw string literal %q used as a flag description — route it through enUsageDefault(id) (help.go) instead", path, lit)
 			}
+			for _, lit := range findRawWriteStringLiterals(t, path) {
+				t.Errorf("%s: raw string literal %q passed to a WriteString(...) call — route it through an i18n.Translator's T() method instead", path, lit)
+			}
 		}
 	}
 }
 
 // TestCatalogCoverageAllowlistHasNoStaleEntries keeps
 // catalogCoverageAllowlist itself honest: every listed file must still
-// exist AND still actually contain at least one flagged literal (of
-// either shape — Print/Fprint text or a flag description) — an entry for
-// a file that was since fully migrated (zero remaining flagged literals)
-// must be removed, not left as dead weight silently widening the
-// exemption.
+// exist AND still actually contain at least one flagged literal (of any
+// of the three shapes — Print/Fprint text, a flag description, or a
+// WriteString call) — an entry for a file that was since fully migrated
+// (zero remaining flagged literals) must be removed, not left as dead
+// weight silently widening the exemption.
 func TestCatalogCoverageAllowlistHasNoStaleEntries(t *testing.T) {
 	for _, dir := range catalogCoverageScanDirs {
 		entries, err := os.ReadDir(dir)
@@ -194,7 +211,7 @@ func TestCatalogCoverageAllowlistHasNoStaleEntries(t *testing.T) {
 				continue
 			}
 			path := filepath.Join(dir, name)
-			total := len(findRawPrintLiterals(t, path)) + len(findRawFlagDescriptions(t, path))
+			total := len(findRawPrintLiterals(t, path)) + len(findRawFlagDescriptions(t, path)) + len(findRawWriteStringLiterals(t, path))
 			if total == 0 {
 				t.Errorf("catalogCoverageAllowlist[%q] is stale: this file no longer has any flagged literal — remove its entry", name)
 			}
@@ -279,9 +296,47 @@ func findRawFlagDescriptions(t *testing.T, path string) []string {
 	return found
 }
 
+// findRawWriteStringLiterals parses the Go source file at path and
+// returns every raw, letter-containing string literal passed as the sole
+// argument of a WriteString(...) call. Matched purely by method name
+// (like flagRegistrationSelectors' own pragmatic scope limit) rather than
+// resolving the receiver's static type via go/types — deliberately not
+// restricted to *strings.Builder specifically, so this also catches, say,
+// a bytes.Buffer or a hand-rolled io.StringWriter used the same way. A
+// WriteString call with any argument count other than exactly one (which
+// would not even compile against the real WriteString(string) signature,
+// but this is a syntax-only AST scan, not a type-checked one) is skipped
+// rather than guessed at.
+func findRawWriteStringLiterals(t *testing.T, path string) []string {
+	t.Helper()
+	file := parseGoFile(t, path)
+
+	var found []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "WriteString" {
+			return true
+		}
+		if len(call.Args) != 1 {
+			return true
+		}
+
+		if text, ok := proseLiteral(call.Args[0]); ok {
+			found = append(found, text)
+		}
+		return true
+	})
+	return found
+}
+
 // parseGoFile parses the Go source file at path, failing the test on any
-// parse error — shared by findRawPrintLiterals/findRawFlagDescriptions so
-// neither has to duplicate fileset/parser setup.
+// parse error — shared by findRawPrintLiterals/findRawFlagDescriptions/
+// findRawWriteStringLiterals so none of them has to duplicate fileset/
+// parser setup.
 func parseGoFile(t *testing.T, path string) *ast.File {
 	t.Helper()
 	fset := token.NewFileSet()

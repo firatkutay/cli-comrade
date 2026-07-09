@@ -95,7 +95,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		Executor:           executor.New(cmd.OutOrStdout(), cmd.ErrOrStderr()),
 		Safety:             safety.NewEngine(cfg),
 		LLM:                client,
-		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: cfg.General.Color, llm: client},
+		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: cfg.General.Color, llm: client, tr: tr},
 		Audit:              auditSink,
 		Stdout:             cmd.OutOrStdout(),
 		Stderr:             cmd.ErrOrStderr(),

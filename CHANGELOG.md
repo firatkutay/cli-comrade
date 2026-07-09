@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Covered by five `-race`-clean regression tests in `internal/llm` that
   poll `runtime.NumGoroutine()` back to baseline after cancelling an
   undrained stream.
+- **Ask-mode confirm prompt now follows `general.language`**: the
+  `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` legend was hardcoded Turkish
+  regardless of the active language. It now renders through
+  `internal/i18n` in the resolved language, with a full English key set —
+  `[y]es [n]o [e]dit [x]plain [a]ll` — that the accepted-keys map
+  (`internal/tui`'s `mapKey`) resolves strictly per language, never as a
+  union: TR's `e`=Yes and EN's `e`=Edit (likewise TR's `a`=Explain vs EN's
+  `a`=All) would otherwise collide dangerously. The i18n coverage linter
+  (`internal/cli`'s catalog-coverage test) is also extended to scan
+  `WriteString(...)` calls, closing the blind spot that let this hardcoded
+  string go undetected in the first place.
 
 ### Added
 

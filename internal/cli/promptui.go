@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/firatkutay/cli-comrade/internal/engine"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 	"github.com/firatkutay/cli-comrade/internal/tui"
 )
@@ -20,6 +21,12 @@ type tuiPromptUI struct {
 	out          io.Writer
 	colorEnabled bool
 	llm          engine.Completer
+	// tr resolves the confirm prompt's rendered language, per the same
+	// general.language/COMRADE_LANG/LANG/LC_ALL chain every command's
+	// output uses (see internal/cli's newTranslator) — every construction
+	// site in this package sets it from that same call, never a separate
+	// resolution.
+	tr i18n.Translator
 }
 
 // Confirm implements engine.PromptUI by rendering step through
@@ -31,7 +38,7 @@ func (p *tuiPromptUI) Confirm(ctx context.Context, step engine.Step) (engine.Cho
 		Rationale: step.Rationale,
 		Risk:      step.Decision.EffectiveRisk,
 	}
-	choice, edited, err := tui.Confirm(ctx, ps, p.colorEnabled, p.in, p.out)
+	choice, edited, err := tui.Confirm(ctx, ps, p.colorEnabled, p.in, p.out, p.tr)
 	if err != nil {
 		return engine.ChoiceNo, "", err
 	}

@@ -508,6 +508,28 @@ const (
 	// newer release than the running build. Two args: the latest
 	// version, the current version.
 	MsgUpdateAvailableNotice MessageID = "update_available_notice"
+
+	// -- internal/tui ask-mode confirm prompt ----------------------------
+	//
+	// internal/tui/confirm.go's confirmModel.View() renders these through
+	// its injected Translator instead of a raw literal — the fix for the
+	// bug this pair of keys exists to close: the prompt used to be a
+	// hardcoded-Turkish literal regardless of general.language. The
+	// accepted keys per language are NOT a union (see mapKey in
+	// confirm.go): TR's "e"=Yes and EN's "e"=Edit would otherwise collide
+	// dangerously (same for TR "a"=Explain vs EN "a"=All).
+
+	// MsgConfirmLegend is the ask-mode confirm prompt's trailing options
+	// legend, rendered after the command/rationale/risk badge. No args —
+	// each language's full legend (letters and all) is one atomic catalog
+	// string, not assembled from per-choice fragments, because the
+	// letter-to-choice mapping itself changes per language (see mapKey).
+	MsgConfirmLegend MessageID = "confirm_legend"
+
+	// MsgConfirmEditHeader is the header line shown while editing a
+	// command inline ([d]üzenle in TR / [e]dit in EN), before the
+	// textinput itself.
+	MsgConfirmEditHeader MessageID = "confirm_edit_header"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -660,6 +682,9 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
 
 	MsgUpdateAvailableNotice: "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
+
+	MsgConfirmLegend:     "[y]es [n]o [e]dit [x]plain [a]ll: ",
+	MsgConfirmEditHeader: "Edit command (enter to confirm, esc to cancel):\n",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -812,4 +837,7 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",
 
 	MsgUpdateAvailableNotice: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
+
+	MsgConfirmLegend:     "[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: ",
+	MsgConfirmEditHeader: "Komutu düzenle (onaylamak için enter, iptal için esc):\n",
 }

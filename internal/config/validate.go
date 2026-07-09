@@ -17,6 +17,10 @@ const (
 	KindBool
 	// KindPositiveInt is an integer that must be strictly greater than 0.
 	KindPositiveInt
+	// KindNonNegativeInt is an integer that must be >= 0, for a key where
+	// 0 is itself a meaningful value (e.g. "disabled") rather than an
+	// invalid one — the only difference from KindPositiveInt.
+	KindNonNegativeInt
 	// KindStringSlice is a comma-separated list of strings.
 	KindStringSlice
 )
@@ -46,6 +50,7 @@ var keyDefs = []KeyDef{
 	{Key: "llm.model", Kind: KindString},
 	{Key: "llm.fallback", Kind: KindStringSlice},
 	{Key: "llm.timeout_seconds", Kind: KindPositiveInt},
+	{Key: "llm.idle_timeout_seconds", Kind: KindNonNegativeInt},
 	{Key: "llm.max_tokens", Kind: KindPositiveInt},
 	{Key: "llm.openai_compat.base_url", Kind: KindString},
 	{Key: "llm.ollama.base_url", Kind: KindString},
@@ -150,6 +155,16 @@ func Validate(key, raw string) (any, error) {
 		}
 		if n <= 0 {
 			return nil, fmt.Errorf("invalid value %q for %s: must be greater than 0", raw, key)
+		}
+		return n, nil
+
+	case KindNonNegativeInt:
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value %q for %s: must be an integer: %w", raw, key, err)
+		}
+		if n < 0 {
+			return nil, fmt.Errorf("invalid value %q for %s: must be 0 or greater", raw, key)
 		}
 		return n, nil
 

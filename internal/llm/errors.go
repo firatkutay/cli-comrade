@@ -45,6 +45,14 @@ var (
 	// Retryable, exactly like ErrOverloaded — a transient/offline network
 	// condition, not a rejection.
 	ErrOffline = errors.New("llm: could not reach provider (network unreachable)")
+
+	// ErrIdleTimeout means a Stream went longer than llm.idle_timeout_seconds
+	// without producing a chunk — distinct from the whole-stream
+	// llm.timeout_seconds deadline, which surfaces as ctx.Err() (deadline
+	// exceeded) instead. Only ever produced when idle_timeout_seconds is
+	// configured above its 0 (disabled) default; see releaseOnClose in
+	// client.go, this package's sole enforcement point for it.
+	ErrIdleTimeout = errors.New("llm: stream idle timeout")
 )
 
 // wrapReachabilityError recognizes a transport-level failure (err is, or
@@ -123,6 +131,8 @@ func errClass(err error) string {
 		return "parse_failure"
 	case errors.Is(err, ErrOffline):
 		return "offline"
+	case errors.Is(err, ErrIdleTimeout):
+		return "idle_timeout"
 	default:
 		return "error"
 	}

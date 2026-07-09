@@ -206,7 +206,9 @@ func (c *googleConnector) Stream(ctx context.Context, req CompletionRequest) (<-
 			}
 			if len(typed.Candidates) > 0 && len(typed.Candidates[0].Content.Parts) > 0 {
 				if text := typed.Candidates[0].Content.Parts[0].Text; text != "" {
-					ch <- Chunk{Text: text}
+					if !sendChunk(ctx, ch, Chunk{Text: text}) {
+						return ctx.Err()
+					}
 				}
 			}
 			return nil
@@ -214,7 +216,7 @@ func (c *googleConnector) Stream(ctx context.Context, req CompletionRequest) (<-
 		if scanErr != nil {
 			streamErr = fmt.Errorf("google: %w", scanErr)
 		}
-		ch <- Chunk{Done: true, Err: streamErr}
+		sendChunk(ctx, ch, Chunk{Done: true, Err: streamErr})
 	}()
 	return ch, nil
 }

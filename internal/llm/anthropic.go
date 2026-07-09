@@ -209,7 +209,9 @@ func (c *anthropicConnector) Stream(ctx context.Context, req CompletionRequest) 
 			switch typed.Type {
 			case "content_block_delta":
 				if typed.Delta.Type == "text_delta" && typed.Delta.Text != "" {
-					ch <- Chunk{Text: typed.Delta.Text}
+					if !sendChunk(ctx, ch, Chunk{Text: typed.Delta.Text}) {
+						return ctx.Err()
+					}
 				}
 			case "error":
 				return fmt.Errorf("anthropic: stream error: %s", typed.Error.Message)
@@ -219,7 +221,7 @@ func (c *anthropicConnector) Stream(ctx context.Context, req CompletionRequest) 
 		if scanErr != nil {
 			streamErr = fmt.Errorf("anthropic: %w", scanErr)
 		}
-		ch <- Chunk{Done: true, Err: streamErr}
+		sendChunk(ctx, ch, Chunk{Done: true, Err: streamErr})
 	}()
 	return ch, nil
 }

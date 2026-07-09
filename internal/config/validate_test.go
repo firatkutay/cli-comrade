@@ -1,9 +1,11 @@
 package config
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProviderNamesMatchesLLMProviderEnum(t *testing.T) {
@@ -100,6 +102,31 @@ func TestValidatePositiveIntRejectsZeroAndNegative(t *testing.T) {
 		_, err := Validate("safety.max_auto_steps", raw)
 		assert.ErrorContains(t, err, "must be greater than 0")
 	}
+}
+
+func TestValidateNonNegativeIntAcceptsZeroAndPositive(t *testing.T) {
+	for _, raw := range []string{"0", "1", "120"} {
+		got, err := Validate("llm.idle_timeout_seconds", raw)
+		assert.NoError(t, err)
+		assert.Equal(t, mustAtoi(t, raw), got)
+	}
+}
+
+func TestValidateNonNegativeIntRejectsNegative(t *testing.T) {
+	_, err := Validate("llm.idle_timeout_seconds", "-1")
+	assert.ErrorContains(t, err, "must be 0 or greater")
+}
+
+func TestValidateNonNegativeIntRejectsNonNumeric(t *testing.T) {
+	_, err := Validate("llm.idle_timeout_seconds", "soon")
+	assert.ErrorContains(t, err, "must be an integer")
+}
+
+func mustAtoi(t *testing.T, raw string) int {
+	t.Helper()
+	n, err := strconv.Atoi(raw)
+	require.NoError(t, err)
+	return n
 }
 
 func TestValidateStringSliceParsesCommaSeparatedList(t *testing.T) {

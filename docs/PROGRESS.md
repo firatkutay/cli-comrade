@@ -1,7 +1,7 @@
 # PROGRESS
 module_path: github.com/firatkutay/cli-comrade
 current_phase: 11
-status: in_progress
+status: done
 
 ## Tamamlanan Fazlar
 - [x] FAZ 0 — commit: 33c92ec
@@ -15,6 +15,7 @@ status: in_progress
 - [x] FAZ 8 — commit: a90d74e
 - [x] FAZ 9 — commit: 5b8fca4
 - [x] FAZ 10 — commit: 04d52c8
+- [x] FAZ 11 — commit: afc31ae
 
 ## Notlar / Ertelenen İşler
 - golangci-lint GPL-3.0 lisanslıdır; yalnızca ayrı süreç (CI/dev aracı) olarak çağrılır, koda gömülmez/vendorlanmaz.
@@ -32,3 +33,4 @@ status: in_progress
 - FAZ 10 gerçek yayın için hazır ama henüz tag atılmadı: goreleaser snapshot tüm artefaktları üretiyor; gerçek release öncesi homebrew-tap / scoop-bucket / winget-pkgs hedef repoları ve tap PAT secret'ı oluşturulmalı.
 - cosign imzalama .goreleaser.yaml'de yorumlu (etkinleştirme notu); anahtar/keyless kurulumu gerektirir.
 - Manuel doğrulama: install.sh/install.ps1 ve comrade upgrade gerçek ağ yolu (GitHub Releases) canlı test edilmedi (mock/snapshot ile doğrulandı); ilk gerçek release'te doğrulanmalı.
+- v0.1.0-rc1 hazır (tag atılmadı — kullanıcı kararı; tag push'u gerçek release pipeline'ını tetikler ve tap repoları/PAT gerekir). Soğuk başlangıç ~5ms, tüm gate + -race + govulncheck temiz. Bilinen kısıtlar KNOWN_LIMITATIONS.md'de.

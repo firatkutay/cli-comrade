@@ -45,9 +45,10 @@ func TestRootCmdDefaultVersionIsDevWhenUnset(t *testing.T) {
 }
 
 func TestSubcommandStubsPrintNotReadyMessage(t *testing.T) {
-	// "config" is deliberately excluded here: FAZ 1 replaced its stub with
-	// a real command tree (see internal/cli/config.go and
-	// internal/cli/config_test.go).
+	// "config" and "init" are deliberately excluded here: FAZ 1 replaced
+	// config's stub with a real command tree (internal/cli/config.go)
+	// and FAZ 4 replaced init's (internal/cli/init.go, tested in
+	// internal/cli/init_test.go).
 	cases := []struct {
 		name string
 		args []string
@@ -56,7 +57,6 @@ func TestSubcommandStubsPrintNotReadyMessage(t *testing.T) {
 		{"fix", []string{"fix"}, "comrade fix: this feature is not ready yet.\n"},
 		{"explain", []string{"explain", "ls"}, "comrade explain: this feature is not ready yet.\n"},
 		{"chat", []string{"chat"}, "comrade chat: this feature is not ready yet.\n"},
-		{"init", []string{"init"}, "comrade init: this feature is not ready yet.\n"},
 		{"history", []string{"history"}, "comrade history: this feature is not ready yet.\n"},
 	}
 

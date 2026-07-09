@@ -16,6 +16,70 @@ func fakeEnv(vars map[string]string) func(string) string {
 	}
 }
 
+func TestResolveDirWindowsUsesAppData(t *testing.T) {
+	got, err := ResolveDir("windows", fakeEnv(map[string]string{
+		"APPDATA": `C:\Users\alice\AppData\Roaming`,
+	}))
+
+	require.NoError(t, err)
+	assert.Equal(t, `C:\Users\alice\AppData\Roaming\cli-comrade`, got)
+}
+
+func TestResolveDirUnixUsesXDGConfigHomeWhenSet(t *testing.T) {
+	got, err := ResolveDir("linux", fakeEnv(map[string]string{
+		"XDG_CONFIG_HOME": "/home/alice/.config-custom",
+		"HOME":            "/home/alice",
+	}))
+
+	require.NoError(t, err)
+	assert.Equal(t, "/home/alice/.config-custom/cli-comrade", got)
+}
+
+func TestResolveDirUnixFallsBackToDotConfigWhenXDGUnset(t *testing.T) {
+	got, err := ResolveDir("linux", fakeEnv(map[string]string{
+		"HOME": "/home/alice",
+	}))
+
+	require.NoError(t, err)
+	assert.Equal(t, "/home/alice/.config/cli-comrade", got)
+}
+
+func TestResolveDirUnixErrorsWhenNeitherXDGNorHomeSet(t *testing.T) {
+	_, err := ResolveDir("linux", fakeEnv(map[string]string{}))
+
+	assert.ErrorContains(t, err, "HOME")
+}
+
+// TestResolvePathIsResolveDirPlusConfigFileName pins ResolvePath's
+// refactor to build on ResolveDir: the two must always agree on the
+// directory, for every OS branch, so internal/secrets's credentials file
+// (via config.DefaultDir) is guaranteed to land in the exact same
+// directory config.toml (via config.DefaultPath) does.
+func TestResolvePathIsResolveDirPlusConfigFileName(t *testing.T) {
+	cases := []struct {
+		goos string
+		env  map[string]string
+	}{
+		{"windows", map[string]string{"APPDATA": `C:\Users\alice\AppData\Roaming`}},
+		{"linux", map[string]string{"HOME": "/home/alice"}},
+		{"darwin", map[string]string{"XDG_CONFIG_HOME": "/home/alice/.config-custom", "HOME": "/home/alice"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.goos, func(t *testing.T) {
+			dir, err := ResolveDir(tc.goos, fakeEnv(tc.env))
+			require.NoError(t, err)
+			path, err := ResolvePath(tc.goos, fakeEnv(tc.env))
+			require.NoError(t, err)
+
+			sep := "/"
+			if tc.goos == "windows" {
+				sep = `\`
+			}
+			assert.Equal(t, dir+sep+"config.toml", path)
+		})
+	}
+}
+
 func TestResolvePathWindowsUsesAppData(t *testing.T) {
 	got, err := ResolvePath("windows", fakeEnv(map[string]string{
 		"APPDATA": `C:\Users\alice\AppData\Roaming`,

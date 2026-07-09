@@ -48,6 +48,37 @@ type Client struct {
 // behind it.
 var _ Provider = (*Client)(nil)
 
+// KeyResolver resolves provider's API key from wherever a caller wants to
+// look — an OS keychain, a file fallback, environment variables, or any
+// combination. It is the seam FAZ 8's internal/cli package uses to wire a
+// keychain/file-backed lookup (via internal/secrets) ahead of
+// resolveAPIKey's env-only logic, without this package ever importing
+// internal/secrets: New's default resolver is resolveAPIKey itself (see
+// WithKeyResolver), so a caller that never passes WithKeyResolver — every
+// existing test in this package included — gets exactly the FAZ 2
+// env-only behavior, unchanged.
+type KeyResolver func(provider string) (string, error)
+
+// Option configures New. The zero value of clientOptions (no options
+// given) reproduces New's pre-FAZ-8 behavior exactly.
+type Option func(*clientOptions)
+
+type clientOptions struct {
+	keyResolver KeyResolver
+}
+
+// WithKeyResolver overrides the KeyResolver New's connectors use to
+// resolve an API key, in place of the package-default resolveAPIKey. A
+// nil resolver is ignored (the default is kept) so a caller can pass a
+// possibly-nil resolver through without an extra branch.
+func WithKeyResolver(resolver KeyResolver) Option {
+	return func(o *clientOptions) {
+		if resolver != nil {
+			o.keyResolver = resolver
+		}
+	}
+}
+
 // New builds a Client from cfg: the primary attempt is
 // cfg.LLM.Provider+cfg.LLM.Model (or that provider's default model, if
 // Model is empty), followed by one attempt per "provider/model" entry in
@@ -56,7 +87,16 @@ var _ Provider = (*Client)(nil)
 // is deferred to attempt time (see resolveAPIKey and Complete/Stream) so
 // that one unconfigured fallback candidate never prevents constructing a
 // Client whose primary provider works fine.
-func New(cfg config.Config) (*Client, error) {
+//
+// opts is variadic so every pre-FAZ-8 call site (New(cfg), with no
+// options) keeps compiling and behaving identically; see WithKeyResolver
+// for the one option this package currently defines.
+func New(cfg config.Config, opts ...Option) (*Client, error) {
+	options := clientOptions{keyResolver: resolveAPIKey}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	httpClient := &http.Client{}
 
 	entries := make([]string, 0, 1+len(cfg.LLM.Fallback))
@@ -66,7 +106,7 @@ func New(cfg config.Config) (*Client, error) {
 	attempts := make([]clientAttempt, 0, len(entries))
 	for _, entry := range entries {
 		providerName, model := splitProviderModel(entry)
-		provider, err := buildProvider(providerName, model, cfg, httpClient)
+		provider, err := buildProvider(providerName, model, cfg, httpClient, options.keyResolver)
 		if err != nil {
 			return nil, err
 		}
@@ -111,13 +151,13 @@ func splitProviderModel(entry string) (provider, model string) {
 // any other retryable failure, never as ErrAuthRejected (that sentinel is
 // reserved for a credential the provider's API itself rejected over the
 // wire, not one that was never sent).
-func buildProvider(providerName, model string, cfg config.Config, httpClient *http.Client) (Provider, error) {
+func buildProvider(providerName, model string, cfg config.Config, httpClient *http.Client, resolveKey KeyResolver) (Provider, error) {
 	switch providerName {
 	case "anthropic":
 		if model == "" {
 			model = defaultAnthropicModel
 		}
-		key, err := resolveAPIKey("anthropic")
+		key, err := resolveKey("anthropic")
 		if err != nil {
 			return &missingKeyProvider{name: providerName, err: err}, nil
 		}
@@ -127,7 +167,7 @@ func buildProvider(providerName, model string, cfg config.Config, httpClient *ht
 		if model == "" {
 			model = defaultOpenAICompatModel
 		}
-		key, err := resolveAPIKey("openai_compat")
+		key, err := resolveKey("openai_compat")
 		if err != nil {
 			return &missingKeyProvider{name: providerName, err: err}, nil
 		}
@@ -137,7 +177,7 @@ func buildProvider(providerName, model string, cfg config.Config, httpClient *ht
 		if model == "" {
 			model = defaultGoogleModel
 		}
-		key, err := resolveAPIKey("google")
+		key, err := resolveKey("google")
 		if err != nil {
 			return &missingKeyProvider{name: providerName, err: err}, nil
 		}

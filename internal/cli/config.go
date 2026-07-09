@@ -42,6 +42,7 @@ func newConfigCmd(newLoader loaderFactory) *cobra.Command {
 		newConfigEditCmd(newLoader),
 		newConfigPathCmd(newLoader),
 		newConfigTestLLMCmd(newLoader),
+		newConfigModelsCmd(newLoader),
 	)
 
 	return root
@@ -74,7 +75,11 @@ func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
 				}
 			}
 
-			client, err := llm.New(*cfg)
+			store, err := newSecretsStore(cmd.ErrOrStderr())
+			if err != nil {
+				return fmt.Errorf("test-llm: %w", err)
+			}
+			client, err := llm.New(*cfg, llm.WithKeyResolver(secretsKeyResolver(store)))
 			if err != nil {
 				return fmt.Errorf("test-llm: %w", err)
 			}

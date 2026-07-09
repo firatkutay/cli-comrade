@@ -126,6 +126,47 @@ func TestOllamaListModelsEmptyProducesGuidanceError(t *testing.T) {
 	assert.ErrorContains(t, err, "ollama pull")
 }
 
+func TestOllamaCompleteUnreachableProducesFriendlyReachabilityError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := srv.URL
+	srv.Close() // nothing listens at url anymore: every request now fails at the transport level
+
+	c := newOllamaConnector("llama3.1", url, http.DefaultClient)
+
+	_, err := c.Complete(context.Background(), CompletionRequest{Messages: []Message{{Role: "user", Content: "hi"}}, MaxTokens: 8})
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "does not appear to be running")
+	assert.ErrorContains(t, err, "ollama serve")
+	assert.ErrorContains(t, err, url)
+}
+
+func TestListOllamaModelsUnreachableProducesFriendlyReachabilityError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := srv.URL
+	srv.Close()
+
+	_, err := ListOllamaModels(context.Background(), url, nil)
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "does not appear to be running")
+	assert.ErrorContains(t, err, "ollama serve")
+}
+
+func TestListOllamaModelsWrapperDefaultsHTTPClientAndReturnsNames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/tags", r.URL.Path)
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"name":"llama3.1"},{"name":"mistral"}]}`))
+	}))
+	defer srv.Close()
+
+	names, err := ListOllamaModels(context.Background(), srv.URL, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"llama3.1", "mistral"}, names)
+}
+
 func TestOllamaCompleteResolvesEmptyModelFromTags(t *testing.T) {
 	var gotModel string
 	c := newOllamaTestConnector(t, "", func(w http.ResponseWriter, r *http.Request) {

@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -89,9 +91,27 @@ func (c *ollamaConnector) doRequest(ctx context.Context, body ollamaChatRequest)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("ollama: request: %w", err)
+		return nil, wrapOllamaReachabilityError(c.baseURL, fmt.Errorf("ollama: request: %w", err))
 	}
 	return resp, nil
+}
+
+// wrapOllamaReachabilityError recognizes a transport-level failure (the
+// connection was refused, timed out, or never resolved) inside err — the
+// shape *http.Client.Do returns as a *url.Error for exactly this class of
+// failure, as opposed to a non-2xx HTTP response (handled separately by
+// ollamaStatusError) — and replaces it with a message actionable for a
+// terminal beginner: UYGULAMA_PLANI.md FAZ 8 item 5's "Ollama çalışmıyor
+// görünüyor; `ollama serve` ..." requirement. Applied at doRequest and
+// ListModels, so every ollamaConnector entry point (Complete, Stream, and
+// `comrade config models`'s live /api/tags query) gets the same
+// friendly message instead of a bare "connection refused".
+func wrapOllamaReachabilityError(baseURL string, err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return fmt.Errorf("ollama does not appear to be running at %s; start it with `ollama serve`, or set llm.ollama.base_url to the correct address (%w)", baseURL, err)
+	}
+	return err
 }
 
 func (c *ollamaConnector) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
@@ -219,7 +239,7 @@ func (c *ollamaConnector) ListModels(ctx context.Context) ([]string, error) {
 	}
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("ollama: request: %w", err)
+		return nil, wrapOllamaReachabilityError(c.baseURL, fmt.Errorf("ollama: request: %w", err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -243,4 +263,19 @@ func (c *ollamaConnector) ListModels(ctx context.Context) ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// ListOllamaModels queries a local (or remote, per baseURL) Ollama
+// server's GET /api/tags for its locally-pulled model names, for
+// `comrade config models`'s picker (UYGULAMA_PLANI.md FAZ 8 item 4). A
+// nil httpClient defaults to a plain &http.Client{}, matching every other
+// connector construction path in this package. Unlike Client, calling
+// this does not require an llm.Provider or an API key — Ollama has
+// neither.
+func ListOllamaModels(ctx context.Context, baseURL string, httpClient *http.Client) ([]string, error) {
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
+	conn := newOllamaConnector("", baseURL, httpClient)
+	return conn.ListModels(ctx)
 }

@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FAZ 8: keychain-backed credential storage, `comrade auth`, and
+  `comrade config models`. New `internal/secrets` package: a `Store`
+  interface (`Get`/`Set`/`Delete`/`Status`) backed by the OS keychain
+  (`zalando/go-keyring` — macOS Keychain, Windows Credential Manager,
+  Linux Secret Service) with a 0600-file fallback
+  (`<config dir>/credentials`, base64-obfuscated — explicitly documented
+  as NOT encryption, in both the file's own header and a one-time stderr
+  warning on first use) when no keychain is reachable; the active backend
+  is chosen once, by a read-only probe, at construction. `internal/llm`
+  gained a `KeyResolver` seam (`Client.New(cfg, opts ...Option)`,
+  `WithKeyResolver`) so `internal/cli` can wire a keychain/file-then-env
+  resolver into every `llm.Client` it builds, without `internal/llm` ever
+  importing `internal/secrets` — the package's own tests are unchanged
+  and still exercise only the env-only default resolver. New top-level
+  `comrade auth login/logout/status`: `login` reads the key with a
+  no-echo prompt (`golang.org/x/term.ReadPassword`, injectable in tests),
+  stores it, then sends a live one-completion "ping" through the
+  provider — the key is stored regardless of whether the ping succeeds,
+  so an offline user or a transient provider outage is never blocked from
+  saving a key believed correct; `logout` removes a stored key;
+  `status` reports every provider's source (`keychain`/`file`/
+  `env: <VAR>`/`not set`) without ever printing a key value; `ollama` is
+  rejected from `login`/`logout` (it needs no credential). New
+  `comrade config models`: lists the active provider's models — a live
+  `GET /api/tags` for `ollama`, a live `GET {base_url}/models` for
+  `openai_compat` (new `ListModels`/`ListOpenAICompatModels`, resolved
+  through the same keychain/file/env chain), and a static, docs-linked
+  snapshot for `anthropic`/`google` (new `KnownAnthropicModels`/
+  `KnownGoogleModels`) — as a numbered menu, persisting the selection to
+  `llm.model` via the existing `Loader.SetAndSave` path. Ollama
+  connection failures (refused/timeout) across `Complete`/`Stream`/
+  `ListModels` now surface a friendly "`ollama serve`" message instead of
+  a bare transport error. See docs/phases/FAZ-08.md.
 - FAZ 7: `comrade fix` — the main use-case, error-diagnosis flow (replacing the
   FAZ 0 stub). `internal/engine`: new `Diagnoser.Diagnose(ctx, ErrorContext)
   (Diagnosis, error)` — a `go:embed`'d diagnose system prompt (root-cause/

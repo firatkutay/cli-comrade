@@ -45,7 +45,11 @@ func setupCLIRuntime(cmd *cobra.Command, newLoader loaderFactory, flags *executi
 		}
 	}
 
-	client, err := llm.New(*cfg)
+	store, err := newSecretsStore(cmd.ErrOrStderr())
+	if err != nil {
+		return config.Config{}, nil, err
+	}
+	client, err := llm.New(*cfg, llm.WithKeyResolver(secretsKeyResolver(store)))
 	if err != nil {
 		return config.Config{}, nil, err
 	}

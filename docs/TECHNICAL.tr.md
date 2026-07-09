@@ -30,8 +30,9 @@ değişkeni > `general.mode` config değeri, varsayılan `ask`).
 
 **Ask-modu onay prompt'unun tuş kümesi artık tamamen i18n'lidir** —
 diğer her komutun çıktısının kullandığı aynı
-`general.language`/`COMRADE_LANG`/`LANG`/`LC_ALL` çözümleme zinciri
-üzerinden render edilir (`internal/tui/confirm.go`'nun `tr.Lang()`'i,
+`general.language`/`COMRADE_LANG`/`LANG`/`LC_ALL`/Windows-sistem-yereli
+çözümleme zinciri (aşağıya bakın) üzerinden render edilir
+(`internal/tui/confirm.go`'nun `tr.Lang()`'i,
 enjekte edilen `i18n.Translator`'dan beslenir; katalog mesajları
 `MsgConfirmLegend` ve `MsgConfirmEditHeader`,
 `internal/i18n/catalog.go`):
@@ -74,9 +75,14 @@ görünen metin — tam olarak iki dilde gelir, Türkçe ve İngilizce,
 `catalogEN`/`catalogTR`, her string için bir `MessageID`,
 `TestCatalogsCoverIdenticalKeys` testiyle iki katalog birbirinden asla
 kopmayacak şekilde tutulur). Arayüz dili şu sırayla çözülür: açık
-`general.language` config değeri (`tr`/`en`) > `COMRADE_LANG` ortam
-değişkeni > `LANG`/`LC_ALL` (glibc tarzı locale önek eşleşmesi) >
-İngilizce varsayılan (`internal/i18n/lang.go`, `ResolveLanguage`).
+`general.language` config değeri (`tr`/`en`) kesin olarak kazanır;
+`auto` (varsayılan) sırayla `COMRADE_LANG` ortam değişkenine >
+`LANG`/`LC_ALL`'a (glibc tarzı locale önek eşleşmesi) > **Windows
+sistem yereline** (yalnızca Windows'ta, `GetUserDefaultLocaleName` ile,
+ör. `tr-TR`; diğer platformlarda her zaman boş, çünkü orada
+`LANG`/`LC_ALL` zaten işletim sistemi yerel mekanizmasının kendisidir)
+> İngilizce varsayılana düşer (`internal/i18n/lang.go`,
+`ResolveLanguage`; uygulama detayı için §10'a bakın).
 
 **Kullanıcının doğal dilde yazdığı istek** ise Türkçe veya İngilizce ile
 sınırlı değildir — kullanıcının yazdığı herhangi bir serbest metindir ve
@@ -169,7 +175,13 @@ flowchart TD
    (`internal/executor/executor.go`, `buildCommand`), bu seçim bir build
    tag yerine kurulum anında `runtime.GOOS`'a göre yapılır (`New`) —
    böylece her üç platformun mantığı tek bir binary'den test edilebilir
-   (CLAUDE.md'nin platform-dallanma kuralı gereği).
+   (CLAUDE.md'nin platform-dallanma kuralı gereği). Tek istisna,
+   timeout/iptal durumunda process-group öldürme: `Setpgid`/
+   `syscall.Kill` (Unix) ile `Process.Kill` (Windows) kendileri
+   platforma özel syscall'lardır ve diğer `GOOS`'ta derlenemezler, bu
+   yüzden bu dar parça bunun yerine build-tag'li bir
+   `executor_unix.go`/`executor_windows.go` çiftinde yaşar (bu kod
+   tabanındaki diğer böyle çift için §10'a bakın).
 8. **Audit log** (`internal/audit`) — çalıştırılan her adım tek bir JSONL
    satırı olarak eklenir: `timestamp`, `request` (orijinal serbest metin
    istek), `command`, `risk`, `mode`, `exit_code`, `duration_ms`.
@@ -662,6 +674,35 @@ açıklamaları için — `enUsageDefault` artı `internal/cli/help.go`'nun
 `applyTranslatedHelp`'i, ki bu, her alt komut eklendikten sonra komut
 ağacının tamamını `CommandPath()`'e göre dolaşıp her birinin
 `Short`/flag-usage metnini çözümlenen dile yeniden yazar.
+
+**Windows yerel prob'u**: `ResolveLanguage` (`internal/i18n/lang.go`)
+üçüncü bir parametre aldı, `systemLocale func() string` — yalnızca
+`general.language=auto` iken ve ne `COMRADE_LANG` ne de
+`LANG`/`LC_ALL` ayarlıyken danışılır — ve yalnızca bir kez, tembel
+olarak, asla istekli değil. Gerçek uygulaması, build-tag'li bir dosya
+çiftine bölünmüştür: `locale_windows.go` (`//go:build windows`),
+`tr-TR` gibi bir BCP-47 etiketi almak için stdlib `syscall` paketi
+üzerinden kernel32'nin `GetUserDefaultLocaleName`'ini çağırır;
+`locale_other.go` (`//go:build !windows`) her zaman `""` döner, çünkü
+Linux/macOS'ta `LANG`/`LC_ALL` zaten işletim sistemi yerel
+mekanizmasının kendisidir, bu yüzden bu adımın orada ekleyebileceği
+hiçbir şey yoktur — o platformlardaki davranış bu yüzden değişmemiştir.
+Bu çift, CLAUDE.md'nin "build tag yok, bunun yerine `runtime.GOOS`'a
+göre dallan" kuralından kod tabanındaki build-tag izolasyonlarından
+biridir — diğeri `internal/executor`'ın kendi
+`executor_unix.go`/`executor_windows.go` çiftidir, ki bu da
+process-group öldürme syscall'larını aynı şekilde izole eder (§3). İkisi
+de aynı nedenle vardır: ham bir platform syscall'ı (burada
+`GetUserDefaultLocaleName`; orada `Setpgid`/`syscall.Kill` vs.
+`Process.Kill`) diğer `GOOS`'ta derlenemez bile, bu yüzden onu izole
+etmenin tek yolu bir build tag'idir — hiçbir ikisinin de tek bir
+cross-platform dosyada yaşamasına izin verecek bir `runtime.GOOS` dalı
+yoktur. Her iki istisna da eşit derecede dar tutulmuştur —
+`ResolveLanguage`'ın kendisi ve bu paketteki her diğer karar saf,
+platformdan bağımsız Go olarak kalır, enjekte edilebilir
+`systemLocale` parametresi sayesinde herhangi bir host `GOOS`'ta tam
+olarak test edilebilir; yalnızca bir string döndürmekten başka bir şey
+yapmayan tek syscall'ın build-tag'li bir eve ihtiyacı vardı.
 
 **Denetim**: `internal/i18n/catalog_test.go`'nun
 `TestCatalogsCoverIdenticalKeys`/`TestCatalogsHaveNoEmptyValues`'ı, iki

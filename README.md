@@ -51,12 +51,11 @@ fallback (`internal/i18n/lang.go`).
 | Mode | Behavior |
 |---|---|
 | `auto` | comrade runs each step itself, printing a one-line status per step. |
-| `ask` | Before every command: a short rationale + the command itself, then `[e]vet (yes) / [h]ayır (no) / [d]üzenle (edit) / [a]çıkla (explain) / [t]ümü (approve all)`. **Default mode.** |
+| `ask` | Before every command: a short rationale + the command itself, then `[y]es / [n]o / [e]dit / [x]plain / [a]ll`. **Default mode.** |
 | `info` | Runs nothing — explains the cause and the fix as copy-pasteable commands. |
 
-> The confirmation prompt itself is currently always rendered with these
-> Turkish key letters, regardless of the configured UI language — that's a
-> known gap, tracked in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+> The prompt and its accepted keys follow the interface language — a
+> Turkish interface shows `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` instead.
 
 **Non-negotiable safety exception:** even in `auto` mode, any step classified
 `destructive` always requires confirmation. This can only be waived by
@@ -178,9 +177,8 @@ varsayılanı sırasıyla belirlenir (`internal/i18n/lang.go`).
 | `ask` | Her komuttan önce kısa gerekçe + komutun kendisi gösterilir, ardından `[e]vet / [h]ayır / [d]üzenle / [a]çıkla / [t]ümü` sorulur. **Varsayılan mod budur.** |
 | `info` | Hiçbir şey çalıştırmaz — nedeni ve çözüm adımlarını kopyalanabilir komutlarla açıklar. |
 
-> Onay prompt'u şu anda yapılandırılan arayüz dilinden bağımsız olarak
-> her zaman bu Türkçe kısayol harfleriyle gösterilir — bu bilinen bir eksik,
-> [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)'de takip ediliyor.
+> Prompt ve kabul edilen tuşlar arayüz diline göre değişir — İngilizce
+> arayüzde bunun yerine `[y]es [n]o [e]dit [x]plain [a]ll` gösterilir.
 
 **Pazarlık edilemez güvenlik istisnası:** `auto` modda bile risk sınıfı
 `destructive` olan her adım daima onay ister. Bu yalnızca config'te

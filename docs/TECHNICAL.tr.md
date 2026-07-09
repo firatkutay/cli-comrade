@@ -21,30 +21,39 @@ onay ister ya da sadece açıklar.
 | Mod | Davranış |
 |---|---|
 | `auto` | comrade her adımı kendisi çalıştırır, her adımda ne yaptığını tek satırda özetler. |
-| `ask` | **Varsayılan.** Her adımdan önce comrade gerekçesini ve komutu gösterir, `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` sorar (aşağıya bakın). |
+| `ask` | **Varsayılan.** Her adımdan önce comrade gerekçesini ve komutu gösterir, ardından dile özel bir kabul-tuşu lejantıyla sorar (aşağıya bakın). |
 | `info` | Hiçbir şey çalıştırılmaz. comrade nedeni ve çözümü, kopyalanabilir komutlarla açıklar. |
 
 Kaynak: `internal/engine/mode.go` (`Mode` tipi ve `ResolveMode`'un
 önceliği: `--auto`/`--ask`/`--info` flag'i > `COMRADE_MODE` ortam
 değişkeni > `general.mode` config değeri, varsayılan `ask`).
 
-**Ask-modu onay prompt'unun tuş kümesi, `general.language`'tan
-bağımsız olarak sabit Türkçedir** (`internal/tui/confirm.go`: basılan
-prompt tam olarak `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü`'dür, ve
-`mapKey` yalnızca bu beş tek-harfli tuşu kabul eder):
+**Ask-modu onay prompt'unun tuş kümesi artık tamamen i18n'lidir** —
+diğer her komutun çıktısının kullandığı aynı
+`general.language`/`COMRADE_LANG`/`LANG`/`LC_ALL` çözümleme zinciri
+üzerinden render edilir (`internal/tui/confirm.go`'nun `tr.Lang()`'i,
+enjekte edilen `i18n.Translator`'dan beslenir; katalog mesajları
+`MsgConfirmLegend` ve `MsgConfirmEditHeader`,
+`internal/i18n/catalog.go`):
 
-| Tuş | Kelime | Anlamı |
-|---|---|---|
-| `e` | evet | Adımı gösterildiği gibi çalıştır |
-| `h` | hayır | Bu adımı atla |
-| `d` | düzenle | Komutu yeniden onaylamadan önce satır içinde düzenle |
-| `a` | açıkla | Bu adım için ayrıntılı bir açıklama göster, sonra tekrar sor |
-| `t` | tümü | Bu adımı ve kalan her read/write/network adımını tekrar sormadan onayla — destructive/elevated adımlar yine de tek tek sorulur |
+| Seçim | TR tuşu | EN tuşu | Anlamı |
+|---|---|---|---|
+| Evet | `e` (evet) | `y` (yes) | Adımı gösterildiği gibi çalıştır |
+| Hayır | `h` (hayır) | `n` (no) | Bu adımı atla |
+| Düzenle | `d` (düzenle) | `e` (edit) | Komutu yeniden onaylamadan önce satır içinde düzenle |
+| Açıkla | `a` (açıkla) | `x` (explain) | Bu adım için ayrıntılı bir açıklama göster, sonra tekrar sor |
+| Tümü | `t` (tümü) | `a` (all) | Bu adımı ve kalan her read/write/network adımını tekrar sormadan onayla — destructive/elevated adımlar yine de tek tek sorulur |
 
-Bu prompt'un İngilizce yapılandırılmış bir arayüzde bile
-`general.language`'ı takip etmemesi bilinen, takip edilen bir eksiktir
-(bkz. `docs/PROGRESS.md` notları) — burada çözülmüş gibi belgelenen bir
-gözden kaçırma değil.
+Render edilen lejantlar, birebir: TR `[e]vet [h]ayır [d]üzenle
+[a]çıkla [t]ümü: `, EN `[y]es [n]o [e]dit [x]plain [a]ll: `. `mapKey`,
+kabul edilen tuş basımını **kesinlikle aktif dile göre çözer — asla iki
+tuş kümesinin birleşimi olarak değil**: `e` ve `a`, TR/EN genelinde
+tehlikeli tersinmelerle çakışır (TR `e`=Evet vs. EN `e`=Düzenle; TR
+`a`=Açıkla vs. EN `a`=Tümü), bu yüzden iki dilin tuşlarını aynı anda
+kabul etmek, bir dilde "evet" anlamına gelen bir tuş basımının diğer
+dilde sessizce "düzenle" veya "tümü" anlamına gelmesine izin verirdi —
+bu dile-özel ayrımın önlemeye çalıştığı tam da bu tehlikedir
+(`internal/tui/confirm.go`'nun kendi doc yorumu).
 
 ### Pazarlık edilemeyen tek kural
 
@@ -662,8 +671,24 @@ build'i başarısız kılar. Ayrıca, `internal/cli/catalog_coverage_test.go`
 ve `internal/tui` altındaki test-olmayan her `.go` dosyasını dolaşarak
 `Translator.T()`/`enUsageDefault` yollarının dışında `fmt.Print*`/
 `Fprint*`/`Println`/`Printf`'e veya bir pflag açıklamasına verilen ham,
-harf içeren string literal'ları arar ve kendi açık allowlist'inde
-olmayan herhangi bir dosyada başarısız olur.
+harf içeren string literal'ları, *veya herhangi bir `.WriteString(...)`
+çağrısına* verilenleri (alıcıdan bağımsız, yalnızca metot adına göre
+eşleştirilir — aşağıdaki confirm-prompt-şeklindeki kör noktayı kapatan
+tam olarak budur) arar ve kendi açık allowlist'inde olmayan herhangi
+bir dosyada başarısız olur.
+
+`internal/tui/confirm.go`'nun ask-modu prompt'u eskiden tam olarak bu
+kör noktaydı: lejantı ve edit-modu başlığı, yalnızca `fmt.Print*`/
+`Fprint*`/`Println`/`Printf`'i tanıyan bir taramaya görünmez olan ham
+literal'larla `strings.Builder.WriteString` kullanılarak inşa
+ediliyordu — bu yüzden prompt, hiçbir şey yakalamadan
+`general.language`'tan bağımsız olarak sabit Türkçe kalıyordu. Bu artık
+düzeltildi: lejant ve başlık kataloğun içinde `MsgConfirmLegend` ve
+`MsgConfirmEditHeader` olarak yaşıyor (`internal/i18n/catalog.go`) —
+dile göre, kesinlikle, asla birleştirilmeden çözülür (§1) — ve kapsam
+taramasının `WriteString` tanıması, `confirm.go`'yu (ve gelecekteki
+herhangi bir `WriteString` tabanlı prompt'u) yalnızca bir kez
+düzeltmek yerine bundan sonra da denetimde tutan şeydir.
 
 **Belgelenmiş istisna**: `internal/cli/hook.go`, tek allowlist'lenmiş
 dosyadır — `recordLastCommand`'ın `COMRADE_DEBUG`-kapılı tanı satırı

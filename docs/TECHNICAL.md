@@ -21,31 +21,37 @@ it, asks for confirmation, or just explains it.
 | Mode | Behavior |
 |---|---|
 | `auto` | comrade runs every step itself, printing a one-line summary of what it did at each step. |
-| `ask` | **Default.** Before every step, comrade shows its rationale and the command, then prompts `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` — Turkish letters mapping to Yes/No/Edit/Explain/All (see below). |
+| `ask` | **Default.** Before every step, comrade shows its rationale and the command, then prompts with a per-language accept-key legend (see below). |
 | `info` | Nothing is ever executed. comrade explains the cause and the fix, with copyable commands. |
 
 Source: `internal/engine/mode.go` (the `Mode` type and `ResolveMode`'s
 precedence: `--auto`/`--ask`/`--info` flag > `COMRADE_MODE` env >
 `general.mode` config, defaulting to `ask`).
 
-**The ask-mode confirm prompt's key legend is hardcoded Turkish,
-regardless of `general.language`** (`internal/tui/confirm.go`: the
-rendered prompt is literally `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü`,
-and `mapKey` accepts only these five single-letter keys):
+**The ask-mode confirm prompt's key legend is fully i18n'd** — it
+renders through the exact same `general.language`/`COMRADE_LANG`/
+`LANG`/`LC_ALL` resolution chain every other command's output uses
+(`internal/tui/confirm.go`'s `tr.Lang()`, fed from the injected
+`i18n.Translator`; catalog messages `MsgConfirmLegend` and
+`MsgConfirmEditHeader`, `internal/i18n/catalog.go`):
 
-| Key | Turkish word | Meaning |
-|---|---|---|
-| `e` | evet ("yes") | Run this step as shown |
-| `h` | hayır ("no") | Skip this step |
-| `d` | düzenle ("edit") | Open inline editing of the command before re-confirming |
-| `a` | açıkla ("explain") | Show a detailed explanation for this step, then re-prompt |
-| `t` | tümü ("all") | Approve this step and every remaining read/write/network step without asking again — destructive/elevated steps still prompt individually |
+| Choice | TR key | EN key | Meaning |
+|---|---|---|---|
+| Yes | `e` (evet) | `y` (yes) | Run this step as shown |
+| No | `h` (hayır) | `n` (no) | Skip this step |
+| Edit | `d` (düzenle) | `e` (edit) | Open inline editing of the command before re-confirming |
+| Explain | `a` (açıkla) | `x` (explain) | Show a detailed explanation for this step, then re-prompt |
+| All | `t` (tümü) | `a` (all) | Approve this step and every remaining read/write/network step without asking again — destructive/elevated steps still prompt individually |
 
-Note `e` is **Yes**, not "edit" — an easy mistake since `e` looks like
-the English initial for "edit" (that's `d`, for "düzenle"). This
-prompt not following `general.language` for an English-configured
-interface is a known, tracked gap (see `docs/PROGRESS.md` notes), not
-an oversight documented here as if it were resolved.
+Rendered legends, verbatim: TR `[e]vet [h]ayır [d]üzenle [a]çıkla
+[t]ümü: `, EN `[y]es [n]o [e]dit [x]plain [a]ll: `. `mapKey` resolves
+the accepted keypress **strictly by the active language — never as a
+union of both key sets**: `e` and `a` collide across TR/EN with
+dangerous inversions (TR `e`=Yes vs. EN `e`=Edit; TR `a`=Explain vs. EN
+`a`=All), so accepting both languages' keys at once would let a
+keypress that means "yes" in one language silently mean "edit" or
+"all" in the other — exactly the hazard this per-language split exists
+to prevent (`internal/tui/confirm.go`'s own doc comment).
 
 ### The one non-negotiable rule
 
@@ -641,9 +647,23 @@ Separately, `internal/cli/catalog_coverage_test.go` is a Go-AST-based
 test — not a golangci-lint rule — that walks every non-test `.go` file
 under `internal/cli` and `internal/tui` looking for raw,
 letter-containing string literals passed to `fmt.Print*`/`Fprint*`/
-`Println`/`Printf` or a pflag description, outside the `Translator.T()`/
-`enUsageDefault` paths, and fails on any file not in its explicit
-allowlist.
+`Println`/`Printf` or a pflag description, *or to any `.WriteString(...)`
+call* (matched by method name alone, regardless of receiver — this is
+what closes the confirm-prompt-shaped blind spot below), outside the
+`Translator.T()`/`enUsageDefault` paths, and fails on any file not in
+its explicit allowlist.
+
+`internal/tui/confirm.go`'s ask-mode prompt used to be exactly this
+blind spot: its legend and edit-mode header were built with
+`strings.Builder.WriteString` on raw literals, invisible to a scan that
+only recognized `fmt.Print*`/`Fprint*`/`Println`/`Printf`, so the prompt
+stayed hardcoded Turkish regardless of `general.language` with nothing
+catching it. That is fixed now: the legend and header live in the
+catalog as `MsgConfirmLegend` and `MsgConfirmEditHeader`
+(`internal/i18n/catalog.go`) — resolved per-language, strictly, never
+merged (§1) — and the coverage scan's `WriteString` recognition is what
+keeps `confirm.go` (and any future `WriteString`-based prompt) enforced
+going forward instead of merely fixed once.
 
 **Documented exception**: `internal/cli/hook.go` is the sole allowlisted
 file — `recordLastCommand`'s `COMRADE_DEBUG`-gated diagnostic line (fires

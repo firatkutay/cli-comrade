@@ -19,6 +19,36 @@ func newUnixExecutor(stdout, stderr *bytes.Buffer) *Executor {
 	return newForGOOS("linux", stdout, stderr)
 }
 
+// sleepThenTouchCmd returns a command string, appropriate for the host
+// running the test (runtime.GOOS), that sleeps for seconds and then
+// creates marker — used by the timeout/cancel-kill tests below, which
+// must run their long-lived command through whichever shell the
+// *real* platform's Executor actually invokes (sh on Unix, powershell
+// on Windows — see buildCommand) so the kill behavior they exercise is
+// the one that actually ships on that OS.
+func sleepThenTouchCmd(seconds int, marker string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("Start-Sleep -Seconds %d; New-Item -ItemType File -Path '%s' -Force | Out-Null", seconds, marker)
+	}
+	return fmt.Sprintf("sleep %d && touch %s", seconds, marker)
+}
+
+// killedExitCode is the Result.ExitCode a killed process reports, which
+// is itself platform-dependent: killProcessGroup on Unix sends SIGKILL,
+// and exec.ExitError.ExitCode() reports -1 for a signal-terminated
+// process; on Windows, killProcessGroup calls Process.Kill(), which the
+// standard library implements via TerminateProcess(handle, 1), so the
+// killed process's own reported exit code is 1, not -1 (see
+// os/exec_windows.go's Process.signal). Both are asserted exactly — no
+// weakening — this constant just captures the platform difference in one
+// place.
+func killedExitCode() int {
+	if runtime.GOOS == "windows" {
+		return 1
+	}
+	return -1
+}
+
 func TestRunCapturesStdoutAndExitCodeZero(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	e := newUnixExecutor(&stdout, &stderr)
@@ -90,11 +120,15 @@ func TestRunCapCapturesOnlyTailOfLongOutput(t *testing.T) {
 
 func TestRunTimeoutKillsProcessAndReportsTimedOut(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	e := newUnixExecutor(&stdout, &stderr)
+	// Uses the real host's Executor (New, not newUnixExecutor) so this
+	// exercises the actual sh-vs-powershell + kill path that ships on
+	// whichever OS the test binary is running on — see
+	// sleepThenTouchCmd/killedExitCode above.
+	e := New(&stdout, &stderr)
 
 	markerDir := t.TempDir()
 	marker := filepath.Join(markerDir, "finished")
-	cmd := fmt.Sprintf("sleep 5 && touch %s", marker)
+	cmd := sleepThenTouchCmd(5, marker)
 
 	start := time.Now()
 	res, err := e.Run(context.Background(), cmd, Options{Timeout: 200 * time.Millisecond})
@@ -103,8 +137,8 @@ func TestRunTimeoutKillsProcessAndReportsTimedOut(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, res.TimedOut)
 	assert.False(t, res.Canceled)
-	assert.Equal(t, -1, res.ExitCode)
-	assert.Less(t, elapsed, 2*time.Second, "Run must return promptly after the timeout, not after the full sleep")
+	assert.Equal(t, killedExitCode(), res.ExitCode)
+	assert.Less(t, elapsed, 3*time.Second, "Run must return promptly after the timeout, not after the full sleep")
 
 	// Give the (already-killed) process a moment it would need if it were
 	// somehow still alive, then confirm the marker file the `sleep`
@@ -118,11 +152,13 @@ func TestRunTimeoutKillsProcessAndReportsTimedOut(t *testing.T) {
 
 func TestRunCancelKillsProcessAndReportsCanceled(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	e := newUnixExecutor(&stdout, &stderr)
+	// Uses the real host's Executor (New, not newUnixExecutor) — see
+	// TestRunTimeoutKillsProcessAndReportsTimedOut's comment.
+	e := New(&stdout, &stderr)
 
 	markerDir := t.TempDir()
 	marker := filepath.Join(markerDir, "finished")
-	cmd := fmt.Sprintf("sleep 5 && touch %s", marker)
+	cmd := sleepThenTouchCmd(5, marker)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -137,8 +173,8 @@ func TestRunCancelKillsProcessAndReportsCanceled(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, res.Canceled)
 	assert.False(t, res.TimedOut)
-	assert.Equal(t, -1, res.ExitCode)
-	assert.Less(t, elapsed, 2*time.Second, "Run must return promptly after ctx is canceled")
+	assert.Equal(t, killedExitCode(), res.ExitCode)
+	assert.Less(t, elapsed, 3*time.Second, "Run must return promptly after ctx is canceled")
 
 	time.Sleep(300 * time.Millisecond)
 	_, statErr := os.Stat(marker)

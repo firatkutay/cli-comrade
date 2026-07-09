@@ -2,6 +2,7 @@ package cli
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -11,9 +12,26 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/context"
 )
 
+// setHookStateDir points "comrade hook record"'s last_command.json write
+// at dir, for whichever real OS the test binary is actually running on
+// (recordLastCommand resolves the path via context.LastCommandPath(
+// runtime.GOOS, os.Getenv) — real runtime.GOOS, not an injectable one —
+// so the test must set the environment variable that OS's branch
+// actually reads: LOCALAPPDATA on Windows, XDG_STATE_HOME everywhere
+// else). Returns the resulting last_command.json path.
+func setHookStateDir(t *testing.T, dir string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Setenv("LOCALAPPDATA", dir)
+	} else {
+		t.Setenv("XDG_STATE_HOME", dir)
+	}
+	return filepath.Join(dir, "cli-comrade", "last_command.json")
+}
+
 func TestHookRecordWritesLastCommandJSONRoundTrip(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateDir)
+	path := setHookStateDir(t, stateDir)
 
 	// Quotes, unicode, and an embedded newline: exactly the shapes a
 	// hand-assembled-JSON shell script would have gotten wrong, and the
@@ -27,7 +45,6 @@ func TestHookRecordWritesLastCommandJSONRoundTrip(t *testing.T) {
 	)
 	assert.Equal(t, "", out, "hook record must print nothing on success")
 
-	path := filepath.Join(stateDir, "cli-comrade", "last_command.json")
 	got, ok := context.ReadLastCommand(path)
 	require.True(t, ok)
 	assert.Equal(t, cmdText, got.Command)
@@ -40,12 +57,11 @@ func TestHookRecordWritesLastCommandJSONRoundTrip(t *testing.T) {
 
 func TestHookRecordOverwritesPreviousEntry(t *testing.T) {
 	stateDir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateDir)
+	path := setHookStateDir(t, stateDir)
 
 	execRoot(t, "dev", "hook", "record", "--shell", "bash", "--exit", "0", "--command", "first")
 	execRoot(t, "dev", "hook", "record", "--shell", "zsh", "--exit", "2", "--command", "second")
 
-	path := filepath.Join(stateDir, "cli-comrade", "last_command.json")
 	got, ok := context.ReadLastCommand(path)
 	require.True(t, ok)
 	assert.Equal(t, "second", got.Command)

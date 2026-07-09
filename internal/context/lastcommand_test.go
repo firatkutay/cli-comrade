@@ -25,6 +25,11 @@ func TestLastCommandPathWindowsErrorsWhenLocalAppDataUnset(t *testing.T) {
 }
 
 func TestLastCommandPathUnixUsesXDGStateHomeWhenSet(t *testing.T) {
+	// The expected value is built with a literal "/", not filepath.Join:
+	// this injects goos="linux"/"darwin" regardless of the host the test
+	// binary actually runs on, so the expectation must assert the unix
+	// (forward-slash) shape unconditionally rather than whatever
+	// separator the test's own OS happens to use.
 	for _, goos := range []string{"linux", "darwin"} {
 		t.Run(goos, func(t *testing.T) {
 			got, err := LastCommandPath(goos, fakeEnv(map[string]string{
@@ -32,7 +37,7 @@ func TestLastCommandPathUnixUsesXDGStateHomeWhenSet(t *testing.T) {
 				"HOME":           "/home/alice",
 			}))
 			require.NoError(t, err)
-			assert.Equal(t, filepath.Join("/home/alice/.state-custom", "cli-comrade", "last_command.json"), got)
+			assert.Equal(t, "/home/alice/.state-custom/cli-comrade/last_command.json", got)
 		})
 	}
 }
@@ -42,7 +47,7 @@ func TestLastCommandPathUnixFallsBackToHomeLocalState(t *testing.T) {
 		"HOME": "/home/alice",
 	}))
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join("/home/alice", ".local", "state", "cli-comrade", "last_command.json"), got)
+	assert.Equal(t, "/home/alice/.local/state/cli-comrade/last_command.json", got)
 }
 
 func TestLastCommandPathUnixErrorsWhenHomeUnset(t *testing.T) {

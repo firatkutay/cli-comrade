@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,19 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/context"
 	"github.com/firatkutay/cli-comrade/internal/shellinit"
 )
+
+// exeSuffix is the file-extension the OS this test binary is actually
+// running on requires for an executable to be directly exec-able —
+// ".exe" on Windows, "" everywhere else. Every test in this package that
+// go-builds cmd/comrade and then execs the result (buildComradeBinary's
+// callers) needs this, so it lives in one shared place rather than being
+// duplicated per test.
+func exeSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
+}
 
 // repoRoot resolves the module root from this test file's package
 // directory (internal/cli), so the e2e test can `go build` the real
@@ -36,7 +50,7 @@ func repoRoot(t *testing.T) string {
 func buildComradeBinary(t *testing.T) string {
 	t.Helper()
 	root := repoRoot(t)
-	binPath := filepath.Join(t.TempDir(), "comrade")
+	binPath := filepath.Join(t.TempDir(), "comrade"+exeSuffix())
 
 	build := exec.Command("go", "build", "-o", binPath, "./cmd/comrade")
 	build.Dir = root
@@ -62,6 +76,19 @@ func buildComradeBinary(t *testing.T) string {
 // what an interactive shell does after each entered command, without
 // needing one. See docs/phases/FAZ-04.md for this rationale in full.
 func TestBashE2EHookRecordsFailedCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// This test drives a real Unix bash hook end-to-end (history
+		// seeding, $PROMPT_COMMAND semantics) that only make sense for
+		// the bash/zsh/fish snippets; Windows users get the PowerShell
+		// hook instead (internal/shellinit's powershell snippet, which
+		// is golden-tested separately), so there is no equivalent
+		// Windows path for this exact scenario to exercise. GitHub's
+		// windows-latest runner does have a bash.exe on PATH (via Git
+		// for Windows), so skip explicitly here rather than relying on
+		// exec.LookPath("bash") to fail.
+		t.Skip("bash hook E2E is Unix-only; Windows uses the PowerShell hook, golden-tested separately")
+	}
+
 	bashPath, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not found on PATH; skipping bash E2E hook test")

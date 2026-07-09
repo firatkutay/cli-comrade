@@ -1,6 +1,6 @@
 # PROGRESS
 module_path: github.com/firatkutay/cli-comrade
-current_phase: 8
+current_phase: 9
 status: in_progress
 
 ## Tamamlanan Fazlar
@@ -12,6 +12,7 @@ status: in_progress
 - [x] FAZ 5 — commit: 6f4b1c3
 - [x] FAZ 6 — commit: dd15f48
 - [x] FAZ 7 — commit: f6b89ba
+- [x] FAZ 8 — commit: a90d74e
 
 ## Notlar / Ertelenen İşler
 - golangci-lint GPL-3.0 lisanslıdır; yalnızca ayrı süreç (CI/dev aracı) olarak çağrılır, koda gömülmez/vendorlanmaz.
@@ -24,3 +25,4 @@ status: in_progress
 - Karar (kullanıcı onaylı): TUI için bubbletea v2 seçildi; Go tabanı 1.23 → 1.25'e yükseltildi (FAZ 0 kararı bilinçli tersine çevrildi). CLAUDE.md/go.mod güncellendi.
 - Manuel doğrulama (Windows): internal/executor Windows dalında süreç-ağacı öldürme tek-süreç (torun süreçler kalabilir); pwsh yok, çalışma zamanı testi Windows'ta yapılmalı — FAZ 11 sertleştirme kalemi.
 - Manuel doğrulama: comrade fix gerçek LLM ile "pyton --version" senaryosu API key gerektirir (mock ile uçtan uca doğrulandı); kullanıcı gerçek key ile bir kez denemeli.
+- Manuel doğrulama: gerçek OS keychain (macOS Keychain / Windows Credential Manager / Linux Secret Service) ve gerçek TTY no-echo parola girişi bu ortamda test edilemedi (go-keyring mock + injectable reader ile doğrulandı); kullanıcı bir platformda comrade auth login ile doğrulamalı.

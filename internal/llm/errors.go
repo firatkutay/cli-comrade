@@ -3,6 +3,7 @@ package llm
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -29,7 +30,43 @@ var (
 	// extracted/validated as the JSON shape the caller declared via
 	// CompletionRequest.RequiredFields. Retryable.
 	ErrParseFailure = errors.New("llm: failed to parse structured response")
+
+	// ErrOffline classifies a transport-level failure reaching a cloud
+	// provider's API — DNS resolution failure, connection refused, or a
+	// dial/TLS timeout — as opposed to a non-2xx HTTP response from a
+	// server that WAS reached (that is ErrOverloaded/ErrAuthRejected/a
+	// plain *StatusError instead). UYGULAMA_PLANI.md FAZ 11 item 2's "ağ
+	// yokken ... anlaşılır offline mesajı": wrapReachabilityError below
+	// is what turns Go's raw *url.Error (e.g. "dial tcp: lookup
+	// api.anthropic.com: no such host") into a message a terminal
+	// beginner can act on, and Client.Complete/Stream use errors.Is
+	// against this sentinel to decide whether to append a "try Ollama
+	// instead" suggestion once every configured attempt has failed.
+	// Retryable, exactly like ErrOverloaded — a transient/offline network
+	// condition, not a rejection.
+	ErrOffline = errors.New("llm: could not reach provider (network unreachable)")
 )
+
+// wrapReachabilityError recognizes a transport-level failure (err is, or
+// wraps, a *url.Error — the shape *http.Client.Do returns for exactly
+// this class of failure, never for a non-2xx HTTP response) and replaces
+// it with a message naming provider and baseURL, wrapping both ErrOffline
+// (so callers can errors.Is against it) and the original err (so no
+// diagnostic detail — e.g. the underlying DNS error text — is lost).
+// Anything else (a non-2xx response, a body-read failure, ...) passes
+// through unchanged: this is deliberately narrower than
+// wrapOllamaReachabilityError's ollama-specific "run `ollama serve`"
+// phrasing, since anthropic/openai_compat/google are always remote
+// services a user cannot "start" themselves — Client is what adds the
+// "try Ollama" suggestion, once, after the whole fallback chain fails
+// this way (see errClass and Client.Complete/Stream in client.go).
+func wrapReachabilityError(provider, baseURL string, err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return fmt.Errorf("%s: could not reach %s — check your network connection (%w): %w", provider, baseURL, ErrOffline, err)
+	}
+	return err
+}
 
 // StatusError is returned by every connector for a non-2xx HTTP response.
 // It wraps one of the sentinels above via Unwrap (Sentinel is nil for a
@@ -84,6 +121,8 @@ func errClass(err error) string {
 		return "overloaded"
 	case errors.Is(err, ErrParseFailure):
 		return "parse_failure"
+	case errors.Is(err, ErrOffline):
+		return "offline"
 	default:
 		return "error"
 	}

@@ -188,9 +188,9 @@ func confirmStep(command string, risk safety.RiskClass) Step {
 	}
 }
 
-func blockStep(command string) Step {
+func blockStep() Step {
 	return Step{
-		Command: command,
+		Command: "rm -rf /",
 		Risk:    safety.RiskRead,
 		Decision: safety.Decision{
 			Action:        safety.Block,
@@ -200,7 +200,7 @@ func blockStep(command string) Step {
 	}
 }
 
-func baseDeps(t *testing.T, exec *fakeExecutor, prompt *fakePrompt, completer *fakeCorrectionCompleter, aud *fakeAudit) (RunDeps, *bytes.Buffer, *bytes.Buffer) {
+func baseDeps(t *testing.T, exec *fakeExecutor, prompt *fakePrompt, completer *fakeCorrectionCompleter, aud *fakeAudit) (RunDeps, *bytes.Buffer) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	deps := RunDeps{
@@ -217,20 +217,20 @@ func baseDeps(t *testing.T, exec *fakeExecutor, prompt *fakePrompt, completer *f
 		Request:            "test request",
 		Now:                func() time.Time { return time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC) },
 	}
-	return deps, &stdout, &stderr
+	return deps, &stdout
 }
 
 // --- info mode -----------------------------------------------------------
 
 func TestExecuteInfoModeExecutesNothing(t *testing.T) {
 	exec := &fakeExecutor{}
-	deps, stdout, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{
 		Summary: "Test plan.",
 		Steps: []Step{
 			allowStep("ls -la", safety.RiskRead),
-			blockStep("rm -rf /"),
+			blockStep(),
 		},
 	}
 
@@ -247,7 +247,7 @@ func TestExecuteInfoModeExecutesNothing(t *testing.T) {
 func TestExecuteAskYesRunsStep(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceYes}}}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("echo hi", safety.RiskRead)}}
 	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
@@ -263,7 +263,7 @@ func TestExecuteAskYesRunsStep(t *testing.T) {
 func TestExecuteAskNoSkipsStepWithoutRunning(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceNo}}}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("rm somefile", safety.RiskWrite)}}
 	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
@@ -284,7 +284,7 @@ func TestExecuteAskExplainPrintsThenReprompts(t *testing.T) {
 		},
 		explainText: "this command lists files in the current directory",
 	}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("ls", safety.RiskRead)}}
 	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
@@ -314,7 +314,7 @@ func TestExecuteAskEditThenBlockRefusesAndReprompts(t *testing.T) {
 			{choice: ChoiceNo},
 		},
 	}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("echo hi", safety.RiskRead)}}
 	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
@@ -343,7 +343,7 @@ func TestExecuteAskEditThenYesOnBlockedEditNeverRuns(t *testing.T) {
 			{choice: ChoiceYes},
 		},
 	}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("echo hi", safety.RiskRead)}}
 	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
@@ -370,7 +370,7 @@ func TestExecuteAskEditThenAllOnBlockedEditNeverRuns(t *testing.T) {
 			{choice: ChoiceYes},
 		},
 	}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{
 		allowStep("echo hi", safety.RiskRead),
@@ -401,7 +401,7 @@ func TestExecuteAutoEditThenYesOnBlockedEditNeverRuns(t *testing.T) {
 			{choice: ChoiceYes},
 		},
 	}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{confirmStep("rm -rf ./build", safety.RiskDestructive)}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
@@ -425,7 +425,7 @@ func TestExecuteAutoEditThenAllOnBlockedEditNeverRuns(t *testing.T) {
 			{choice: ChoiceAll},
 		},
 	}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{confirmStep("sudo rm -rf ./build", safety.RiskElevated)}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
@@ -445,7 +445,7 @@ func TestExecuteAskEditThenYesRunsEditedCommand(t *testing.T) {
 			{choice: ChoiceYes},
 		},
 	}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("apt-get install docker.io", safety.RiskWrite)}}
 	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
@@ -469,7 +469,7 @@ func TestExecuteAskAllSkipsPromptForLowRiskButNotForDestructive(t *testing.T) {
 			{choice: ChoiceYes}, // step 3 (destructive) — still prompted individually
 		},
 	}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{
 		allowStep("mkdir foo", safety.RiskWrite),
@@ -489,9 +489,9 @@ func TestExecuteAskAllSkipsPromptForLowRiskButNotForDestructive(t *testing.T) {
 func TestExecuteBlockNeverExecutesInAskMode(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{} // no responses scripted: Confirm must never even be called
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
-	plan := Plan{Steps: []Step{blockStep("rm -rf /")}}
+	plan := Plan{Steps: []Step{blockStep()}}
 	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
 
 	require.NoError(t, err)
@@ -507,7 +507,7 @@ func TestExecuteBlockNeverExecutesInAskMode(t *testing.T) {
 func TestExecuteAutoRunsLowRiskStepsSequentiallyWithoutPrompting(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{} // must never be consulted
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{
 		allowStep("echo one", safety.RiskRead),
@@ -530,7 +530,7 @@ func TestExecuteAutoRunsLowRiskStepsSequentiallyWithoutPrompting(t *testing.T) {
 func TestExecuteAutoForcesConfirmOnDestructive(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceYes}}}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{confirmStep("rm -rf ./build", safety.RiskDestructive)}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
@@ -544,7 +544,7 @@ func TestExecuteAutoForcesConfirmOnDestructive(t *testing.T) {
 func TestExecuteAutoForcesConfirmOnElevated(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceNo}}}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{confirmStep("sudo apt-get install docker.io", safety.RiskElevated)}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
@@ -563,7 +563,7 @@ func TestExecuteAutoForcesConfirmOnElevated(t *testing.T) {
 func TestExecuteAutoBypassesDestructiveConfirmOnlyWithConfigAndYolo(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{} // must never be consulted once bypass fires
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 	deps.ConfirmDestructive = false
 	deps.Yolo = true
 
@@ -583,7 +583,7 @@ func TestExecuteAutoBypassRequiresBothConfigFlagAndYolo(t *testing.T) {
 	// the confirm prompt.
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceYes}}}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 	deps.ConfirmDestructive = false
 	deps.Yolo = false
 
@@ -598,7 +598,7 @@ func TestExecuteAutoBypassRequiresBothConfigFlagAndYolo(t *testing.T) {
 func TestExecuteAutoBypassesElevatedConfirmOnlyWithConfigAndYolo(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 	deps.ConfirmElevated = false
 	deps.Yolo = true
 
@@ -619,12 +619,12 @@ func TestExecuteAutoBypassesElevatedConfirmOnlyWithConfigAndYolo(t *testing.T) {
 func TestExecuteBlockNeverExecutesInAutoModeEvenWithYolo(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 	deps.ConfirmDestructive = false
 	deps.ConfirmElevated = false
 	deps.Yolo = true
 
-	plan := Plan{Steps: []Step{blockStep("rm -rf /")}}
+	plan := Plan{Steps: []Step{blockStep()}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
 
 	require.NoError(t, err)
@@ -641,10 +641,10 @@ func TestExecuteBlockNeverExecutesInAutoModeEvenWithYolo(t *testing.T) {
 // summary rather than silently omitted.
 func TestExecuteAutoAbortsRemainingStepsOnBlock(t *testing.T) {
 	exec := &fakeExecutor{}
-	deps, _, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{
-		blockStep("rm -rf /"),
+		blockStep(),
 		allowStep("echo never-reached", safety.RiskRead),
 	}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
@@ -667,10 +667,10 @@ func TestExecuteAutoAbortsRemainingStepsOnBlock(t *testing.T) {
 // Translator.
 func TestExecuteAutoBlockRendersTurkishWhenRunDepsTranslatorIsTurkish(t *testing.T) {
 	exec := &fakeExecutor{}
-	deps, stdout, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 	deps.Translator = i18n.NewTranslator(i18n.LangTR)
 
-	plan := Plan{Steps: []Step{blockStep("rm -rf /")}}
+	plan := Plan{Steps: []Step{blockStep()}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
 
 	require.NoError(t, err)
@@ -687,10 +687,10 @@ func TestExecuteAutoBlockRendersTurkishWhenRunDepsTranslatorIsTurkish(t *testing
 // executor.
 func TestExecuteStepWithSelfCorrectionRefusesToRunBlockedStepDirectly(t *testing.T) {
 	exec := &fakeExecutor{}
-	deps, _, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	correctionsUsed := 0
-	_, _, _, err := executeStepWithSelfCorrection(context.Background(), deps, ModeAuto, blockStep("rm -rf /"), &correctionsUsed)
+	_, _, _, err := executeStepWithSelfCorrection(context.Background(), deps, ModeAuto, blockStep(), &correctionsUsed)
 
 	require.Error(t, err)
 	assert.Equal(t, 0, exec.callCount())
@@ -703,7 +703,7 @@ func TestExecuteStepWithSelfCorrectionRefusesToRunBlockedStepDirectly(t *testing
 // succeeds, and the successful revised command is what gets recorded.
 func TestExecuteAutoSelfCorrectsOnFailureThenSucceeds(t *testing.T) {
 	exec := &fakeExecutor{
-		respond: func(callIndex int, command string) (executor.Result, error) {
+		respond: func(callIndex int, _ string) (executor.Result, error) {
 			if callIndex == 0 {
 				return executor.Result{ExitCode: 1, Stderr: "E: Unable to locate package nginx-typo"}, nil
 			}
@@ -711,11 +711,11 @@ func TestExecuteAutoSelfCorrectsOnFailureThenSucceeds(t *testing.T) {
 		},
 	}
 	completer := &fakeCorrectionCompleter{
-		respond: func(callIndex int) (llm.CompletionResponse, error) {
+		respond: func(_ int) (llm.CompletionResponse, error) {
 			return correctionResponseJSON(t, "apt-get install -y nginx", "write"), nil
 		},
 	}
-	deps, _, _ := baseDeps(t, exec, &fakePrompt{}, completer, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, completer, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("apt-get install -y nginx-typo", safety.RiskWrite)}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
@@ -738,7 +738,7 @@ func TestExecuteAutoSelfCorrectsOnFailureThenSucceeds(t *testing.T) {
 // 4th correction attempt.
 func TestExecuteAutoSelfCorrectionStopsAfterThreeAttempts(t *testing.T) {
 	exec := &fakeExecutor{
-		respond: func(callIndex int, command string) (executor.Result, error) {
+		respond: func(_ int, _ string) (executor.Result, error) {
 			return executor.Result{ExitCode: 1, Stderr: "still broken"}, nil
 		},
 	}
@@ -747,7 +747,7 @@ func TestExecuteAutoSelfCorrectionStopsAfterThreeAttempts(t *testing.T) {
 			return correctionResponseJSON(t, fmt.Sprintf("still-broken-command-%d", callIndex), "write"), nil
 		},
 	}
-	deps, _, _ := baseDeps(t, exec, &fakePrompt{}, completer, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, completer, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("broken-command", safety.RiskWrite)}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
@@ -766,16 +766,16 @@ func TestExecuteAutoSelfCorrectionStopsAfterThreeAttempts(t *testing.T) {
 // must never execute.
 func TestExecuteSelfCorrectionRevisionItselfBlockedStopsWithoutRunning(t *testing.T) {
 	exec := &fakeExecutor{
-		respond: func(callIndex int, command string) (executor.Result, error) {
+		respond: func(_ int, _ string) (executor.Result, error) {
 			return executor.Result{ExitCode: 1, Stderr: "boom"}, nil
 		},
 	}
 	completer := &fakeCorrectionCompleter{
-		respond: func(callIndex int) (llm.CompletionResponse, error) {
+		respond: func(_ int) (llm.CompletionResponse, error) {
 			return correctionResponseJSON(t, "rm -rf /", "read"), nil
 		},
 	}
-	deps, _, _ := baseDeps(t, exec, &fakePrompt{}, completer, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, completer, &fakeAudit{})
 
 	plan := Plan{Steps: []Step{allowStep("broken-command", safety.RiskWrite)}}
 	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
@@ -791,11 +791,11 @@ func TestExecuteSelfCorrectionRevisionItselfBlockedStopsWithoutRunning(t *testin
 func TestExecuteAppendsOneAuditEntryPerExecutedStep(t *testing.T) {
 	exec := &fakeExecutor{}
 	aud := &fakeAudit{}
-	deps, _, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, aud)
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, aud)
 
 	plan := Plan{Steps: []Step{
 		allowStep("echo one", safety.RiskRead),
-		blockStep("rm -rf /"),
+		blockStep(),
 	}}
 	_, err := Execute(context.Background(), plan, ModeAuto, deps)
 
@@ -814,7 +814,7 @@ func TestExecuteAppendsOneAuditEntryPerExecutedStep(t *testing.T) {
 // Canceled, the second is never even attempted and shows up as Skipped.
 func TestExecuteCancelDuringExecutionSkipsRemainingStepsAndSummarizes(t *testing.T) {
 	exec := &fakeExecutor{blockUntilCancel: true}
-	deps, _, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {

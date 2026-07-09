@@ -134,7 +134,7 @@ func (e *Executor) Run(ctx context.Context, command string, opts Options) (Resul
 	}
 
 	name, args := e.buildCommand(command)
-	cmd := exec.Command(name, args...) //nolint:gosec // command text comes from a plan step the mode loop has already run through internal/safety; this package's job is only to execute it, per its doc comment.
+	cmd := exec.Command(name, args...) //nolint:gosec,noctx // gosec: command text comes from a plan step the mode loop has already run through internal/safety; this package's job is only to execute it, per its doc comment. noctx: exec.CommandContext's automatic-SIGKILL-on-cancel is deliberately NOT used here — Run manages runCtx cancellation itself (see the select below) so it can kill the whole process GROUP via killProcessGroup, not just the direct child.
 	setProcAttr(cmd)
 
 	outCap := newCapWriter(maxCaptureBytes)

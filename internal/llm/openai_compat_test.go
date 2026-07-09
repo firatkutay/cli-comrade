@@ -59,7 +59,7 @@ func TestOpenAICompatCompleteRequestShape(t *testing.T) {
 }
 
 func TestOpenAICompatComplete401IsAuthRejected(t *testing.T) {
-	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key","type":"invalid_request_error"}}`))
 	})
@@ -71,7 +71,7 @@ func TestOpenAICompatComplete401IsAuthRejected(t *testing.T) {
 }
 
 func TestOpenAICompatComplete429IsOverloaded(t *testing.T) {
-	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = w.Write([]byte(`{"error":{"message":"rate limited","type":"rate_limit_error"}}`))
 	})
@@ -82,7 +82,7 @@ func TestOpenAICompatComplete429IsOverloaded(t *testing.T) {
 }
 
 func TestOpenAICompatComplete503IsOverloaded(t *testing.T) {
-	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"error":{"message":"overloaded","type":"server_error"}}`))
 	})
@@ -93,7 +93,7 @@ func TestOpenAICompatComplete503IsOverloaded(t *testing.T) {
 }
 
 func TestOpenAICompatStreamConcatenatesDeltasUntilDoneSentinel(t *testing.T) {
-	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("content-type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		frames := []string{
@@ -151,7 +151,7 @@ func TestOpenAICompatListModelsParsesIDsLeniently(t *testing.T) {
 }
 
 func TestOpenAICompatListModelsSkipsEmptyIDs(t *testing.T) {
-	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"id":""},{"id":"gpt-5.4"}]}`))
 	})
@@ -163,7 +163,7 @@ func TestOpenAICompatListModelsSkipsEmptyIDs(t *testing.T) {
 }
 
 func TestOpenAICompatListModels401IsAuthRejected(t *testing.T) {
-	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newOpenAICompatTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":{"message":"bad key"}}`))
 	})

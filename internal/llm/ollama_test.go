@@ -55,7 +55,7 @@ func TestOllamaCompleteRequestShapeNoAuthHeader(t *testing.T) {
 }
 
 func TestOllamaComplete500IsOverloaded(t *testing.T) {
-	c := newOllamaTestConnector(t, "llama3.1", func(w http.ResponseWriter, r *http.Request) {
+	c := newOllamaTestConnector(t, "llama3.1", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`model runner crashed`))
 	})
@@ -66,7 +66,7 @@ func TestOllamaComplete500IsOverloaded(t *testing.T) {
 }
 
 func TestOllamaStreamConcatenatesJSONLinesAndClosesCleanly(t *testing.T) {
-	c := newOllamaTestConnector(t, "llama3.1", func(w http.ResponseWriter, r *http.Request) {
+	c := newOllamaTestConnector(t, "llama3.1", func(w http.ResponseWriter, _ *http.Request) {
 		flusher, _ := w.(http.Flusher)
 		lines := []string{
 			`{"model":"llama3.1","message":{"role":"assistant","content":"Hel"},"done":false}` + "\n",
@@ -115,7 +115,7 @@ func TestOllamaListModelsParsesTagsFixture(t *testing.T) {
 }
 
 func TestOllamaListModelsEmptyProducesGuidanceError(t *testing.T) {
-	c := newOllamaTestConnector(t, "", func(w http.ResponseWriter, r *http.Request) {
+	c := newOllamaTestConnector(t, "", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(`{"models":[]}`))
 	})

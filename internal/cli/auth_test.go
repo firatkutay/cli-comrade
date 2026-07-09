@@ -126,7 +126,7 @@ func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"message":"boom"}}`))
 	}))

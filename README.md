@@ -57,9 +57,12 @@ scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket && scoop 
 curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
-Debian/Ubuntu (.deb), Fedora/RHEL (.rpm) ve `go install` dahil tüm
-seçenekler için: [docs/INSTALL.md](docs/INSTALL.md). Yapılandırma
-anahtarları için [docs/CONFIGURATION.md](docs/CONFIGURATION.md),
+Debian/Ubuntu (.deb), Fedora/RHEL (.rpm) ve kaynaktan derleme dahil tüm
+seçenekler için: [docs/INSTALL.md](docs/INSTALL.md) (not: bir `go.mod`
+`replace` direktifi nedeniyle `go install ...@sürüm` biçimi
+desteklenmez — bkz. o dosyadaki "Kaynaktan derleme" bölümü).
+Yapılandırma anahtarları için
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md),
 güvenlik modeli için [docs/SECURITY.md](docs/SECURITY.md), yaygın
 sorunlar için [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
@@ -119,8 +122,10 @@ curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts
 ```
 
 See [docs/INSTALL.md](docs/INSTALL.md) for every option, including
-Debian/Ubuntu (.deb), Fedora/RHEL (.rpm), and `go install`. Also see
-[docs/CONFIGURATION.md](docs/CONFIGURATION.md) for every config key,
+Debian/Ubuntu (.deb), Fedora/RHEL (.rpm), and building from source
+(note: `go install ...@version` isn't supported, due to a `go.mod`
+`replace` directive — see that file's "Build from source" section).
+Also see [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for every config key,
 [docs/SECURITY.md](docs/SECURITY.md) for the security model, and
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues.
 

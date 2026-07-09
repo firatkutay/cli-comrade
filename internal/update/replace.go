@@ -56,7 +56,7 @@ func replaceUnixBinary(targetPath string, newContent []byte) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("update: replace binary: close temp file: %w", err)
 	}
-	if err := os.Chmod(tmpPath, 0o755); err != nil {
+	if err := os.Chmod(tmpPath, 0o755); err != nil { // #nosec G302 -- tmpPath becomes the comrade executable itself via the rename below; it must keep its execute bit, unlike a data file
 		return fmt.Errorf("update: replace binary: chmod temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, targetPath); err != nil {
@@ -77,7 +77,7 @@ func replaceWindowsBinary(targetPath string, newContent []byte) error {
 		return fmt.Errorf("update: replace binary: rename running exe to %s: %w", oldPath, err)
 	}
 
-	if err := os.WriteFile(targetPath, newContent, 0o755); err != nil {
+	if err := os.WriteFile(targetPath, newContent, 0o755); err != nil { // #nosec G306 -- targetPath is the comrade executable itself; it must keep its execute bit, unlike a data file
 		// Best-effort rollback: restore the original exe so the install
 		// isn't left with neither a working old nor new binary.
 		_ = os.Rename(oldPath, targetPath)

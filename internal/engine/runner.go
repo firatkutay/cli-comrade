@@ -258,7 +258,8 @@ type RunSummary struct {
 func Execute(ctx context.Context, plan Plan, mode Mode, deps RunDeps) (RunSummary, error) {
 	switch mode {
 	case ModeInfo:
-		return executeInfo(deps, plan), nil
+		executeInfo(deps, plan)
+		return RunSummary{}, nil
 	case ModeAsk:
 		return executeAsk(ctx, plan, deps)
 	case ModeAuto:
@@ -270,8 +271,10 @@ func Execute(ctx context.Context, plan Plan, mode Mode, deps RunDeps) (RunSummar
 
 // executeInfo implements info mode: print every step, numbered, with its
 // command, risk badge (or BLOCKED(reason) for a Blocked step), and
-// rationale. Nothing is ever executed.
-func executeInfo(deps RunDeps, plan Plan) RunSummary {
+// rationale. Nothing is ever executed, and info mode's RunSummary is
+// always the zero value (Execute's caller is the one that returns it) —
+// there is nothing to execute, so there is nothing to summarize.
+func executeInfo(deps RunDeps, plan Plan) {
 	fmt.Fprintln(deps.Stdout, plan.Summary) //nolint:errcheck // best-effort stdout write; a write failure here has no recovery action
 	fmt.Fprintln(deps.Stdout)               //nolint:errcheck
 
@@ -286,7 +289,6 @@ func executeInfo(deps RunDeps, plan Plan) RunSummary {
 			fmt.Fprintf(deps.Stdout, "   %s\n", step.Rationale) //nolint:errcheck
 		}
 	}
-	return RunSummary{}
 }
 
 // executeAsk implements ask mode: every non-Blocked step is confirmed
@@ -495,7 +497,7 @@ func resolveAskChoice(ctx context.Context, deps RunDeps, step Step) (choice Choi
 			if eerr != nil {
 				fmt.Fprintf(deps.Stderr, "explain failed: %v\n", eerr) //nolint:errcheck
 			} else {
-				tui.PrintExplanation(deps.Stdout, explanation) //nolint:errcheck
+				tui.PrintExplanation(deps.Stdout, explanation) //nolint:errcheck,gosec // stdout/stderr print failure is never actionable here (G104: unhandled error)
 			}
 			continue
 
@@ -710,10 +712,10 @@ func printBlockedEdit(deps RunDeps, step Step) {
 
 func printAutoStatus(deps RunDeps, step Step) {
 	badge := tui.RiskBadge(step.Decision.EffectiveRisk, deps.ColorEnabled)
-	tui.PrintStatus(deps.Stdout, fmt.Sprintf("-> running: %s %s", badge, step.Command), deps.ColorEnabled) //nolint:errcheck
+	tui.PrintStatus(deps.Stdout, fmt.Sprintf("-> running: %s %s", badge, step.Command), deps.ColorEnabled) //nolint:errcheck,gosec // stdout/stderr print failure is never actionable here (G104: unhandled error)
 }
 
 func printYoloBypassWarning(deps RunDeps, step Step) {
 	line := deps.tr().T(i18n.MsgYoloBypass, step.Decision.EffectiveRisk.String(), step.Command)
-	tui.PrintWarning(deps.Stdout, line, deps.ColorEnabled) //nolint:errcheck
+	tui.PrintWarning(deps.Stdout, line, deps.ColorEnabled) //nolint:errcheck,gosec // stdout/stderr print failure is never actionable here (G104: unhandled error)
 }

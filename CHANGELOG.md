@@ -7,7 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-rc1] - 2026-07-09
+
+Release-candidate hardening pass. No new product features (FAZ 0-10
+already deliver the full `comrade` CLI); this release proves robustness,
+fixes one real bug it found, and tightens the quality gate. See
+`docs/phases/FAZ-11.md` for the full scenario table, hardening results,
+cold-start numbers, and lint/vuln findings, and `KNOWN_LIMITATIONS.md`
+for this RC's honest, bilingual known-issues list. **No git tag was cut**
+— tagging is a deliberate follow-up decision (see `KNOWN_LIMITATIONS.md`).
+
+### Fixed
+
+- **Cold start regression (~600ms → ~4-5ms)**: `github.com/atotto/
+  clipboard` v0.1.4 (pulled in transitively by `charm.land/bubbles/v2/
+  textinput`, used by every confirm prompt and `comrade chat`) ran up to
+  five sequential `exec.LookPath` PATH scans unconditionally at package
+  `init()` — paid by every single `comrade` invocation, including
+  `--version`/`--help`, whether or not it ever touched the clipboard. On
+  a PATH with many entries (this project's own dev sandbox: a WSL2 shell
+  with ~124 PATH entries, most 9p/DrvFs-mounted) this cost ~600ms per
+  command, two orders of magnitude over the <100ms target. Root-cause
+  fixed with a locally vendored, behavior-preserving fork
+  (`third_party/atotto-clipboard/`, wired via a `go.mod` `replace`) that
+  defers the same probe to a `sync.Once` triggered by first actual
+  clipboard use instead of running it eagerly — public API unchanged, no
+  new dependency.
+- **`crypto/tls` CVE `GO-2026-5856`** (Encrypted Client Hello privacy
+  leak, standard library): `go.mod`'s `toolchain` directive bumped
+  `go1.26.4` → `go1.26.5` (the fixed release). Found by the new
+  `govulncheck` CI gate (see below), not by chance.
+- Tightened file/directory permissions gosec's new strict-lint pass
+  surfaced as real hardening (not just noise): `audit.jsonl`,
+  `last_command.json`, `config.toml`, and the update-check state file
+  now write `0600`/`0750` instead of `0644`/`0755` — none of these need
+  to be readable by another local user on a single-user CLI tool.
+
 ### Added
+
+- **Offline / no-network handling for the three cloud LLM providers**
+  (`anthropic`, `openai_compat`, `google`): a transport-level failure
+  (DNS/connection-refused/timeout) is now replaced with a clear message
+  naming the provider, classified via a new `llm.ErrOffline` sentinel —
+  previously only `ollama` (FAZ 8) had this; a real network outage
+  against a cloud provider surfaced Go's raw `dial tcp: ...` error text.
+  When every configured provider in the fallback chain fails this way
+  and Ollama isn't already one of them, the final error now suggests
+  adding `ollama` to `llm.fallback` as a local, network-free alternative.
+- Strict `golangci-lint` profile: `gosec`, `errorlint`, `gocritic`,
+  `revive`, `bodyclose`, `noctx`, `unparam`, `prealloc` added on top of
+  the existing `misspell`/`unconvert`/`unused`/`ineffassign` — a curated
+  set, each justified inline in `.golangci.yml`. 35 issues surfaced and
+  fixed (real permission hardening, four confirmed `bodyclose` false
+  positives silenced with reasoning, dozens of test-only unused
+  parameters, a handful of real `unparam` simplifications, ~30 missing
+  doc comments in `internal/i18n/catalog.go` added to match that file's
+  own established per-constant convention); `0 issues` remaining.
+- `govulncheck` (pinned `v1.4.0`) wired into a new CI job
+  (`.github/workflows/ci.yml`'s `vulncheck`), gating every PR/push —
+  catches standard-library CVEs too, not just third-party module ones,
+  since it resolves the exact toolchain `go.mod` pins.
+- New FAZ-11-named test coverage: an ~1.28MB-stdout tail-truncation
+  hardening test, an invalid-UTF-8-output no-panic test (both at the
+  executor AND redaction layers), 6 offline/Ollama-fallback tests, 4 new
+  Ubuntu/Linux end-to-end scenario tests (`fix --info` for an apt
+  "command not found" and a "port already in use" error, `do --auto`/
+  `fix --auto` for a mixed benign+denylisted-decoy plan), and a
+  cold-start regression backstop test that builds and times the real
+  binary.
+- `KNOWN_LIMITATIONS.md` (new, bilingual TR/EN): this RC's honest
+  known-issues list — real macOS/Windows platform runtime, real-LLM
+  acceptance runs, and release-publishing steps that remain manual/
+  deferred, all in one place.
 
 - FAZ 10: packaging and distribution — a complete `goreleaser` v2
   pipeline, `comrade upgrade` (hand-rolled, checksum-verified

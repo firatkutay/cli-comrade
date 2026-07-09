@@ -2,7 +2,7 @@ module github.com/firatkutay/cli-comrade
 
 go 1.25.0
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	charm.land/bubbles/v2 v2.1.1
@@ -50,3 +50,21 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+// FAZ 11 cold-start hardening: github.com/atotto/clipboard v0.1.4's Unix
+// build (clipboard_unix.go) runs up to five sequential exec.LookPath PATH
+// scans unconditionally in a package-level init() — paid by every
+// process that imports charm.land/bubbles/v2/textinput (internal/tui and
+// internal/cli's chat model both do, for the ask-mode confirm prompt and
+// `comrade chat`), i.e. every comrade invocation, including --version and
+// --help, whether or not it ever touches the clipboard. On a PATH with
+// many entries (observed: 100+ on a WSL2 shell, most 9p/DrvFs-mounted)
+// this cost hundreds of milliseconds on every single command. This
+// replace points at a locally vendored, behavior-preserving copy
+// (third_party/atotto-clipboard) whose only change is deferring that
+// same probe from init() to a sync.Once triggered by first actual
+// clipboard use — see its clipboard_unix.go doc comment and
+// docs/phases/FAZ-11.md / KNOWN_LIMITATIONS.md for the full rationale.
+// No newer upstream release exists (v0.1.4 is latest) to pick up a fix
+// instead.
+replace github.com/atotto/clipboard => ./third_party/atotto-clipboard

@@ -167,10 +167,10 @@ func (l *Loader) ensureFileExists() (bool, error) {
 	case err == nil:
 		return false, nil
 	case os.IsNotExist(err):
-		if mkErr := os.MkdirAll(filepath.Dir(l.path), 0o755); mkErr != nil {
+		if mkErr := os.MkdirAll(filepath.Dir(l.path), 0o750); mkErr != nil {
 			return false, fmt.Errorf("create config directory for %s: %w", l.path, mkErr)
 		}
-		if wErr := os.WriteFile(l.path, []byte(defaultConfigTOML), 0o644); wErr != nil {
+		if wErr := os.WriteFile(l.path, []byte(defaultConfigTOML), 0o600); wErr != nil {
 			return false, fmt.Errorf("write default config file %s: %w", l.path, wErr)
 		}
 		return true, nil

@@ -334,28 +334,56 @@ const (
 	// immediately before cobra actually renders help/usage, so --help
 	// output is localized exactly like every other command's output.
 
-	MsgHelpShortRoot          MessageID = "help_short_root"
-	MsgHelpShortDo            MessageID = "help_short_do"
-	MsgHelpShortFix           MessageID = "help_short_fix"
-	MsgHelpShortExplain       MessageID = "help_short_explain"
-	MsgHelpShortChat          MessageID = "help_short_chat"
-	MsgHelpShortConfig        MessageID = "help_short_config"
-	MsgHelpShortConfigGet     MessageID = "help_short_config_get"
-	MsgHelpShortConfigSet     MessageID = "help_short_config_set"
-	MsgHelpShortConfigList    MessageID = "help_short_config_list"
-	MsgHelpShortConfigEdit    MessageID = "help_short_config_edit"
-	MsgHelpShortConfigPath    MessageID = "help_short_config_path"
+	// Every MsgHelpShortXxx constant below is the same shape — one line
+	// of --help/usage text for one command in the tree, keyed by
+	// internal/cli/help.go's helpShortByPath map — so each gets a short,
+	// uniform doc comment naming that command rather than repeating the
+	// mechanism explained above.
+
+	// MsgHelpShortRoot is the root `comrade` command's --help text.
+	MsgHelpShortRoot MessageID = "help_short_root"
+	// MsgHelpShortDo is `comrade do`'s --help text.
+	MsgHelpShortDo MessageID = "help_short_do"
+	// MsgHelpShortFix is `comrade fix`'s --help text.
+	MsgHelpShortFix MessageID = "help_short_fix"
+	// MsgHelpShortExplain is `comrade explain`'s --help text.
+	MsgHelpShortExplain MessageID = "help_short_explain"
+	// MsgHelpShortChat is `comrade chat`'s --help text.
+	MsgHelpShortChat MessageID = "help_short_chat"
+	// MsgHelpShortConfig is `comrade config`'s --help text.
+	MsgHelpShortConfig MessageID = "help_short_config"
+	// MsgHelpShortConfigGet is `comrade config get`'s --help text.
+	MsgHelpShortConfigGet MessageID = "help_short_config_get"
+	// MsgHelpShortConfigSet is `comrade config set`'s --help text.
+	MsgHelpShortConfigSet MessageID = "help_short_config_set"
+	// MsgHelpShortConfigList is `comrade config list`'s --help text.
+	MsgHelpShortConfigList MessageID = "help_short_config_list"
+	// MsgHelpShortConfigEdit is `comrade config edit`'s --help text.
+	MsgHelpShortConfigEdit MessageID = "help_short_config_edit"
+	// MsgHelpShortConfigPath is `comrade config path`'s --help text.
+	MsgHelpShortConfigPath MessageID = "help_short_config_path"
+	// MsgHelpShortConfigTestLLM is `comrade config test-llm`'s --help text.
 	MsgHelpShortConfigTestLLM MessageID = "help_short_config_test_llm"
-	MsgHelpShortConfigModels  MessageID = "help_short_config_models"
-	MsgHelpShortAuth          MessageID = "help_short_auth"
-	MsgHelpShortAuthLogin     MessageID = "help_short_auth_login"
-	MsgHelpShortAuthLogout    MessageID = "help_short_auth_logout"
-	MsgHelpShortAuthStatus    MessageID = "help_short_auth_status"
-	MsgHelpShortInit          MessageID = "help_short_init"
-	MsgHelpShortHistory       MessageID = "help_short_history"
-	MsgHelpShortHook          MessageID = "help_short_hook"
-	MsgHelpShortHookRecord    MessageID = "help_short_hook_record"
-	MsgHelpShortUpgrade       MessageID = "help_short_upgrade"
+	// MsgHelpShortConfigModels is `comrade config models`'s --help text.
+	MsgHelpShortConfigModels MessageID = "help_short_config_models"
+	// MsgHelpShortAuth is `comrade auth`'s --help text.
+	MsgHelpShortAuth MessageID = "help_short_auth"
+	// MsgHelpShortAuthLogin is `comrade auth login`'s --help text.
+	MsgHelpShortAuthLogin MessageID = "help_short_auth_login"
+	// MsgHelpShortAuthLogout is `comrade auth logout`'s --help text.
+	MsgHelpShortAuthLogout MessageID = "help_short_auth_logout"
+	// MsgHelpShortAuthStatus is `comrade auth status`'s --help text.
+	MsgHelpShortAuthStatus MessageID = "help_short_auth_status"
+	// MsgHelpShortInit is `comrade init`'s --help text.
+	MsgHelpShortInit MessageID = "help_short_init"
+	// MsgHelpShortHistory is `comrade history`'s --help text.
+	MsgHelpShortHistory MessageID = "help_short_history"
+	// MsgHelpShortHook is `comrade hook`'s --help text.
+	MsgHelpShortHook MessageID = "help_short_hook"
+	// MsgHelpShortHookRecord is `comrade hook record`'s --help text.
+	MsgHelpShortHookRecord MessageID = "help_short_hook_record"
+	// MsgHelpShortUpgrade is `comrade upgrade`'s --help text.
+	MsgHelpShortUpgrade MessageID = "help_short_upgrade"
 
 	// -- per-flag --help descriptions ------------------------------------
 	//
@@ -373,17 +401,28 @@ const (
 	// hook.go entry: internal-only, invoked by generated shell snippets,
 	// never read by an end user via --help.
 
+	// MsgFlagDryRun is --dry-run's --help description.
 	MsgFlagDryRun MessageID = "flag_dry_run"
-	MsgFlagAuto   MessageID = "flag_auto"
-	MsgFlagAsk    MessageID = "flag_ask"
-	MsgFlagInfo   MessageID = "flag_info"
-	MsgFlagYolo   MessageID = "flag_yolo"
-	MsgFlagRerun  MessageID = "flag_rerun"
-	MsgFlagJSON   MessageID = "flag_json"
-	MsgFlagLimit  MessageID = "flag_limit"
-	MsgFlagPrint  MessageID = "flag_print"
+	// MsgFlagAuto is --auto's --help description.
+	MsgFlagAuto MessageID = "flag_auto"
+	// MsgFlagAsk is --ask's --help description.
+	MsgFlagAsk MessageID = "flag_ask"
+	// MsgFlagInfo is --info's --help description.
+	MsgFlagInfo MessageID = "flag_info"
+	// MsgFlagYolo is --yolo's --help description.
+	MsgFlagYolo MessageID = "flag_yolo"
+	// MsgFlagRerun is --rerun's --help description.
+	MsgFlagRerun MessageID = "flag_rerun"
+	// MsgFlagJSON is --json's --help description.
+	MsgFlagJSON MessageID = "flag_json"
+	// MsgFlagLimit is --limit's --help description.
+	MsgFlagLimit MessageID = "flag_limit"
+	// MsgFlagPrint is --print's --help description.
+	MsgFlagPrint MessageID = "flag_print"
+	// MsgFlagRemove is --remove's --help description.
 	MsgFlagRemove MessageID = "flag_remove"
-	MsgFlagYes    MessageID = "flag_yes"
+	// MsgFlagYes is --yes's --help description.
+	MsgFlagYes MessageID = "flag_yes"
 
 	// -- full-sentence user-facing fmt.Errorf/errors.New messages --------
 	//
@@ -396,18 +435,43 @@ const (
 	// deliberately NOT migrated here — see docs/phases/FAZ-09.md's exact
 	// rule and the full accounting of what was/wasn't migrated.
 
-	MsgAuthOllamaNoKeyError          MessageID = "auth_ollama_no_key_error"
-	MsgAuthUnknownProviderError      MessageID = "auth_unknown_provider_error"
-	MsgAuthNoKeyEnteredError         MessageID = "auth_no_key_entered_error"
-	MsgFixRerunNoLastCommandError    MessageID = "fix_rerun_no_last_command_error"
-	MsgFlagsModeExclusiveError       MessageID = "flags_mode_exclusive_error"
+	// MsgAuthOllamaNoKeyError is `comrade auth login ollama`'s refusal
+	// message (ollama needs no API key).
+	MsgAuthOllamaNoKeyError MessageID = "auth_ollama_no_key_error"
+	// MsgAuthUnknownProviderError is `comrade auth login <unknown>`'s
+	// error message. One arg: the list of known provider names.
+	MsgAuthUnknownProviderError MessageID = "auth_unknown_provider_error"
+	// MsgAuthNoKeyEnteredError is `comrade auth login`'s error when the
+	// interactive prompt received an empty key.
+	MsgAuthNoKeyEnteredError MessageID = "auth_no_key_entered_error"
+	// MsgFixRerunNoLastCommandError is `comrade fix --rerun`'s error when
+	// there is no recorded last command to re-run.
+	MsgFixRerunNoLastCommandError MessageID = "fix_rerun_no_last_command_error"
+	// MsgFlagsModeExclusiveError is the error when more than one of
+	// --auto/--ask/--info is given.
+	MsgFlagsModeExclusiveError MessageID = "flags_mode_exclusive_error"
+	// MsgInitPrintRemoveExclusiveError is `comrade init`'s error when
+	// --print and --remove are both given.
 	MsgInitPrintRemoveExclusiveError MessageID = "init_print_remove_exclusive_error"
-	MsgInitShellUndetectedError      MessageID = "init_shell_undetected_error"
-	MsgInitShellUnsupportedError     MessageID = "init_shell_unsupported_error"
-	MsgModelsNoModelsError           MessageID = "models_no_models_error"
-	MsgModelsUnknownProviderError    MessageID = "models_unknown_provider_error"
-	MsgModelsChoiceNotANumber        MessageID = "models_choice_not_a_number"
-	MsgModelsChoiceOutOfRange        MessageID = "models_choice_out_of_range"
+	// MsgInitShellUndetectedError is `comrade init`'s error when no shell
+	// argument was given and none could be auto-detected.
+	MsgInitShellUndetectedError MessageID = "init_shell_undetected_error"
+	// MsgInitShellUnsupportedError is `comrade init`'s error when the
+	// detected/given shell name isn't one this project supports.
+	MsgInitShellUnsupportedError MessageID = "init_shell_unsupported_error"
+	// MsgModelsNoModelsError is `comrade config models`'s error when the
+	// active provider returned an empty model list. One arg: the
+	// provider name.
+	MsgModelsNoModelsError MessageID = "models_no_models_error"
+	// MsgModelsUnknownProviderError is `comrade config models`'s error
+	// for an unrecognized provider name. One arg: the provider name.
+	MsgModelsUnknownProviderError MessageID = "models_unknown_provider_error"
+	// MsgModelsChoiceNotANumber is `comrade config models`'s error when
+	// the picker's input isn't a number.
+	MsgModelsChoiceNotANumber MessageID = "models_choice_not_a_number"
+	// MsgModelsChoiceOutOfRange is `comrade config models`'s error when
+	// the picker's number is outside the listed range.
+	MsgModelsChoiceOutOfRange MessageID = "models_choice_out_of_range"
 
 	// -- comrade upgrade (FAZ 10) -----------------------------------------
 
@@ -434,6 +498,7 @@ const (
 
 	// -- per-flag --help descriptions (comrade upgrade) -------------------
 
+	// MsgFlagCheck is --check's --help description.
 	MsgFlagCheck MessageID = "flag_check"
 
 	// -- passive version-update notification (FAZ 10 item 4) -------------
@@ -450,7 +515,7 @@ const (
 // (see Translator.T). Every MsgXxx constant above MUST have an entry
 // here; TestCatalogsCoverIdenticalKeys enforces that bidirectionally
 // against catalogTR.
-var catalogEN = Catalog{
+var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog (prompts/labels that mention "password"/"key" as words), not a literal credential
 	MsgVersionBanner:  "comrade version %s\n\n",
 	MsgFirstRunNotice: "Created default config at %s\n",
 	MsgYoloWarning:    "--yolo is set: destructive/elevated steps may run WITHOUT confirmation in auto mode, if safety.confirm_destructive/confirm_elevated is also disabled in config.",
@@ -602,7 +667,7 @@ var catalogEN = Catalog{
 // its catalogEN counterpart; see docs/phases/FAZ-09.md's translation
 // notes for terminology choices (e.g. "yürütme" for "execution", "geri
 // alınamaz" for "irreversible").
-var catalogTR = Catalog{
+var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog (prompts/labels that mention "password"/"key" as words), not a literal credential
 	MsgVersionBanner:  "comrade sürüm %s\n\n",
 	MsgFirstRunNotice: "Varsayılan ayar dosyası oluşturuldu: %s\n",
 	MsgYoloWarning:    "--yolo etkin: config'de safety.confirm_destructive/confirm_elevated de kapalıysa, auto modda destructive/elevated adımlar ONAY ALINMADAN çalışabilir.",

@@ -71,7 +71,7 @@ func ReadState(path string) CheckState {
 	if path == "" {
 		return CheckState{}
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is this process's own fixed XDG-state update-check location (DefaultStatePath), not attacker-controlled input
 	if err != nil {
 		return CheckState{}
 	}
@@ -89,7 +89,7 @@ func ReadState(path string) CheckState {
 // context.WriteLastCommand's exact atomic-write shape.
 func WriteState(path string, st CheckState) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("update: write state: create directory %s: %w", dir, err)
 	}
 
@@ -117,7 +117,7 @@ func WriteState(path string, st CheckState) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("update: write state: close temp file: %w", err)
 	}
-	if err := os.Chmod(tmpPath, 0o644); err != nil {
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
 		return fmt.Errorf("update: write state: chmod temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {

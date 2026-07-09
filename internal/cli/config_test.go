@@ -38,7 +38,7 @@ func withIsolatedConfigDir(t *testing.T) string {
 // stderr separately, so tests can assert on stdout purity (e.g. no
 // first-run notice, no cobra error/usage boilerplate) independently of
 // whatever lands on stderr.
-func execRootSplit(t *testing.T, version string, args ...string) (stdout, stderr string, err error) {
+func execRootSplit(t *testing.T, version string, args ...string) (stdout, stderr string, err error) { //nolint:unparam // version mirrors NewRootCmd's own real parameter (the build-time version); every current call site happens to pass "dev", but that's incidental to what's under test, not a reason to strip the parameter a real caller varies
 	t.Helper()
 	root := NewRootCmd(version)
 	outBuf := &strings.Builder{}

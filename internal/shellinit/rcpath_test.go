@@ -85,7 +85,7 @@ func TestRCPathPowerShellUsesPowershellBinaryOnWindows(t *testing.T) {
 		calledBin = name
 		return `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, nil
 	}
-	run := func(_ stdctx.Context, name string, _ ...string) ([]byte, error) {
+	run := func(_ stdctx.Context, _ string, _ ...string) ([]byte, error) {
 		return []byte(`C:\Users\alice\Documents\WindowsPowerShell\profile.ps1`), nil
 	}
 

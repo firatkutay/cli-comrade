@@ -44,7 +44,7 @@ type Logger struct {
 // write) if it does not already exist.
 func NewLogger(path string) (*Logger, error) {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("audit: create directory %s: %w", dir, err)
 	}
 	return &Logger{path: path}, nil
@@ -68,7 +68,7 @@ func (l *Logger) Append(entry Entry) error {
 	}
 	data = append(data, '\n')
 
-	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("audit: open %s: %w", l.path, err)
 	}
@@ -191,7 +191,7 @@ func (l *Logger) rewrite(entries []Entry) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("audit: close temp file: %w", err)
 	}
-	if err := os.Chmod(tmpPath, 0o644); err != nil {
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
 		return fmt.Errorf("audit: chmod temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, l.path); err != nil {

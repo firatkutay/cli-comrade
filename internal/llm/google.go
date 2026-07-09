@@ -124,7 +124,7 @@ func (c *googleConnector) doRequest(ctx context.Context, streaming bool, body go
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("google: request: %w", err)
+		return nil, wrapReachabilityError("google", c.baseURL, fmt.Errorf("google: request: %w", err))
 	}
 	return resp, nil
 }
@@ -183,7 +183,7 @@ func googleStatusError(status int, body []byte) error {
 }
 
 func (c *googleConnector) Stream(ctx context.Context, req CompletionRequest) (<-chan Chunk, error) {
-	resp, err := c.doRequest(ctx, true, c.buildRequest(req))
+	resp, err := c.doRequest(ctx, true, c.buildRequest(req)) //nolint:bodyclose // closed on both paths below: immediately on a non-200 status, or by the streaming goroutine's own defer once it finishes reading — bodyclose's static path check doesn't see the latter as a guaranteed close.
 	if err != nil {
 		return nil, err
 	}

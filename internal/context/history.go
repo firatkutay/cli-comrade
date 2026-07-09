@@ -65,7 +65,7 @@ func ReadHistory(shell string, getenv func(string) string, depth int) []string {
 	if !ok {
 		return nil
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path comes from HistoryPath's own fixed, well-known shell-history conventions (e.g. $HOME/.bash_history), not attacker-controlled input
 	if err != nil {
 		return nil
 	}

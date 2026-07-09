@@ -72,7 +72,7 @@ func TestGoogleCompleteRequestShapeAndModelPathEncoding(t *testing.T) {
 }
 
 func TestGoogleComplete401IsAuthRejected(t *testing.T) {
-	c := newGoogleTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newGoogleTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":{"code":401,"message":"API key not valid","status":"UNAUTHENTICATED"}}`))
 	})
@@ -84,7 +84,7 @@ func TestGoogleComplete401IsAuthRejected(t *testing.T) {
 }
 
 func TestGoogleComplete429ResourceExhaustedIsOverloaded(t *testing.T) {
-	c := newGoogleTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newGoogleTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = w.Write([]byte(`{"error":{"code":429,"message":"quota exceeded","status":"RESOURCE_EXHAUSTED"}}`))
 	})
@@ -95,7 +95,7 @@ func TestGoogleComplete429ResourceExhaustedIsOverloaded(t *testing.T) {
 }
 
 func TestGoogleComplete500IsOverloaded(t *testing.T) {
-	c := newGoogleTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newGoogleTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"code":500,"message":"internal","status":"INTERNAL"}}`))
 	})
@@ -106,7 +106,7 @@ func TestGoogleComplete500IsOverloaded(t *testing.T) {
 }
 
 func TestGoogleStreamConcatenatesDeltasAndClosesCleanly(t *testing.T) {
-	c := newGoogleTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newGoogleTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("content-type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		frames := []string{

@@ -98,7 +98,7 @@ func (c *openAICompatConnector) doRequest(ctx context.Context, body openAIReques
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("openai_compat: request: %w", err)
+		return nil, wrapReachabilityError("openai_compat", c.baseURL, fmt.Errorf("openai_compat: request: %w", err))
 	}
 	return resp, nil
 }
@@ -182,7 +182,7 @@ func (c *openAICompatConnector) ListModels(ctx context.Context) ([]string, error
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("openai_compat: request: %w", err)
+		return nil, wrapReachabilityError("openai_compat", c.baseURL, fmt.Errorf("openai_compat: request: %w", err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -222,7 +222,7 @@ func ListOpenAICompatModels(ctx context.Context, baseURL, apiKey string, httpCli
 
 func (c *openAICompatConnector) Stream(ctx context.Context, req CompletionRequest) (<-chan Chunk, error) {
 	body := openAIRequest{Model: c.model, Messages: c.messages(req), MaxTokens: req.MaxTokens, Stream: true}
-	resp, err := c.doRequest(ctx, body)
+	resp, err := c.doRequest(ctx, body) //nolint:bodyclose // closed on both paths below: immediately on a non-200 status, or by the streaming goroutine's own defer once it finishes reading — bodyclose's static path check doesn't see the latter as a guaranteed close.
 	if err != nil {
 		return nil, err
 	}

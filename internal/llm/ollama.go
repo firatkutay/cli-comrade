@@ -176,7 +176,7 @@ func (c *ollamaConnector) Stream(ctx context.Context, req CompletionRequest) (<-
 		return nil, err
 	}
 
-	resp, err := c.doRequest(ctx, ollamaChatRequest{Model: model, Messages: c.messages(req), Stream: true})
+	resp, err := c.doRequest(ctx, ollamaChatRequest{Model: model, Messages: c.messages(req), Stream: true}) //nolint:bodyclose // closed on both paths below: immediately on a non-200 status, or by the streaming goroutine's own defer once it finishes reading — bodyclose's static path check doesn't see the latter as a guaranteed close.
 	if err != nil {
 		return nil, err
 	}

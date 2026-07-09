@@ -396,10 +396,25 @@ comrade history --limit 50 --json
 Installs (or removes) the shell integration block in the target shell's
 rc/profile file. See §9 for what the hook does at runtime.
 
+**`powershell` on Windows targets every installed PowerShell variant
+independently** — Windows PowerShell 5.1 (`powershell.exe`) and
+PowerShell 7 (`pwsh.exe`), whichever are actually present
+(`internal/shellinit/psprofiles.go`'s `ResolvePowerShellProfiles`).
+Each found variant's own `$PROFILE` is queried and the hook installed/
+upgraded/removed there via the same idempotent block-marker mechanism
+`comrade init` uses for every other shell, with one report line per
+profile (variant label + status + path). Only one variant installed is
+fine; neither found is an error. When more than one profile needs a
+write, a single combined confirmation covers all of them — not one
+prompt per profile — and `--yes` skips it as usual. `--remove` mirrors
+this per-profile; `--print` is unchanged (it always prints the raw
+snippet text, independent of how many profiles exist). On non-Windows,
+`powershell` still resolves to `pwsh` only, exactly as before.
+
 | Flag | Effect |
 |---|---|
 | `--print` | Print the snippet only; make no file changes |
-| `--remove` | Remove the cli-comrade block from the rc/profile file |
+| `--remove` | Remove the cli-comrade block from the rc/profile file(s) |
 | `-y`, `--yes` | Skip the confirmation prompt |
 
 ```
@@ -617,6 +632,13 @@ unicode, newlines). Encoding is delegated to the compiled binary
 | zsh | `precmd` |
 | fish | `fish_postexec` event |
 | PowerShell | A prompt function installed into `$PROFILE`, reading `$?`/`$LASTEXITCODE` |
+
+On Windows, that `$PROFILE` install targets **every installed
+PowerShell variant's own profile independently** — Windows PowerShell
+5.1 and PowerShell 7 both get the hook when both are present, resolved
+via `internal/shellinit.ResolvePowerShellProfiles` (§5 has the full
+per-profile install/remove/confirmation behavior). On non-Windows,
+`powershell` still means `pwsh`'s single profile only, as it always has.
 
 None of the snippets capture stderr/stdout globally — CLAUDE.md rejects
 a global stderr-tee as unreliable across shells — so

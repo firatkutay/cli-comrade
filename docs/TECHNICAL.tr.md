@@ -411,10 +411,26 @@ comrade history --limit 50 --json
 Hedef shell'in rc/profile dosyasına shell entegrasyon bloğunu kurar
 (veya kaldırır). Hook'un çalışma zamanında ne yaptığı için §9'a bakın.
 
+**Windows'ta `powershell`, kurulu her PowerShell varyantını bağımsız
+olarak hedefler** — Windows PowerShell 5.1 (`powershell.exe`) ve
+PowerShell 7 (`pwsh.exe`), hangisi gerçekten mevcutsa
+(`internal/shellinit/psprofiles.go`'nun `ResolvePowerShellProfiles`'ı).
+Bulunan her varyantın kendi `$PROFILE`'ı sorgulanır ve hook, `comrade
+init`'in diğer her shell için kullandığı aynı idempotent
+blok-marker mekanizmasıyla oraya kurulur/güncellenir/kaldırılır — her
+profil için bir rapor satırı (varyant etiketi + durum + yol). Yalnızca
+bir varyant kuruluysa sorun yok; hiçbiri bulunamazsa hata verir. Birden
+fazla profilin yazma gerektirdiği durumda, hepsini kapsayan **tek bir
+birleşik onay** sorulur — profil başına bir prompt değil — ve `--yes`
+bunu her zamanki gibi atlar. `--remove`, bunu profil başına yansıtır;
+`--print` değişmemiştir (kaç profil olursa olsun her zaman ham
+snippet metnini yazdırır). Windows dışında, `powershell` yine yalnızca
+`pwsh`'a çözülür, önceden olduğu gibi.
+
 | Flag | Etki |
 |---|---|
 | `--print` | Sadece snippet'i yazdır; hiçbir dosya değişikliği yapma |
-| `--remove` | cli-comrade bloğunu rc/profile dosyasından kaldır |
+| `--remove` | cli-comrade bloğunu rc/profile dosyasından/dosyalarından kaldır |
 | `-y`, `--yes` | Onay prompt'unu atla |
 
 ```
@@ -639,6 +655,14 @@ kaçış gerektirirdi. Encoding, derlenmiş binary'ye devredilir
 | zsh | `precmd` |
 | fish | `fish_postexec` event'i |
 | PowerShell | `$PROFILE`'a kurulan, `$?`/`$LASTEXITCODE`'u okuyan bir prompt fonksiyonu |
+
+Windows'ta bu `$PROFILE` kurulumu, **kurulu her PowerShell varyantının
+kendi profilini bağımsız olarak** hedefler — Windows PowerShell 5.1 ve
+PowerShell 7'nin ikisi de mevcutsa hook'u alır,
+`internal/shellinit.ResolvePowerShellProfiles` üzerinden çözülür (tam
+profil-başına kurulum/kaldırma/onay davranışı için §5'e bakın). Windows
+dışında, `powershell` her zaman olduğu gibi yalnızca `pwsh`'ın tek
+profili anlamına gelir.
 
 Snippet'lerin hiçbiri stderr/stdout'u genel olarak yakalamaz —
 CLAUDE.md, shell'ler genelinde güvenilmez olduğu için genel bir

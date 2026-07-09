@@ -34,8 +34,8 @@ Natural-language requests work in whatever language the configured LLM
 understands — there's no language gate on input. What *is* fixed to
 Turkish/English is the product's own surface: UI strings (`internal/i18n`)
 and the language comrade instructs the LLM to answer in, resolved from
-config `general.language` → `COMRADE_LANG` → `LANG`/`LC_ALL` → English
-fallback (`internal/i18n/lang.go`).
+config `general.language` → `COMRADE_LANG` → `LANG`/`LC_ALL` → (Windows
+only) the system locale → English fallback (`internal/i18n/lang.go`).
 
 ### Core scenarios
 
@@ -157,8 +157,9 @@ Doğal dil istekleri, kullanılan LLM'in anladığı her dilde çalışır — g
 tarafında bir dil kısıtlaması yoktur. Sabit olan TR/İngilizce çift, ürünün
 kendi yüzeyidir: arayüz metinleri (`internal/i18n`) ve comrade'ın LLM'e
 hangi dilde yanıt vermesini söylediği — bu da config'teki
-`general.language` → `COMRADE_LANG` → `LANG`/`LC_ALL` → İngilizce
-varsayılanı sırasıyla belirlenir (`internal/i18n/lang.go`).
+`general.language` → `COMRADE_LANG` → `LANG`/`LC_ALL` → (yalnızca
+Windows'ta) sistem yerel ayarı → İngilizce varsayılanı sırasıyla
+belirlenir (`internal/i18n/lang.go`).
 
 ### Temel senaryolar
 

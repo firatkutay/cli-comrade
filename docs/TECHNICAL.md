@@ -30,10 +30,11 @@ precedence: `--auto`/`--ask`/`--info` flag > `COMRADE_MODE` env >
 
 **The ask-mode confirm prompt's key legend is fully i18n'd** — it
 renders through the exact same `general.language`/`COMRADE_LANG`/
-`LANG`/`LC_ALL` resolution chain every other command's output uses
-(`internal/tui/confirm.go`'s `tr.Lang()`, fed from the injected
-`i18n.Translator`; catalog messages `MsgConfirmLegend` and
-`MsgConfirmEditHeader`, `internal/i18n/catalog.go`):
+`LANG`/`LC_ALL`/Windows-system-locale resolution chain (see below) every
+other command's output uses (`internal/tui/confirm.go`'s `tr.Lang()`,
+fed from the injected `i18n.Translator`; catalog messages
+`MsgConfirmLegend` and `MsgConfirmEditHeader`,
+`internal/i18n/catalog.go`):
 
 | Choice | TR key | EN key | Meaning |
 |---|---|---|---|
@@ -71,9 +72,13 @@ comrade's **interface** — every user-facing string in the binary itself
 `internal/i18n` catalog (`catalogEN`/`catalogTR` in
 `internal/i18n/catalog.go`, one `MessageID` per string, kept in lockstep
 by `TestCatalogsCoverIdenticalKeys`). Interface language resolves as:
-explicit `general.language` config (`tr`/`en`) > `COMRADE_LANG` env >
-`LANG`/`LC_ALL` (glibc-style locale prefix match) > English fallback
-(`internal/i18n/lang.go`, `ResolveLanguage`).
+explicit `general.language` config (`tr`/`en`) wins outright; `auto`
+(the default) falls through to `COMRADE_LANG` env > `LANG`/`LC_ALL`
+(glibc-style locale prefix match) > **the Windows system locale**
+(Windows only, via `GetUserDefaultLocaleName`, e.g. `tr-TR`; always
+empty on other platforms since `LANG`/`LC_ALL` already **is** the OS
+locale mechanism there) > English fallback (`internal/i18n/lang.go`,
+`ResolveLanguage`; §10 has the implementation detail).
 
 The **user's natural-language request itself**, however, is not limited
 to Turkish or English — it is whatever free text the user types, and the
@@ -163,6 +168,12 @@ flowchart TD
    `buildCommand`), selected by `runtime.GOOS` at construction time
    (`New`) rather than a build tag, so all three platforms' logic is
    testable from one binary (per CLAUDE.md's platform-branching rule).
+   The one exception is process-group kill on timeout/cancellation:
+   `Setpgid`/`syscall.Kill` (Unix) vs. `Process.Kill` (Windows) are
+   themselves platform-specific syscalls that cannot compile on the
+   other `GOOS`, so that narrow piece lives in a build-tagged
+   `executor_unix.go`/`executor_windows.go` pair instead (§10 has the
+   other such pair in this codebase).
 8. **Audit log** (`internal/audit`) — every executed step is appended as
    one JSONL line: `timestamp`, `request` (the original free-text ask),
    `command`, `risk`, `mode`, `exit_code`, `duration_ms`. Read back via
@@ -639,6 +650,32 @@ exists — `enUsageDefault` plus `internal/cli/help.go`'s
 `applyTranslatedHelp`, which walks the whole command tree by
 `CommandPath()` after every subcommand is attached and rewrites each
 one's `Short`/flag-usage text into the resolved language.
+
+**Windows locale probe**: `ResolveLanguage` (`internal/i18n/lang.go`)
+took a third parameter, `systemLocale func() string`, consulted only
+when `general.language=auto` and neither `COMRADE_LANG` nor
+`LANG`/`LC_ALL` is set — and only once, lazily, never eagerly. Its real
+implementation is split across a build-tagged file pair:
+`locale_windows.go` (`//go:build windows`) calls kernel32's
+`GetUserDefaultLocaleName` via the stdlib `syscall` package to get a
+BCP-47 tag like `tr-TR`; `locale_other.go` (`//go:build !windows`)
+always returns `""`, since on Linux/macOS `LANG`/`LC_ALL` already *is*
+the OS locale mechanism, so there is nothing this step could add there
+— behavior on those platforms is therefore unchanged. This pair is one
+of the codebase's build-tag isolations from CLAUDE.md's "no build tags,
+branch on `runtime.GOOS` instead" rule — the other being
+`internal/executor`'s own `executor_unix.go`/`executor_windows.go`
+pair, which isolates its process-group kill syscalls the same way (§3).
+Both exist for the identical reason: a raw platform syscall (here,
+`GetUserDefaultLocaleName`; there, `Setpgid`/`syscall.Kill` vs.
+`Process.Kill`) simply cannot compile on the other `GOOS`, so a build
+tag is the only way to isolate it — there is no `runtime.GOOS` branch
+that would let either function live in one cross-platform file. Both
+exceptions are kept equally narrow: `ResolveLanguage` itself and every
+other decision in this package stay pure, platform-independent Go,
+fully testable on any host `GOOS` via the injectable `systemLocale`
+parameter; only the one syscall that does nothing but
+return a string needed a build-tagged home.
 
 **Enforcement**: `internal/i18n/catalog_test.go`'s
 `TestCatalogsCoverIdenticalKeys`/`TestCatalogsHaveNoEmptyValues` fail the

@@ -59,6 +59,57 @@ func LastCommandPath(goos string, getenv func(string) string) (string, error) {
 	return filepath.Join(home, ".local", "state", "cli-comrade", "last_command.json"), nil
 }
 
+// WriteLastCommand serializes cmd to JSON and atomically writes it to
+// path — write to a temp file in path's own directory, then os.Rename,
+// so a reader (ReadLastCommand) never observes a partially written file
+// — creating path's parent directory first if it does not exist. FAZ
+// 4's hidden "comrade hook record" subcommand is the sole writer of this
+// file (see internal/shellinit and internal/cli/hook.go): shell hooks
+// never hand-assemble this JSON themselves, since shell-escaping
+// arbitrary command text (quotes, unicode, embedded newlines) into a
+// JSON literal from inside a shell script is unsafe. They instead exec
+// the comrade binary, which does the encoding here with Go's
+// encoding/json.
+func WriteLastCommand(path string, cmd LastCommand) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("write last command: create directory %s: %w", dir, err)
+	}
+
+	data, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("write last command: marshal: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(dir, ".last_command-*.json.tmp")
+	if err != nil {
+		return fmt.Errorf("write last command: create temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write last command: write temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write last command: close temp file: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		return fmt.Errorf("write last command: chmod temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("write last command: rename temp file into place: %w", err)
+	}
+	renamed = true
+	return nil
+}
+
 // ReadLastCommand reads and parses the last_command.json file at path. A
 // missing file, an unreadable file, or corrupt JSON is not an error: ok
 // is false and the zero LastCommand is returned, so callers always get a

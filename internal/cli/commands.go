@@ -40,18 +40,6 @@ func newChatCmd() *cobra.Command {
 	}
 }
 
-// newInitCmd stubs shell integration setup. Real behavior lands in FAZ 4.
-func newInitCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "init [bash|zsh|fish|powershell]",
-		Short: "Install shell integration hooks",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			printNotReady(cmd.OutOrStdout(), "init")
-			return nil
-		},
-	}
-}
-
 // newHistoryCmd stubs the audit-log viewer. Real behavior lands in FAZ 6.
 func newHistoryCmd() *cobra.Command {
 	return &cobra.Command{

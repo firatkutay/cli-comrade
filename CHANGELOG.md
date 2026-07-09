@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FAZ 4: shell integration — `comrade init [bash|zsh|fish|powershell]`
+  (replacing the FAZ 0 stub) installs an idempotent, marker-delimited
+  hook block (`internal/shellinit`, `go:embed`'d per-shell snippets)
+  into the shell's rc/profile file (`~/.bashrc`, `~/.zshrc` respecting
+  `ZDOTDIR`, `~/.config/fish/config.fish` respecting
+  `XDG_CONFIG_HOME`, or a PowerShell `$PROFILE` actually resolved by
+  invoking `pwsh`/`powershell` — never guessed); `--print` shows the
+  snippet only, `--remove` uninstalls it, `--yes` skips the
+  confirmation prompt. Every hook execs a new hidden `comrade hook
+  record --shell <name> --exit <code> --command <text>` subcommand
+  instead of hand-assembling JSON in shell script (unsafe for arbitrary
+  command text — see docs/phases/FAZ-04.md), which atomically writes
+  `last_command.json` via a new `context.WriteLastCommand` (temp file +
+  rename). Hooks intentionally record only command/exit code/timestamp/
+  shell, never stderr/stdout (FAZ 7's `comrade fix --rerun` owns
+  capturing that, by re-running the command directly). New
+  `scripts/install.sh` / `scripts/install.ps1` download, checksum-verify,
+  and install the latest (or pinned) release binary, then suggest
+  `comrade init`.
 - FAZ 3: context collector + redaction — `internal/context`: DI-friendly
   `Collector`/`Collect(ctx, Options) Context` gathering OS/arch, shell
   type + best-effort version, working/home dir, admin/root status

@@ -98,3 +98,47 @@ func TestReadLastCommandEmptyPath(t *testing.T) {
 	_, ok := ReadLastCommand("")
 	assert.False(t, ok)
 }
+
+func TestWriteLastCommandRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	// Nested, not-yet-existing directory: WriteLastCommand must create it.
+	path := filepath.Join(dir, "nested", "last_command.json")
+
+	ts := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	want := LastCommand{
+		Command:   "echo \"héllo\nworld\" 'quo\"ted'",
+		ExitCode:  127,
+		Timestamp: ts,
+		Shell:     "zsh",
+	}
+
+	require.NoError(t, WriteLastCommand(path, want))
+
+	got, ok := ReadLastCommand(path)
+	require.True(t, ok)
+	assert.Equal(t, want.Command, got.Command)
+	assert.Equal(t, want.ExitCode, got.ExitCode)
+	assert.True(t, want.Timestamp.Equal(got.Timestamp))
+	assert.Equal(t, want.Shell, got.Shell)
+	assert.Equal(t, "", got.StderrTail)
+	assert.Equal(t, "", got.StdoutTail)
+
+	// No leftover temp file: the write must have renamed, not copied.
+	entries, err := os.ReadDir(filepath.Join(dir, "nested"))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "last_command.json", entries[0].Name())
+}
+
+func TestWriteLastCommandOverwritesExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "last_command.json")
+
+	require.NoError(t, WriteLastCommand(path, LastCommand{Command: "first", ExitCode: 0, Shell: "bash"}))
+	require.NoError(t, WriteLastCommand(path, LastCommand{Command: "second", ExitCode: 1, Shell: "bash"}))
+
+	got, ok := ReadLastCommand(path)
+	require.True(t, ok)
+	assert.Equal(t, "second", got.Command)
+	assert.Equal(t, 1, got.ExitCode)
+}

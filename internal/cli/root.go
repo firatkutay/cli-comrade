@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -27,12 +28,20 @@ func NewRootCmd(version string) *cobra.Command {
 		// opt-in required.
 		SilenceErrors: true,
 		SilenceUsage:  true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "comrade version %s\n\n", cmd.Version); err != nil {
-				return err
-			}
-			return cmd.Help()
-		},
+		// Args is set to cobra.ArbitraryArgs (rather than left nil) so
+		// that cobra's own legacyArgs check — which otherwise rejects any
+		// arg cobra.Command.Find couldn't match to a known subcommand
+		// with "unknown command %q" — never fires here. That is exactly
+		// what UYGULAMA_PLANI.md FAZ 6 item 3's root-command fallback
+		// needs: `comrade docker kur` doesn't match any subcommand name,
+		// so Find returns the root command itself with args =
+		// ["docker","kur"] intact; RunE below is what turns that into a
+		// `do` request. A genuine subcommand typo (e.g. "comrade fx")
+		// is therefore no longer rejected with a helpful "unknown
+		// command" suggestion — it free-text-dispatches to `do` instead,
+		// which is this UX pattern's deliberate, documented tradeoff
+		// (see docs/phases/FAZ-06.md).
+		Args: cobra.ArbitraryArgs,
 	}
 	root.SetVersionTemplate("comrade version {{.Version}}\n")
 
@@ -46,6 +55,17 @@ func NewRootCmd(version string) *cobra.Command {
 	// anywhere in this tree.
 	newLoader := func() (*config.Loader, error) {
 		return config.NewLoader("")
+	}
+
+	rootFlags := addExecutionFlags(root)
+	root.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "comrade version %s\n\n", cmd.Version); err != nil {
+				return err
+			}
+			return cmd.Help()
+		}
+		return runDo(cmd, newLoader, strings.Join(args, " "), rootFlags)
 	}
 
 	root.AddCommand(

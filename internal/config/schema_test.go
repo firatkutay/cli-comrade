@@ -44,6 +44,8 @@ func TestDefaultMatchesPlanExactly(t *testing.T) {
 
 	assert.Equal(t, true, cfg.Audit.Enabled)
 	assert.Equal(t, 90, cfg.Audit.RetentionDays)
+
+	assert.Equal(t, 300, cfg.Executor.StepTimeoutSeconds)
 }
 
 // TestDefaultDoesNotPanic guards the Default() panic paths: if

@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FAZ 6: executor + three behavior modes (auto/ask/info) — the product's
+  core execution loop. `internal/engine`: `Mode` (`auto`/`ask`/`info`) +
+  `ResolveMode(flag, env, config)` implementing the exact flag >
+  `COMRADE_MODE` > config precedence; `Execute(ctx, plan, mode, deps)
+  (RunSummary, error)` dispatching to `info` (prints the plan, executes
+  nothing), `ask` (per-step confirm via a decoupled `PromptUI` interface:
+  `[e]vet`/`[h]ayır` run/skip, `[d]üzenle` re-evaluates the edited
+  command through `safety.Engine` *before* ever running it — refusing and
+  re-prompting on a newly-Blocked edit — `[a]çıkla` fetches an LLM
+  explanation and re-prompts, `[t]ümü` auto-approves remaining
+  read/write/network steps while still individually confirming
+  destructive/elevated ones), and `auto` (sequential execution with a
+  one-line status per step; destructive/elevated steps force the same
+  confirm prompt unless `safety.confirm_destructive`/`confirm_elevated`
+  is disabled *and* `--yolo` is set, which prints a mandatory red warning
+  and proceeds — Block itself is never `--yolo`-bypassable in any mode,
+  and a Block aborts the rest of an auto-mode plan). A failed step
+  (nonzero exit, including timeout) triggers up to 3 total
+  self-correction round-trips per run (ask the LLM for a revised command,
+  re-evaluate it through safety before ever running it, retry), then
+  stops with a summary and suggestion. Ctrl-C (`signal.NotifyContext`)
+  cancels the run cleanly: the in-flight step's process group is killed
+  by `internal/executor`, remaining steps are recorded skipped, and a
+  full summary is printed. `internal/audit` is wired end-to-end: one
+  JSONL entry per step that actually executed (never a Blocked/skipped
+  one, never stdout/stderr content), lazy `retention_days` cleanup once
+  per invocation; new `comrade history` (replacing the FAZ 0 stub) reads
+  it back as a table or `--json`, `--limit N` (default 20), read-only.
+  `comrade do <request...>` is now the real, no-longer-hidden pipeline
+  (`--dry-run` unchanged from FAZ 5; new `--auto`/`--ask`/`--info`/
+  `--yolo` flags); the root command now falls back to `do` for any arg
+  vector that doesn't match a known subcommand (`comrade docker kur`
+  works directly). New `[executor]` config section
+  (`step_timeout_seconds`, default 300) for internal/executor's per-step
+  timeout. Proven end-to-end against a real compiled binary, a real
+  `*executor.Executor`, and an `httptest`-mocked `openai_compat` plan
+  server: a benign step actually runs while a `rm -rf /` step the model
+  mislabeled "read" is Blocked and never reaches the executor — see
+  docs/phases/FAZ-06.md.
 - FAZ 5: engine (plan generation) + safety rule engine — `internal/safety`:
   an LLM-independent, config-driven `Engine.Evaluate(command, declared)`
   implementing CLAUDE.md's five-class `RiskClass` (read/write/network/

@@ -119,23 +119,60 @@ func TestDoDryRunRendersPlanTableAgainstMockProvider(t *testing.T) {
 	assert.Contains(t, stdout, "denylist rule")
 }
 
-// TestDoWithoutDryRunFailsWithClearMessage proves the mandatory --dry-run
-// guard from UYGULAMA_PLANI.md FAZ 5 item 4: without --dry-run, `comrade
-// do` performs no plan generation (no network call reaches the mock
-// server at all) and exits non-zero with the documented message.
-func TestDoWithoutDryRunFailsWithClearMessage(t *testing.T) {
-	withIsolatedConfigDir(t)
+// benignAndDecoyPlanJSON is the canned model response for
+// TestDoAutoModeRunsBenignStepAndBlocksDenylistedStepAgainstRealExecutor:
+// one truly benign `echo` step, and one `rm -rf /` decoy mislabeled
+// "read" — exactly UYGULAMA_PLANI.md FAZ 6's own end-to-end acceptance
+// scenario.
+const benignAndDecoyPlanJSON = `{
+  "summary": "Prints a marker, then a decoy the model never should have produced.",
+  "steps": [
+    {"command": "echo comrade-auto-e2e-marker", "rationale": "benign marker step", "risk": "read", "reversible": true},
+    {"command": "rm -rf /", "rationale": "a decoy the model must never actually produce", "risk": "read", "reversible": false}
+  ]
+}`
 
-	_, _, err := execRootSplit(t, "dev", "do", "docker", "kur")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "--dry-run")
+// TestDoAutoModeRunsBenignStepAndBlocksDenylistedStepAgainstRealExecutor
+// is FAZ 6's end-to-end proof, run against the REAL internal/executor
+// (no executor fake): `comrade do ... --auto`, backed by a mock
+// openai_compat plan server, actually runs the benign echo step (its
+// real stdout appears) while the mislabeled `rm -rf /` step is Blocked by
+// internal/safety and never reaches the executor at all — proven both by
+// its absence from stdout's executed-step evidence and by the audit log
+// only ever recording the one step that actually ran.
+func TestDoAutoModeRunsBenignStepAndBlocksDenylistedStepAgainstRealExecutor(t *testing.T) {
+	withIsolatedConfigDir(t)
+	server := newMockPlanServer(t, benignAndDecoyPlanJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	stdout, stderr, err := execRootSplit(t, "dev", "do", "print", "a", "marker", "--auto")
+
+	require.Error(t, err, "the run must abort: the plan's second step is Blocked")
+	assert.Contains(t, err.Error(), "blocked")
+
+	assert.Contains(t, stdout, "comrade-auto-e2e-marker", "the real executor must have actually run the benign echo step")
+	assert.Contains(t, stdout, "BLOCKED(")
+	assert.Contains(t, stdout, "rm -rf /")
+	assert.Contains(t, stdout, "1 executed, 0 skipped, 1 blocked")
+	_ = stderr
+
+	// Independently confirm via the audit log: exactly one entry (the
+	// benign step), never the blocked one.
+	entries := readAuditEntries(t)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "echo comrade-auto-e2e-marker", entries[0].Command)
+	assert.Equal(t, 0, entries[0].ExitCode)
 }
 
-// TestDoIsHiddenFromHelp proves `do` stays a hidden diagnostic command in
-// this phase (FAZ 6 turns it into the product's real entry point).
-func TestDoIsHiddenFromHelp(t *testing.T) {
+// TestDoIsVisibleInHelp proves `do` is FAZ 6's real, user-facing entry
+// point (no longer the FAZ 5 hidden diagnostic command).
+func TestDoIsVisibleInHelp(t *testing.T) {
 	out := execRoot(t, "dev")
-	assert.NotContains(t, out, "do <request", "the hidden `do` command must not appear in root help output")
+	assert.Contains(t, out, "do          Generate a plan", "`do` must be a visible subcommand as of FAZ 6")
 }
 
 // TestRenderPlanShowsEffectiveRiskNotDeclaredRisk is renderPlan's own

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/firatkutay/cli-comrade/internal/context"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/shellinit"
 )
 
@@ -42,8 +43,14 @@ func defaultInitDeps() initDeps {
 
 // newInitCmd builds the "comrade init" command: installing, printing,
 // or removing the shell-integration block documented in
-// internal/shellinit.
-func newInitCmd(deps initDeps) *cobra.Command {
+// internal/shellinit. newLoader is only consulted for the install/remove
+// paths' translated output (see runInitInstall/runInitRemove) — --print
+// and every argument-resolution error return before ever touching it, so
+// `comrade init --print`/a bad shell name never load or create a config
+// file as a side effect (auth_test.go-style zero-config-touch fast
+// rejection, matching the exact same principle applied to `comrade auth
+// login`'s ollama/unknown-provider checks).
+func newInitCmd(deps initDeps, newLoader loaderFactory) *cobra.Command {
 	var (
 		printOnly bool
 		remove    bool
@@ -56,7 +63,7 @@ func newInitCmd(deps initDeps) *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if printOnly && remove {
-				return errors.New("init: --print and --remove are mutually exclusive")
+				return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgInitPrintRemoveExclusiveError))
 			}
 
 			shellName, err := resolveShellArg(args, deps)
@@ -77,17 +84,22 @@ func newInitCmd(deps initDeps) *cobra.Command {
 				return err
 			}
 
+			_, tr, err := loadConfigWithNotice(cmd, newLoader)
+			if err != nil {
+				return err
+			}
+
 			path, ok, note := shellinit.RCPath(cmd.Context(), shell, deps.goos, deps.getenv, deps.lookPath, deps.run)
 			if remove {
-				return runInitRemove(cmd, path, ok, note)
+				return runInitRemove(cmd, path, ok, note, tr)
 			}
-			return runInitInstall(cmd, shell, path, ok, note, assumeYes)
+			return runInitInstall(cmd, shell, path, ok, note, assumeYes, tr)
 		},
 	}
 
-	cmd.Flags().BoolVar(&printOnly, "print", false, "Print the shell snippet only; make no file changes")
-	cmd.Flags().BoolVar(&remove, "remove", false, "Remove the cli-comrade block from the shell rc/profile file")
-	cmd.Flags().BoolVarP(&assumeYes, "yes", "y", false, "Assume yes and skip the confirmation prompt")
+	cmd.Flags().BoolVar(&printOnly, "print", false, enUsageDefault(i18n.MsgFlagPrint))
+	cmd.Flags().BoolVar(&remove, "remove", false, enUsageDefault(i18n.MsgFlagRemove))
+	cmd.Flags().BoolVarP(&assumeYes, "yes", "y", false, enUsageDefault(i18n.MsgFlagYes))
 	return cmd
 }
 
@@ -102,10 +114,10 @@ func resolveShellArg(args []string, deps initDeps) (string, error) {
 	}
 	detected := context.DetectShell(deps.goos, deps.getenv)
 	if detected == "" {
-		return "", errors.New("init: could not detect your shell; run e.g. \"comrade init bash\" explicitly")
+		return "", fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgInitShellUndetectedError))
 	}
 	if _, err := shellinit.ParseShell(detected); err != nil {
-		return "", fmt.Errorf("init: detected shell %q is not supported; run \"comrade init bash|zsh|fish|powershell\" explicitly", detected)
+		return "", fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgInitShellUnsupportedError, detected))
 	}
 	return detected, nil
 }
@@ -114,16 +126,14 @@ func resolveShellArg(args []string, deps initDeps) (string, error) {
 // non-remove) path: show the block that would be added and the target
 // rc file, then — unless assumeYes short-circuits it — ask for a y/N
 // confirmation on stdin before writing.
-func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok bool, note string, assumeYes bool) error {
+func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok bool, note string, assumeYes bool, tr i18n.Translator) error {
 	block, err := shellinit.Block(shell)
 	if err != nil {
 		return err
 	}
 
 	if !ok {
-		_, err := fmt.Fprintf(cmd.OutOrStdout(),
-			"%s\n\nCould not automatically locate a profile file to edit (%s).\nAdd the block above to your PowerShell profile manually.\n",
-			block, note)
+		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPowerShellManualFallback, block, note))
 		return err
 	}
 
@@ -138,21 +148,21 @@ func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok b
 	}
 
 	if status == shellinit.StatusAlreadyInstalled {
-		_, err := fmt.Fprintf(cmd.OutOrStdout(), "cli-comrade shell integration is already installed in %s\n", path)
+		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitAlreadyInstalled, path))
 		return err
 	}
 
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "The following will be added to %s:\n\n%s\n\n", path, block); err != nil {
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPreview, path, block)); err != nil {
 		return err
 	}
 
 	if !assumeYes {
-		confirmed, err := confirmYesNo(cmd, fmt.Sprintf("Add cli-comrade shell integration to %s? [y/N] ", path))
+		confirmed, err := confirmYesNo(cmd, tr.T(i18n.MsgInitConfirmPrompt, path))
 		if err != nil {
 			return err
 		}
 		if !confirmed {
-			_, err := fmt.Fprintln(cmd.OutOrStdout(), "Aborted; no changes made.")
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), tr.T(i18n.MsgInitAborted))
 			return err
 		}
 	}
@@ -160,14 +170,14 @@ func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok b
 	if err := writeFileContent(path, updated); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Installed cli-comrade shell integration in %s\n", path)
+	_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitInstalled, path))
 	return err
 }
 
 // runInitRemove implements comrade init --remove.
-func runInitRemove(cmd *cobra.Command, path string, ok bool, note string) error {
+func runInitRemove(cmd *cobra.Command, path string, ok bool, note string, tr i18n.Translator) error {
 	if !ok {
-		_, err := fmt.Fprintf(cmd.OutOrStdout(), "Nothing to remove: could not locate a profile file (%s).\n", note)
+		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitRemoveNoProfile, note))
 		return err
 	}
 
@@ -178,14 +188,14 @@ func runInitRemove(cmd *cobra.Command, path string, ok bool, note string) error 
 
 	updated, removed := shellinit.RemoveBlock(existing)
 	if !removed {
-		_, err := fmt.Fprintf(cmd.OutOrStdout(), "cli-comrade shell integration is not installed in %s; nothing to do.\n", path)
+		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitNotInstalled, path))
 		return err
 	}
 
 	if err := writeFileContent(path, updated); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Removed cli-comrade shell integration from %s\n", path)
+	_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitRemoved, path))
 	return err
 }
 

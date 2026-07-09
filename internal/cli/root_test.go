@@ -25,6 +25,7 @@ func execRoot(t *testing.T, version string, args ...string) string {
 }
 
 func TestRootCmdBareInvocationPrintsVersionAndHelp(t *testing.T) {
+	withIsolatedConfigDir(t)
 	out := execRoot(t, "1.2.3")
 
 	assert.True(t, strings.HasPrefix(out, "comrade version 1.2.3\n\n"),
@@ -45,31 +46,11 @@ func TestRootCmdDefaultVersionIsDevWhenUnset(t *testing.T) {
 	assert.Equal(t, "comrade version dev\n", out)
 }
 
-func TestSubcommandStubsPrintNotReadyMessage(t *testing.T) {
-	// "config" and "init" are deliberately excluded here: FAZ 1 replaced
-	// config's stub with a real command tree (internal/cli/config.go)
-	// and FAZ 4 replaced init's (internal/cli/init.go, tested in
-	// internal/cli/init_test.go). "history" is excluded as of FAZ 6:
-	// internal/cli/history.go replaced its stub (tested in
-	// internal/cli/history_test.go). "fix" is excluded as of FAZ 7:
-	// internal/cli/fix.go replaced its stub (tested in
-	// internal/cli/fix_test.go).
-	cases := []struct {
-		name string
-		args []string
-		want string
-	}{
-		{"explain", []string{"explain", "ls"}, "comrade explain: this feature is not ready yet.\n"},
-		{"chat", []string{"chat"}, "comrade chat: this feature is not ready yet.\n"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			out := execRoot(t, "dev", tc.args...)
-			assert.Equal(t, tc.want, out)
-		})
-	}
-}
+// Every subcommand stub from earlier phases has now been replaced with a
+// real implementation: "config"/"init" (FAZ 1/4), "history" (FAZ 6),
+// "fix" (FAZ 7), and finally "explain"/"chat" (FAZ 9 — see
+// internal/cli/explain_test.go and internal/cli/chat_test.go). There is no
+// longer a stub command left in this tree to test here.
 
 // --- FAZ 6 root fallback dispatch ------------------------------------------
 
@@ -109,6 +90,7 @@ func TestRootDispatchUnmatchedArgsFallsBackToDo(t *testing.T) {
 // TestRootDispatchHelpFlagShowsHelp proves --help is intercepted by
 // cobra's own help handling before any fallback dispatch runs.
 func TestRootDispatchHelpFlagShowsHelp(t *testing.T) {
+	withIsolatedConfigDir(t)
 	out := execRoot(t, "dev", "--help")
 	assert.Contains(t, out, "Usage:")
 	assert.Contains(t, out, "comrade is a cross-platform AI CLI companion for the terminal")

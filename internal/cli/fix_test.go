@@ -16,6 +16,7 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/config"
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
 	"github.com/firatkutay/cli-comrade/internal/executor"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
 
@@ -262,7 +263,7 @@ func TestAcquireErrorContextRefusesDestructiveRerun(t *testing.T) {
 		},
 	}
 
-	errCtx, err := acquireErrorContext(cmd, sysCtx, safetyEngine, rec, true, "")
+	errCtx, err := acquireErrorContext(cmd, sysCtx, safetyEngine, rec, true, "", i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 
 	assert.Empty(t, rec.calls, "the destructive last command must NEVER reach the executor via --rerun")
@@ -285,7 +286,7 @@ func TestAcquireErrorContextRerunWithoutLastCommandIsAnError(t *testing.T) {
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 
-	_, err := acquireErrorContext(cmd, contextpkg.Context{}, safetyEngine, rec, true, "")
+	_, err := acquireErrorContext(cmd, contextpkg.Context{}, safetyEngine, rec, true, "", i18n.NewTranslator(i18n.LangEN))
 	require.Error(t, err)
 	assert.Empty(t, rec.calls)
 }
@@ -301,7 +302,7 @@ func TestAcquireErrorContextExplicitCommandRunsItAndCapturesOutput(t *testing.T)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 
-	errCtx, err := acquireErrorContext(cmd, contextpkg.Context{}, safetyEngine, rec, false, "some benign command")
+	errCtx, err := acquireErrorContext(cmd, contextpkg.Context{}, safetyEngine, rec, false, "some benign command", i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 
 	require.Len(t, rec.calls, 1)
@@ -319,7 +320,7 @@ func TestPasteModeParsesCommandAndErrorUntilBlankLine(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetIn(strings.NewReader("mycmd --flag\nline one\nline two\n\nthis must not be read"))
 
-	errCtx, err := pasteMode(cmd, contextpkg.Context{OS: "linux"})
+	errCtx, err := pasteMode(cmd, contextpkg.Context{OS: "linux"}, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 
 	assert.Equal(t, "mycmd --flag", errCtx.Command)
@@ -336,7 +337,7 @@ func TestPasteModeHandlesEOFWithoutBlankLine(t *testing.T) {
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetIn(strings.NewReader("mycmd\nonly line, no trailing blank"))
 
-	errCtx, err := pasteMode(cmd, contextpkg.Context{})
+	errCtx, err := pasteMode(cmd, contextpkg.Context{}, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 
 	assert.Equal(t, "mycmd", errCtx.Command)

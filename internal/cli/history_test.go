@@ -57,7 +57,8 @@ func TestHistoryTableShowsRecentEntriesNewestOrderPreserved(t *testing.T) {
 	withIsolatedConfigDir(t)
 	seedAuditEntries(t, 3)
 
-	out := execRoot(t, "dev", "history")
+	out, stderr, err := execRootSplit(t, "dev", "history")
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	assert.Contains(t, out, "TIME")
 	assert.Contains(t, out, "MODE")
@@ -73,7 +74,8 @@ func TestHistoryJSONPrintsOneEntryPerLine(t *testing.T) {
 	withIsolatedConfigDir(t)
 	seedAuditEntries(t, 2)
 
-	out := execRoot(t, "dev", "history", "--json")
+	out, stderr, err := execRootSplit(t, "dev", "history", "--json")
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	var decoded []audit.Entry
 	scanner := bufio.NewScanner(strings.NewReader(out))
@@ -95,7 +97,8 @@ func TestHistoryLimitFlagCapsToMostRecentEntries(t *testing.T) {
 	withIsolatedConfigDir(t)
 	seedAuditEntries(t, 5)
 
-	out := execRoot(t, "dev", "history", "--limit", "2")
+	out, stderr, err := execRootSplit(t, "dev", "history", "--limit", "2")
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	assert.NotContains(t, out, "echo entry-0")
 	assert.NotContains(t, out, "echo entry-2")
@@ -103,14 +106,22 @@ func TestHistoryLimitFlagCapsToMostRecentEntries(t *testing.T) {
 	assert.Contains(t, out, "echo entry-4")
 }
 
-func TestHistoryOnEmptyLogPrintsHeaderOnly(t *testing.T) {
+// TestHistoryOnEmptyLogPrintsFriendlyEmptyMessage proves an empty audit
+// log prints a friendly "nothing recorded yet" message instead of a bare
+// header row with nothing underneath it (which earlier phases printed —
+// see docs/phases/FAZ-09.md). execRootSplit (not execRoot) is used
+// because this is the isolated dir's first invocation, and the shared
+// first-run config notice (unrelated to this test) lands on stderr.
+func TestHistoryOnEmptyLogPrintsFriendlyEmptyMessage(t *testing.T) {
 	withIsolatedConfigDir(t)
 
-	out := execRoot(t, "dev", "history")
+	out, stderr, err := execRootSplit(t, "dev", "history")
+	require.NoError(t, err, "stderr: %s", stderr)
 
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	require.Len(t, lines, 1, "an empty audit log must print only the header row")
-	assert.Contains(t, lines[0], "COMMAND")
+	require.Len(t, lines, 1, "an empty audit log must print exactly one line: the empty message")
+	assert.NotContains(t, lines[0], "COMMAND", "the table header must not appear when there is nothing to show under it")
+	assert.Contains(t, lines[0], "No commands recorded yet.")
 }
 
 // TestHistoryIsReadOnlyNeverRewritesAuditFile proves `comrade history`
@@ -122,7 +133,8 @@ func TestHistoryIsReadOnlyNeverRewritesAuditFile(t *testing.T) {
 	seedAuditEntries(t, 1)
 
 	before := readAuditEntries(t)
-	_ = execRoot(t, "dev", "history")
+	_, _, err := execRootSplit(t, "dev", "history")
+	require.NoError(t, err)
 	after := readAuditEntries(t)
 
 	require.Len(t, before, 1)

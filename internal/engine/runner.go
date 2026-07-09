@@ -10,6 +10,7 @@ import (
 
 	"github.com/firatkutay/cli-comrade/internal/audit"
 	"github.com/firatkutay/cli-comrade/internal/executor"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 	"github.com/firatkutay/cli-comrade/internal/tui"
@@ -156,6 +157,18 @@ type RunDeps struct {
 	// Now is an injectable clock for audit timestamps; nil defaults to
 	// time.Now.
 	Now func() time.Time
+
+	// Translator resolves every user-facing string Execute itself prints
+	// (BLOCKED/--yolo-bypass lines, RunSummary.AbortReason text) in the
+	// user's resolved language (internal/cli builds it once per
+	// invocation via i18n.ResolveLanguage/i18n.NewTranslator — see
+	// docs/phases/FAZ-09.md). A zero-value Translator (every RunDeps this
+	// package's own tests construct as a plain struct literal, and every
+	// pre-FAZ-9 caller) defaults to English via tr() below, so this field
+	// is purely additive: no existing caller/test needs to set it, and
+	// every English string this package ever printed stays byte-for-byte
+	// identical.
+	Translator i18n.Translator
 }
 
 func (d RunDeps) now() time.Time {
@@ -163,6 +176,18 @@ func (d RunDeps) now() time.Time {
 		return d.Now()
 	}
 	return time.Now()
+}
+
+// tr returns d.Translator if the caller set one (a non-zero-value
+// Translator always has Lang() == LangTR or was explicitly built via
+// i18n.NewTranslator(LangEN), either way behaving identically to the
+// default below for English output), or a fresh English Translator
+// otherwise — see Translator field's doc comment.
+func (d RunDeps) tr() i18n.Translator {
+	if d.Translator.Lang() == i18n.LangTR {
+		return d.Translator
+	}
+	return i18n.NewTranslator(i18n.LangEN)
 }
 
 // StepOutcome is one StepResult's final disposition.
@@ -252,7 +277,7 @@ func executeInfo(deps RunDeps, plan Plan) RunSummary {
 
 	for i, step := range plan.Steps {
 		if step.Decision.Action == safety.Block {
-			fmt.Fprintf(deps.Stdout, "%d. BLOCKED(%s): %s\n", i+1, step.Decision.Reason, step.Command) //nolint:errcheck
+			fmt.Fprint(deps.Stdout, deps.tr().T(i18n.MsgBlockedStep, i+1, step.Decision.Reason, step.Command)) //nolint:errcheck
 		} else {
 			badge := tui.RiskBadge(step.Decision.EffectiveRisk, deps.ColorEnabled)
 			fmt.Fprintf(deps.Stdout, "%d. %s %s\n", i+1, badge, step.Command) //nolint:errcheck
@@ -282,7 +307,7 @@ func executeAsk(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, error
 
 		if ctx.Err() != nil {
 			summary.Aborted = true
-			summary.AbortReason = "canceled"
+			summary.AbortReason = deps.tr().T(i18n.MsgAbortCanceled)
 			break
 		}
 
@@ -299,7 +324,7 @@ func executeAsk(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, error
 			}
 			if !ok {
 				summary.Aborted = true
-				summary.AbortReason = "canceled"
+				summary.AbortReason = deps.tr().T(i18n.MsgAbortCanceled)
 				break
 			}
 			step = resolved
@@ -352,7 +377,7 @@ func executeAuto(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, erro
 
 		if ctx.Err() != nil {
 			summary.Aborted = true
-			summary.AbortReason = "canceled"
+			summary.AbortReason = deps.tr().T(i18n.MsgAbortCanceled)
 			break
 		}
 
@@ -360,7 +385,7 @@ func executeAuto(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, erro
 			printBlocked(deps, i, step)
 			summary.Results = append(summary.Results, StepResult{Index: i, Command: step.Command, Outcome: OutcomeBlocked})
 			summary.Aborted = true
-			summary.AbortReason = fmt.Sprintf("step %d is blocked: %s", i+1, step.Decision.Reason)
+			summary.AbortReason = deps.tr().T(i18n.MsgAbortStepBlocked, i+1, step.Decision.Reason)
 			break
 		}
 
@@ -370,7 +395,7 @@ func executeAuto(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, erro
 		}
 		if aborted {
 			summary.Aborted = true
-			summary.AbortReason = "canceled"
+			summary.AbortReason = deps.tr().T(i18n.MsgAbortCanceled)
 			break
 		}
 		// Same re-check as executeAsk's, and for the same reason: an
@@ -383,7 +408,7 @@ func executeAuto(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, erro
 			printBlocked(deps, i, resolved)
 			summary.Results = append(summary.Results, StepResult{Index: i, Command: resolved.Command, Outcome: OutcomeBlocked})
 			summary.Aborted = true
-			summary.AbortReason = fmt.Sprintf("step %d is blocked: %s", i+1, resolved.Decision.Reason)
+			summary.AbortReason = deps.tr().T(i18n.MsgAbortStepBlocked, i+1, resolved.Decision.Reason)
 			break
 		}
 		if skipped {
@@ -517,19 +542,17 @@ func runAndRecord(ctx context.Context, deps RunDeps, mode Mode, index int, step 
 
 	if result.Canceled {
 		summary.Aborted = true
-		summary.AbortReason = "canceled"
+		summary.AbortReason = deps.tr().T(i18n.MsgAbortCanceled)
 		return true
 	}
 
 	if result.ExitCode != 0 {
-		suggestion := "review the command and retry manually, or adjust the request"
+		suggestion := deps.tr().T(i18n.MsgRetrySuggestion)
 		if corrected {
-			summary.AbortReason = fmt.Sprintf(
-				"step %d failed after %d self-correction attempt(s) (exit %d): %s — %s",
+			summary.AbortReason = deps.tr().T(i18n.MsgAbortStepFailedAfterCorrection,
 				index+1, selfCorrectionMaxAttempts, result.ExitCode, finalCommand, suggestion)
 		} else {
-			summary.AbortReason = fmt.Sprintf(
-				"step %d failed (exit %d): %s — %s",
+			summary.AbortReason = deps.tr().T(i18n.MsgAbortStepFailed,
 				index+1, result.ExitCode, finalCommand, suggestion)
 		}
 		summary.Aborted = true
@@ -678,11 +701,11 @@ func fillSkippedTail(summary *RunSummary, plan Plan, lastIndex int) {
 }
 
 func printBlocked(deps RunDeps, index int, step Step) {
-	fmt.Fprintf(deps.Stdout, "%d. BLOCKED(%s): %s\n", index+1, step.Decision.Reason, step.Command) //nolint:errcheck
+	fmt.Fprint(deps.Stdout, deps.tr().T(i18n.MsgBlockedStep, index+1, step.Decision.Reason, step.Command)) //nolint:errcheck
 }
 
 func printBlockedEdit(deps RunDeps, step Step) {
-	fmt.Fprintf(deps.Stdout, "BLOCKED(%s): %s\n", step.Decision.Reason, step.Command) //nolint:errcheck
+	fmt.Fprint(deps.Stdout, deps.tr().T(i18n.MsgBlockedStepEdit, step.Decision.Reason, step.Command)) //nolint:errcheck
 }
 
 func printAutoStatus(deps RunDeps, step Step) {
@@ -691,6 +714,6 @@ func printAutoStatus(deps RunDeps, step Step) {
 }
 
 func printYoloBypassWarning(deps RunDeps, step Step) {
-	line := fmt.Sprintf("--yolo bypass: running %s step without confirmation: %s", step.Decision.EffectiveRisk.String(), step.Command)
+	line := deps.tr().T(i18n.MsgYoloBypass, step.Decision.EffectiveRisk.String(), step.Command)
 	tui.PrintWarning(deps.Stdout, line, deps.ColorEnabled) //nolint:errcheck
 }

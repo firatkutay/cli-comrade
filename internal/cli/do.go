@@ -16,6 +16,7 @@ import (
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
 	"github.com/firatkutay/cli-comrade/internal/engine"
 	"github.com/firatkutay/cli-comrade/internal/executor"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
 
@@ -55,6 +56,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 	if err != nil {
 		return fmt.Errorf("comrade do: %w", err)
 	}
+	tr := newTranslator(cfg)
 
 	collector := contextpkg.NewCollector()
 	sysCtx := collector.Collect(cmd.Context(), contextpkg.Options{
@@ -70,7 +72,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 	}
 
 	if flags.dryRun {
-		return renderPlan(cmd.OutOrStdout(), plan)
+		return renderPlan(cmd.OutOrStdout(), plan, tr)
 	}
 
 	mode, err := engine.ResolveMode(modeFlag, os.Getenv("COMRADE_MODE"), cfg.General.Mode)
@@ -78,7 +80,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		return fmt.Errorf("comrade do: %w", err)
 	}
 
-	auditSink, err := buildAuditSink(cmd, cfg)
+	auditSink, err := buildAuditSink(cmd, cfg, tr)
 	if err != nil {
 		return fmt.Errorf("comrade do: %w", err)
 	}
@@ -103,6 +105,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		Yolo:               flags.yolo,
 		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
 		Request:            request,
+		Translator:         tr,
 	}
 
 	summary, err := engine.Execute(ctx, plan, mode, deps)
@@ -111,7 +114,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 	}
 
 	if mode != engine.ModeInfo {
-		if err := printRunSummary(cmd.OutOrStdout(), summary); err != nil {
+		if err := printRunSummary(cmd.OutOrStdout(), summary, tr); err != nil {
 			return err
 		}
 	}
@@ -128,7 +131,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 // is reported to stderr but never aborts the run — see
 // internal/audit.Logger.ApplyRetention's own doc comment for why this is
 // safe to treat as non-fatal.
-func buildAuditSink(cmd *cobra.Command, cfg config.Config) (engine.AuditSink, error) {
+func buildAuditSink(cmd *cobra.Command, cfg config.Config, tr i18n.Translator) (engine.AuditSink, error) {
 	if !cfg.Audit.Enabled {
 		return nil, nil
 	}
@@ -142,7 +145,7 @@ func buildAuditSink(cmd *cobra.Command, cfg config.Config) (engine.AuditSink, er
 		return nil, err
 	}
 	if err := logger.ApplyRetention(cfg.Audit.RetentionDays, time.Now()); err != nil {
-		if _, ferr := fmt.Fprintf(cmd.ErrOrStderr(), "audit: retention cleanup failed: %v\n", err); ferr != nil {
+		if _, ferr := fmt.Fprint(cmd.ErrOrStderr(), tr.T(i18n.MsgAuditRetentionFailed, err)); ferr != nil {
 			return nil, ferr
 		}
 	}
@@ -158,7 +161,7 @@ func buildAuditSink(cmd *cobra.Command, cfg config.Config) (engine.AuditSink, er
 // step the safety engine escalated to Confirm renders
 // "CONFIRM(<effective risk>)" so a risk bump is visible even when it
 // isn't severe enough to Block; a plain Allow renders just the risk name.
-func renderPlan(w io.Writer, plan engine.Plan) error {
+func renderPlan(w io.Writer, plan engine.Plan, tr i18n.Translator) error {
 	if _, err := fmt.Fprintln(w, plan.Summary); err != nil {
 		return err
 	}
@@ -167,16 +170,16 @@ func renderPlan(w io.Writer, plan engine.Plan) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "STEP\tCOMMAND\tRISK\tREVERSIBLE\tRATIONALE"); err != nil {
+	if _, err := fmt.Fprintln(tw, tr.T(i18n.MsgPlanTableHeader)); err != nil {
 		return err
 	}
 	for i, step := range plan.Steps {
 		risk := step.Decision.EffectiveRisk.String()
 		switch step.Decision.Action {
 		case safety.Block:
-			risk = fmt.Sprintf("BLOCKED(%s)", step.Decision.Reason)
+			risk = tr.T(i18n.MsgPlanBlockedCell, step.Decision.Reason)
 		case safety.Confirm:
-			risk = fmt.Sprintf("CONFIRM(%s)", step.Decision.EffectiveRisk.String())
+			risk = tr.T(i18n.MsgPlanConfirmCell, step.Decision.EffectiveRisk.String())
 		}
 		if _, err := fmt.Fprintf(tw, "%d\t%s\t%s\t%t\t%s\n", i+1, step.Command, risk, step.Reversible, step.Rationale); err != nil {
 			return err
@@ -190,7 +193,7 @@ func renderPlan(w io.Writer, plan engine.Plan) error {
 // finishes — UYGULAMA_PLANI.md FAZ 6's "abort remaining ... özet bas"
 // requirement. info mode never calls this (it never produces a
 // RunSummary worth summarizing — see runDo).
-func printRunSummary(w io.Writer, summary engine.RunSummary) error {
+func printRunSummary(w io.Writer, summary engine.RunSummary, tr i18n.Translator) error {
 	var executed, skipped, blocked int
 	for _, r := range summary.Results {
 		switch r.Outcome {
@@ -202,11 +205,11 @@ func printRunSummary(w io.Writer, summary engine.RunSummary) error {
 			blocked++
 		}
 	}
-	if _, err := fmt.Fprintf(w, "\n%d executed, %d skipped, %d blocked\n", executed, skipped, blocked); err != nil {
+	if _, err := fmt.Fprintf(w, "\n%s\n", tr.T(i18n.MsgRunSummaryCounts, executed, skipped, blocked)); err != nil {
 		return err
 	}
 	if summary.Aborted {
-		_, err := fmt.Fprintf(w, "aborted: %s\n", summary.AbortReason)
+		_, err := fmt.Fprintf(w, "%s\n", tr.T(i18n.MsgRunSummaryAbortedLine, summary.AbortReason))
 		return err
 	}
 	return nil

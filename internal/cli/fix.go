@@ -13,6 +13,7 @@ import (
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
 	"github.com/firatkutay/cli-comrade/internal/engine"
 	"github.com/firatkutay/cli-comrade/internal/executor"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
 
@@ -38,7 +39,7 @@ func newFixCmd(newLoader loaderFactory) *cobra.Command {
 		Args:  cobra.ArbitraryArgs,
 	}
 	flags := addExecutionFlags(cmd)
-	rerun := cmd.Flags().Bool("rerun", false, "re-run the last recorded command to capture fresh output before diagnosing it")
+	rerun := cmd.Flags().Bool("rerun", false, enUsageDefault(i18n.MsgFlagRerun))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		var explicitCommand string
 		if dashAt := cmd.ArgsLenAtDash(); dashAt >= 0 {
@@ -67,6 +68,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 	if err != nil {
 		return fmt.Errorf("comrade fix: %w", err)
 	}
+	tr := newTranslator(cfg)
 
 	collector := contextpkg.NewCollector()
 	sysCtx := collector.Collect(cmd.Context(), contextpkg.Options{
@@ -78,7 +80,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 	safetyEngine := safety.NewEngine(cfg)
 	ex := executor.New(cmd.OutOrStdout(), cmd.ErrOrStderr())
 
-	errCtx, err := acquireErrorContext(cmd, sysCtx, safetyEngine, ex, rerun, explicitCommand)
+	errCtx, err := acquireErrorContext(cmd, sysCtx, safetyEngine, ex, rerun, explicitCommand, tr)
 	if err != nil {
 		return fmt.Errorf("comrade fix: %w", err)
 	}
@@ -92,14 +94,12 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 	// The explanation is printed first, in every mode, per UYGULAMA_PLANI.md
 	// FAZ 7 item 1c — so the user understands what actually went wrong
 	// before either reading the plan (info) or being asked to approve it
-	// (ask/auto).
-	if _, err := fmt.Fprintln(cmd.OutOrStdout(), diagnosis.RootCause); err != nil {
+	// (ask/auto). Headings match `comrade explain`'s own Summary:/Risk
+	// note: style (docs/phases/FAZ-09.md).
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n\n", tr.T(i18n.MsgFixRootCauseHeading), diagnosis.RootCause); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(cmd.OutOrStdout(), diagnosis.Explanation); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n", tr.T(i18n.MsgFixExplanationHeading), diagnosis.Explanation); err != nil {
 		return err
 	}
 
@@ -107,7 +107,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
 			return err
 		}
-		return renderPlan(cmd.OutOrStdout(), diagnosis.Plan)
+		return renderPlan(cmd.OutOrStdout(), diagnosis.Plan, tr)
 	}
 
 	mode, err := engine.ResolveMode(modeFlag, os.Getenv("COMRADE_MODE"), cfg.General.Mode)
@@ -115,7 +115,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		return fmt.Errorf("comrade fix: %w", err)
 	}
 
-	auditSink, err := buildAuditSink(cmd, cfg)
+	auditSink, err := buildAuditSink(cmd, cfg, tr)
 	if err != nil {
 		return fmt.Errorf("comrade fix: %w", err)
 	}
@@ -139,6 +139,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		Yolo:               flags.yolo,
 		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
 		Request:            "fix: " + errCtx.Command,
+		Translator:         tr,
 	}
 
 	summary, err := engine.Execute(ctx, diagnosis.Plan, mode, deps)
@@ -147,7 +148,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 	}
 
 	if mode != engine.ModeInfo {
-		if err := printRunSummary(cmd.OutOrStdout(), summary); err != nil {
+		if err := printRunSummary(cmd.OutOrStdout(), summary, tr); err != nil {
 			return err
 		}
 	}
@@ -185,27 +186,25 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 //     entry is never silently reused (a one-line notice is printed
 //     explaining why), and the chain falls through to interactive paste
 //     mode (pasteMode).
-func acquireErrorContext(cmd *cobra.Command, sysCtx contextpkg.Context, safetyEngine *safety.Engine, ex engine.CommandExecutor, rerun bool, explicitCommand string) (engine.ErrorContext, error) {
+func acquireErrorContext(cmd *cobra.Command, sysCtx contextpkg.Context, safetyEngine *safety.Engine, ex engine.CommandExecutor, rerun bool, explicitCommand string, tr i18n.Translator) (engine.ErrorContext, error) {
 	if explicitCommand != "" {
-		return captureByRunning(cmd, safetyEngine, ex, explicitCommand, sysCtx)
+		return captureByRunning(cmd, safetyEngine, ex, explicitCommand, sysCtx, tr)
 	}
 
 	if rerun {
 		if sysCtx.LastCommand == nil {
-			return engine.ErrorContext{}, fmt.Errorf("--rerun: no recorded last command found; run a command with shell integration installed first, or use `comrade fix -- <command>`")
+			return engine.ErrorContext{}, fmt.Errorf("%s", tr.T(i18n.MsgFixRerunNoLastCommandError))
 		}
-		return captureByRunning(cmd, safetyEngine, ex, sysCtx.LastCommand.Command, sysCtx)
+		return captureByRunning(cmd, safetyEngine, ex, sysCtx.LastCommand.Command, sysCtx, tr)
 	}
 
 	if sysCtx.LastCommand != nil {
 		lc := *sysCtx.LastCommand
 		switch {
 		case lc.Age(time.Now()) >= lastCommandFreshness:
-			fmt.Fprintln(cmd.ErrOrStderr(), //nolint:errcheck // best-effort notice; falling through to paste mode either way.
-				"the last recorded command is more than 10 minutes old; ignoring it and asking you to paste the error instead.")
+			fmt.Fprintln(cmd.ErrOrStderr(), tr.T(i18n.MsgFixStaleNotice)) //nolint:errcheck // best-effort notice; falling through to paste mode either way.
 		case lc.ExitCode == 0:
-			fmt.Fprintln(cmd.ErrOrStderr(), //nolint:errcheck
-				"the last recorded command exited successfully (nothing to fix); asking you to paste the error instead.")
+			fmt.Fprintln(cmd.ErrOrStderr(), tr.T(i18n.MsgFixExitZeroNotice)) //nolint:errcheck
 		default:
 			return engine.ErrorContext{
 				Command:  lc.Command,
@@ -217,7 +216,7 @@ func acquireErrorContext(cmd *cobra.Command, sysCtx contextpkg.Context, safetyEn
 		}
 	}
 
-	return pasteMode(cmd, sysCtx)
+	return pasteMode(cmd, sysCtx, tr)
 }
 
 // captureByRunning is the shared helper behind both `--rerun` and
@@ -230,17 +229,15 @@ func acquireErrorContext(cmd *cobra.Command, sysCtx contextpkg.Context, safetyEn
 // `rm -rf` "to capture its error" would be catastrophic). A refused
 // command falls through to pasteMode instead, exactly like a stale/exit-0
 // last_command.json entry does.
-func captureByRunning(cmd *cobra.Command, safetyEngine *safety.Engine, ex engine.CommandExecutor, command string, sysCtx contextpkg.Context) (engine.ErrorContext, error) {
+func captureByRunning(cmd *cobra.Command, safetyEngine *safety.Engine, ex engine.CommandExecutor, command string, sysCtx contextpkg.Context, tr i18n.Translator) (engine.ErrorContext, error) {
 	decision := safetyEngine.Evaluate(command, safety.RiskRead)
 	if decision.Action == safety.Block || decision.EffectiveRisk == safety.RiskDestructive {
 		classification := decision.EffectiveRisk.String()
 		if decision.Action == safety.Block {
-			classification = "blocked (denylisted)"
+			classification = tr.T(i18n.MsgFixBlockedClassification)
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), //nolint:errcheck // best-effort notice; falling through to paste mode either way.
-			"refusing to re-run %q: it is classified %s; paste the command and its error output instead.\n",
-			command, classification)
-		return pasteMode(cmd, sysCtx)
+		fmt.Fprint(cmd.ErrOrStderr(), tr.T(i18n.MsgFixRefusalNotice, command, classification)) //nolint:errcheck // best-effort notice; falling through to paste mode either way.
+		return pasteMode(cmd, sysCtx, tr)
 	}
 
 	res, err := ex.Run(cmd.Context(), command, executor.Options{})
@@ -261,10 +258,10 @@ func captureByRunning(cmd *cobra.Command, safetyEngine *safety.Engine, ex engine
 // then its error output terminated by a blank line or EOF. ExitCode is
 // set to -1 (engine.ErrorContext's documented "unknown" sentinel) since a
 // pasted transcript never carries a real exit code.
-func pasteMode(cmd *cobra.Command, sysCtx contextpkg.Context) (engine.ErrorContext, error) {
+func pasteMode(cmd *cobra.Command, sysCtx contextpkg.Context, tr i18n.Translator) (engine.ErrorContext, error) {
 	out := cmd.OutOrStdout()
-	fmt.Fprintln(out, "No recent failed command available. Paste the failing command, then its error output (end with a blank line):") //nolint:errcheck
-	fmt.Fprint(out, "Command: ")                                                                                                       //nolint:errcheck
+	fmt.Fprintln(out, tr.T(i18n.MsgFixPasteIntro))       //nolint:errcheck
+	fmt.Fprint(out, tr.T(i18n.MsgFixPasteCommandPrompt)) //nolint:errcheck
 
 	scanner := bufio.NewScanner(cmd.InOrStdin())
 	command := ""
@@ -272,7 +269,7 @@ func pasteMode(cmd *cobra.Command, sysCtx contextpkg.Context) (engine.ErrorConte
 		command = strings.TrimSpace(scanner.Text())
 	}
 
-	fmt.Fprintln(out, "Error output (end with a blank line):") //nolint:errcheck
+	fmt.Fprintln(out, tr.T(i18n.MsgFixPasteErrorPrompt)) //nolint:errcheck
 	var errLines []string
 	for scanner.Scan() {
 		line := scanner.Text()

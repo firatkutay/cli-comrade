@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 )
 
@@ -35,18 +36,19 @@ func newConfigModelsCmd(newLoader loaderFactory) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			tr := newTranslator(*cfg)
 			if created {
-				if _, err := fmt.Fprintf(cmd.ErrOrStderr(), firstRunNoticeFormat, loader.Path()); err != nil {
+				if _, err := fmt.Fprint(cmd.ErrOrStderr(), tr.T(i18n.MsgFirstRunNotice, loader.Path())); err != nil {
 					return err
 				}
 			}
 
-			models, docsURL, err := fetchModelsForProvider(cmd.Context(), cmd.ErrOrStderr(), *cfg)
+			models, docsURL, err := fetchModelsForProvider(cmd.Context(), cmd.ErrOrStderr(), *cfg, tr)
 			if err != nil {
 				return fmt.Errorf("config models: %w", err)
 			}
 			if len(models) == 0 {
-				return fmt.Errorf("config models: provider %q returned no models", cfg.LLM.Provider)
+				return fmt.Errorf("%s", tr.T(i18n.MsgModelsNoModelsError, cfg.LLM.Provider))
 			}
 
 			for i, m := range models {
@@ -55,15 +57,15 @@ func newConfigModelsCmd(newLoader loaderFactory) *cobra.Command {
 				}
 			}
 			if docsURL != "" {
-				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "(static snapshot — see %s for the current list)\n", docsURL); err != nil {
+				if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgModelsDocsNote, docsURL)); err != nil {
 					return err
 				}
 			}
-			if _, err := fmt.Fprint(cmd.OutOrStdout(), "Select a model number: "); err != nil {
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgModelsSelectPrompt)); err != nil {
 				return err
 			}
 
-			choice, err := readModelChoice(cmd.InOrStdin(), len(models))
+			choice, err := readModelChoice(cmd.InOrStdin(), len(models), tr)
 			if err != nil {
 				return fmt.Errorf("config models: %w", err)
 			}
@@ -72,7 +74,7 @@ func newConfigModelsCmd(newLoader loaderFactory) *cobra.Command {
 			if err := loader.SetAndSave("llm.model", selected); err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "llm.model = %s\n", selected)
+			_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgModelsSetConfirm, selected))
 			return err
 		},
 	}
@@ -85,7 +87,7 @@ func newConfigModelsCmd(newLoader loaderFactory) *cobra.Command {
 // same secretsKeyResolver chain (keychain/file, then env) every other
 // FAZ 8 command uses, so listing models never requires a *second*,
 // differently-sourced credential.
-func fetchModelsForProvider(ctx context.Context, stderr io.Writer, cfg config.Config) (models []string, docsURL string, err error) {
+func fetchModelsForProvider(ctx context.Context, stderr io.Writer, cfg config.Config, tr i18n.Translator) (models []string, docsURL string, err error) {
 	switch cfg.LLM.Provider {
 	case "anthropic":
 		return llm.KnownAnthropicModels(), llm.AnthropicModelsDocsURL, nil
@@ -110,7 +112,7 @@ func fetchModelsForProvider(ctx context.Context, stderr io.Writer, cfg config.Co
 		return names, "", err
 
 	default:
-		return nil, "", fmt.Errorf("unknown provider %q", cfg.LLM.Provider)
+		return nil, "", fmt.Errorf("%s", tr.T(i18n.MsgModelsUnknownProviderError, cfg.LLM.Provider))
 	}
 }
 
@@ -126,7 +128,7 @@ var errInvalidSelection = errors.New("invalid selection")
 // (UYGULAMA_PLANI.md FAZ 8 item 4 leaves this choice open; a plain,
 // single-shot numbered prompt is this project's pick over a bubbletea
 // list, per the item's own "easier to test" note).
-func readModelChoice(in io.Reader, count int) (int, error) {
+func readModelChoice(in io.Reader, count int, tr i18n.Translator) (int, error) {
 	line, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return 0, fmt.Errorf("read selection: %w", err)
@@ -135,10 +137,10 @@ func readModelChoice(in io.Reader, count int) (int, error) {
 
 	n, convErr := strconv.Atoi(line)
 	if convErr != nil {
-		return 0, fmt.Errorf("%w: %q is not a number (expected 1-%d)", errInvalidSelection, line, count)
+		return 0, fmt.Errorf("%w: %s", errInvalidSelection, tr.T(i18n.MsgModelsChoiceNotANumber, line, count))
 	}
 	if n < 1 || n > count {
-		return 0, fmt.Errorf("%w: %d is out of range (expected 1-%d)", errInvalidSelection, n, count)
+		return 0, fmt.Errorf("%w: %s", errInvalidSelection, tr.T(i18n.MsgModelsChoiceOutOfRange, n, count))
 	}
 	return n, nil
 }

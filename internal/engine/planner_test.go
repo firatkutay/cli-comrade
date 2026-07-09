@@ -271,37 +271,10 @@ func TestGeneratePlanSystemPromptCarriesSystemContext(t *testing.T) {
 	assert.NotContains(t, sys, "SECRET_ENV_VALUE", "the context block must never carry env var values")
 }
 
-func TestResolveLanguage(t *testing.T) {
-	trLangGetenv := func(name string) string {
-		if name == "LANG" {
-			return "tr_TR.UTF-8"
-		}
-		return ""
-	}
-	enLangGetenv := func(name string) string {
-		if name == "LANG" {
-			return "en_US.UTF-8"
-		}
-		return ""
-	}
-	unsetGetenv := func(string) string { return "" }
-
-	cases := []struct {
-		name           string
-		configLanguage string
-		getenv         func(string) string
-		want           string
-	}{
-		{"explicit tr wins outright", "tr", enLangGetenv, "tr"},
-		{"explicit en wins outright", "en", trLangGetenv, "en"},
-		{"auto + tr_ LANG resolves tr", "auto", trLangGetenv, "tr"},
-		{"auto + en_ LANG resolves en", "auto", enLangGetenv, "en"},
-		{"auto + unset LANG resolves en", "auto", unsetGetenv, "en"},
-		{"empty config language treated like auto", "", trLangGetenv, "tr"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, resolveLanguage(tc.configLanguage, tc.getenv))
-		})
-	}
-}
+// Language-resolution precedence itself is now internal/i18n's own,
+// consolidated concern (i18n.ResolveLanguage — see
+// internal/i18n/lang_test.go's TestResolveLanguagePrecedence for the full
+// precedence table, including config/COMRADE_LANG/LANG/LC_ALL). What
+// remains here (TestBuildSystemPromptIncludesGroundingContext above) is
+// GeneratePlan's own concern: that the resolved lang value actually
+// selects the right prompt block.

@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FAZ 9: full TR/EN i18n, `comrade explain`, and `comrade chat`. New
+  `internal/i18n` leaf package: a `MessageID`-keyed `Catalog` (113 entries,
+  English + Turkish), a `Translator` (`T(id, args...)`, DI'd per command —
+  no global state) falling back en→bare-id on a missing key, and the
+  single, consolidated `ResolveLanguage(configLanguage, getenv)` (config
+  `general.language` > `COMRADE_LANG` > `LANG`/`LC_ALL` > en) that
+  replaces `internal/engine`'s own now-deleted duplicate resolver. A
+  bidirectional test (`TestCatalogsCoverIdenticalKeys`) guards the two
+  catalogs against drift. Every command-output/prompt string in
+  `stub.go` (deleted), `runtime.go`/`config.go`/`models.go`/`root.go`,
+  `do.go` (the plan table + run summary), `fix.go` (notices + paste-mode
+  prompts + new Root cause:/Explanation: headings), `auth.go` (every
+  login/logout/status prompt and label), `history.go` (table header +
+  a new friendly empty-log message), and `init.go` (every install/remove
+  prompt) now routes through the catalog — EN output preserved
+  byte-for-byte, several already-tested unexported helpers'
+  signatures threaded with a `Translator` where that was the correct fix.
+  cobra `--help`/usage text for all 21 commands, AND every one of their
+  11 unique per-flag descriptions (new `internal/cli/help.go`, overriding
+  root's `HelpFunc`/`UsageFunc` to re-translate every command's `Short`
+  by `CommandPath()`, and every matching flag's `Usage` by name, before
+  cobra renders — flag registrations now pass `enUsageDefault(id)`
+  instead of a raw literal), is localized too, so a `--help` block never
+  mixes languages. The ~12 standalone, full-sentence
+  `fmt.Errorf`/`errors.New` user-facing errors (as opposed to the ~40
+  `"doing X: %w"` internal wrap chains, deliberately left untranslated —
+  CLAUDE.md's own established convention) are migrated as well, via a
+  new `envOnlyTranslator()` for the handful that must report before any
+  config load. The static-scanner drift guard
+  (`internal/cli/catalog_coverage_test.go`) now scans BOTH `fmt.Print*`
+  text and flag-registration descriptions, and has exactly ONE allowlist
+  entry (`hook.go`'s `COMRADE_DEBUG`-gated hot-path diagnostic line and
+  its 3 internal-only flag descriptions) — every other hardcoded-string
+  exception (CLAUDE.md's mandated confirm-prompt option letters, cobra
+  `Use` tokens, `fmt.Errorf` wrap chains) is either an explicit,
+  individually-justified invariant or structurally outside the scanner's
+  reach, documented in `docs/phases/FAZ-09.md`, not silently exempted.
+  New `comrade explain <command...>`: a two-layer,
+  NEVER-executing command explanation — an authoritative local
+  `safety.Engine` warning, plus a new `internal/engine.Explainer` LLM
+  breakdown (`{summary, parts, risk_note}`, mirroring
+  `Planner`/`Diagnoser`'s shape) — in the user's resolved language. New
+  `comrade chat`: a bubbletea v2 interactive session (scrollback
+  `viewport` + `textinput`, matching `confirm.go`'s v2 style) with
+  in-memory-only history and `/mode`/`/clear`/`/save <file>`/
+  `/do <request>`/`/help`/`/exit` slash commands — history is NEVER
+  written to disk except an explicit `/save`; `/do` routes through the
+  exact same plan→safety→execute pipeline `comrade do` uses, under the
+  session's active mode. All slash-command parsing and session-state
+  logic is pure and unit-tested with no TTY.
+
 - FAZ 8: keychain-backed credential storage, `comrade auth`, and
   `comrade config models`. New `internal/secrets` package: a `Store`
   interface (`Get`/`Set`/`Delete`/`Status`) backed by the OS keychain

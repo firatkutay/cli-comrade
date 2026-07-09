@@ -1,5 +1,6 @@
-// Package audit will record every executed command as a JSONL entry
-// (timestamp, mode, command, risk class, exit code) for later inspection
-// via "comrade history" (introduced in FAZ 6). It is an empty placeholder
-// in FAZ 0.
+// Package audit records every command internal/engine's Runner actually
+// executed as one JSONL entry (timestamp, request, command, risk class,
+// mode, exit code, duration) for later inspection via "comrade history".
+// It never logs stdout/stderr content — only the command text itself,
+// which is exactly what the user already saw and approved.
 package audit

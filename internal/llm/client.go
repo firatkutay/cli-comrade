@@ -31,6 +31,14 @@ type Client struct {
 	attempts []clientAttempt
 	timeout  time.Duration
 
+	// idleTimeout bounds the gap between two consecutive Stream chunks —
+	// as opposed to timeout, which bounds the whole stream's duration.
+	// Zero (the default, from llm.idle_timeout_seconds=0) disables it:
+	// releaseOnClose then never starts an idle timer, reproducing this
+	// package's pre-FAZ-6-idle-timeout behavior exactly. See
+	// idleTimeoutDuration and releaseOnClose.
+	idleTimeout time.Duration
+
 	// redactor masks secrets out of every outgoing payload (System +
 	// every Message.Content) before Complete/Stream ever reach a
 	// connector. It is set exclusively by New, from cfg.Privacy — never
@@ -114,9 +122,10 @@ func New(cfg config.Config, opts ...Option) (*Client, error) {
 	}
 
 	return &Client{
-		attempts: attempts,
-		timeout:  httpTimeout(cfg.LLM.TimeoutSeconds),
-		redactor: redact.New(cfg.Privacy.RedactEmails, cfg.Privacy.RedactIPs),
+		attempts:    attempts,
+		timeout:     httpTimeout(cfg.LLM.TimeoutSeconds),
+		idleTimeout: idleTimeoutDuration(cfg.LLM.IdleTimeoutSeconds),
+		redactor:    redact.New(cfg.Privacy.RedactEmails, cfg.Privacy.RedactIPs),
 	}, nil
 }
 
@@ -128,6 +137,18 @@ func httpTimeout(timeoutSeconds int) time.Duration {
 		return 60 * time.Second
 	}
 	return time.Duration(timeoutSeconds) * time.Second
+}
+
+// idleTimeoutDuration wraps idleTimeoutSeconds (llm.idle_timeout_seconds)
+// as a time.Duration. Unlike httpTimeout, a non-positive value here means
+// "disabled" (returns 0) rather than falling back to a default duration —
+// 0 is idle_timeout_seconds's documented default, and disabling the
+// feature entirely is the whole point of that default.
+func idleTimeoutDuration(idleTimeoutSeconds int) time.Duration {
+	if idleTimeoutSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(idleTimeoutSeconds) * time.Second
 }
 
 // splitProviderModel splits a "provider/model" fallback entry into its
@@ -367,7 +388,7 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (<-chan Chun
 		ch, err := attempt.provider.Stream(timeoutCtx, req)
 		if err == nil {
 			logAttempt(attempt.providerName, "", "ok", 0)
-			return releaseOnClose(ch, cancel), nil
+			return releaseOnClose(timeoutCtx, ch, cancel, c.idleTimeout), nil
 		}
 		cancel()
 
@@ -386,14 +407,93 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (<-chan Chun
 // closed. This ties the per-attempt timeout context's lifetime to the
 // whole stream's duration (not just the initial connect) without leaking
 // it the moment Stream returns.
-func releaseOnClose(ch <-chan Chunk, cancel context.CancelFunc) <-chan Chunk {
+//
+// Every receive from ch and every forward to out is guarded against
+// ctx (== the same timeoutCtx passed to the connector's own Stream call):
+// if the caller abandons out without draining it (a Ctrl-C disconnect)
+// and then cancels the context that owns ctx, this goroutine returns
+// instead of blocking forever on out<-chunk — the mirror image of the
+// ctx.Done() guard sendChunk gives every connector's own producer
+// goroutine. Without this, an abandoned-but-uncancelled out would still
+// eventually unblock once the connector's producer notices ctx.Done() and
+// stops sending into ch, but this forwarding goroutine would otherwise be
+// the one left blocked on out<-chunk in the meantime.
+//
+// idleTimeout, when non-zero, bounds the gap between two consecutive
+// chunks arriving on ch (including the gap before the very first one) —
+// as opposed to ctx's own deadline, which bounds the whole stream. This
+// is this package's only enforcement point for llm.idle_timeout_seconds:
+// every connector's producer goroutine still just sends into ch exactly
+// as before, unaware of idle timeouts entirely, since a single central
+// timer here — reset on every chunk this goroutine forwards — is
+// equivalent and far simpler than duplicating a per-chunk deadline into
+// each of the four connectors' own read loops. idleTimeout == 0 (the
+// llm.idle_timeout_seconds default) disables this entirely: idleCh stays
+// nil, so that case in the select below can never fire, reproducing this
+// package's exact pre-idle-timeout behavior.
+//
+// The per-chunk reset below is a bare idleTimer.Reset(idleTimeout), with
+// no Stop()+drain first. That is deliberate, not an oversight: this
+// module is go 1.25, and as of Go 1.23 a Timer's channel is synchronous
+// (unbuffered) and Reset on its own is documented to guarantee no stale
+// receive — see `go doc time.Timer.Reset`. The pre-1.23 Stop-then-drain
+// idiom is actively WRONG on a 1.23+ timer here: if idleTimer fires in
+// the same instant a chunk also arrives and this select happens to pick
+// the chunk case, the fire is never received by <-idleCh (select only
+// serves one ready case), Stop() then reports false, and a
+// `<-idleTimer.C` drain would block forever — no value was ever queued
+// on an unbuffered channel nobody received from — leaking exactly this
+// goroutine. Don't reintroduce the drain.
+func releaseOnClose(ctx context.Context, ch <-chan Chunk, cancel context.CancelFunc, idleTimeout time.Duration) <-chan Chunk {
 	out := make(chan Chunk)
 	go func() {
 		defer close(out)
 		defer cancel()
-		for chunk := range ch {
-			out <- chunk
+
+		var idleTimer *time.Timer
+		var idleCh <-chan time.Time
+		if idleTimeout > 0 {
+			idleTimer = time.NewTimer(idleTimeout)
+			defer idleTimer.Stop()
+			idleCh = idleTimer.C
+		}
+
+		for {
+			select {
+			case chunk, ok := <-ch:
+				if !ok {
+					return
+				}
+				if idleTimer != nil {
+					idleTimer.Reset(idleTimeout)
+				}
+				if !sendChunk(ctx, out, chunk) {
+					return
+				}
+			case <-idleCh:
+				sendChunk(ctx, out, Chunk{Done: true, Err: fmt.Errorf("llm: %w: no chunk received for %s", ErrIdleTimeout, idleTimeout)})
+				return
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 	return out
+}
+
+// sendChunk delivers chunk on ch, but gives up and returns false the
+// moment ctx is done — so a stream-reader goroutine whose consumer
+// abandoned the channel (a Ctrl-C disconnect propagated as a cancelled
+// context) never blocks forever on an unbuffered send nobody will ever
+// read. Every connector's Stream goroutine (anthropic, google, ollama,
+// openai_compat) and releaseOnClose's forwarding goroutine route every
+// Chunk send through this helper — see docs/PROGRESS.md's FAZ 6
+// hardening note this closes out.
+func sendChunk(ctx context.Context, ch chan<- Chunk, chunk Chunk) bool {
+	select {
+	case ch <- chunk:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }

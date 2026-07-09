@@ -253,14 +253,16 @@ func (c *openAICompatConnector) Stream(ctx context.Context, req CompletionReques
 				return fmt.Errorf("openai_compat: decode stream event: %w", err)
 			}
 			if len(typed.Choices) > 0 && typed.Choices[0].Delta.Content != "" {
-				ch <- Chunk{Text: typed.Choices[0].Delta.Content}
+				if !sendChunk(ctx, ch, Chunk{Text: typed.Choices[0].Delta.Content}) {
+					return ctx.Err()
+				}
 			}
 			return nil
 		})
 		if scanErr != nil {
 			streamErr = fmt.Errorf("openai_compat: %w", scanErr)
 		}
-		ch <- Chunk{Done: true, Err: streamErr}
+		sendChunk(ctx, ch, Chunk{Done: true, Err: streamErr})
 	}()
 	return ch, nil
 }

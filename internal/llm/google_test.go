@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -140,4 +141,43 @@ func TestGoogleStreamConcatenatesDeltasAndClosesCleanly(t *testing.T) {
 
 	_, open := <-ch
 	assert.False(t, open, "channel must be closed after the final chunk")
+}
+
+// TestGoogleStreamGoroutineExitsWhenContextCancelledWithoutDraining is the
+// FAZ 6 hardening regression test: a consumer that reads one chunk and
+// then abandons the channel (a Ctrl-C disconnect) must not leave the
+// producer goroutine blocked forever on an unbuffered ch<- send nobody
+// will ever read. The fake server streams three deltas so the producer is
+// guaranteed to still be mid-stream — attempting its second send — by the
+// time the test cancels the context without draining ch.
+func TestGoogleStreamGoroutineExitsWhenContextCancelledWithoutDraining(t *testing.T) {
+	c := newGoogleTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		frames := []string{
+			`data: {"candidates":[{"content":{"parts":[{"text":"one"}],"role":"model"}}]}` + "\n\n",
+			`data: {"candidates":[{"content":{"parts":[{"text":"two"}],"role":"model"}}]}` + "\n\n",
+			`data: {"candidates":[{"content":{"parts":[{"text":"three"}],"role":"model"}}]}` + "\n\n",
+		}
+		for _, f := range frames {
+			_, _ = w.Write([]byte(f))
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	})
+	disableKeepAlives(t, c.httpClient)
+
+	baseline := runtime.NumGoroutine()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := c.Stream(ctx, CompletionRequest{Messages: []Message{{Role: "user", Content: "hi"}}, MaxTokens: 8})
+	require.NoError(t, err)
+
+	first := <-ch
+	require.Equal(t, "one", first.Text, "sanity: must have received the first chunk before cancelling")
+
+	cancel() // abandon ch without draining it
+
+	assertGoroutinesReturnToBaseline(t, baseline)
 }

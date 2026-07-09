@@ -26,6 +26,7 @@ provider = "anthropic"    # anthropic | openai_compat | google | ollama
 model = ""                # empty means the provider's own default
 fallback = []              # e.g. ["ollama/llama3.1", "openai_compat/gpt-4o-mini"]
 timeout_seconds = 60
+idle_timeout_seconds = 0  # 0 = disabled; max seconds between stream chunks before aborting
 max_tokens = 2048
 
 [llm.openai_compat]
@@ -78,13 +79,21 @@ type OllamaConfig struct {
 
 // LLMConfig holds the [llm] section.
 type LLMConfig struct {
-	Provider       string             `mapstructure:"provider"`
-	Model          string             `mapstructure:"model"`
-	Fallback       []string           `mapstructure:"fallback"`
-	TimeoutSeconds int                `mapstructure:"timeout_seconds"`
-	MaxTokens      int                `mapstructure:"max_tokens"`
-	OpenAICompat   OpenAICompatConfig `mapstructure:"openai_compat"`
-	Ollama         OllamaConfig       `mapstructure:"ollama"`
+	Provider       string   `mapstructure:"provider"`
+	Model          string   `mapstructure:"model"`
+	Fallback       []string `mapstructure:"fallback"`
+	TimeoutSeconds int      `mapstructure:"timeout_seconds"`
+	// IdleTimeoutSeconds bounds the gap between two consecutive stream
+	// chunks (not the whole stream's duration — see TimeoutSeconds for
+	// that). 0 (the default) disables it entirely, reproducing this
+	// package's pre-existing behavior exactly: only TimeoutSeconds ever
+	// aborts a stream. See docs/PROGRESS.md's FAZ 6 hardening note this
+	// closes out, and internal/llm.Client.Stream/releaseOnClose for the
+	// enforcement point.
+	IdleTimeoutSeconds int                `mapstructure:"idle_timeout_seconds"`
+	MaxTokens          int                `mapstructure:"max_tokens"`
+	OpenAICompat       OpenAICompatConfig `mapstructure:"openai_compat"`
+	Ollama             OllamaConfig       `mapstructure:"ollama"`
 }
 
 // SafetyConfig holds the [safety] section.

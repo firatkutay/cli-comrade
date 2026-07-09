@@ -26,6 +26,7 @@ func TestDefaultMatchesPlanExactly(t *testing.T) {
 	assert.Equal(t, "", cfg.LLM.Model)
 	assert.Equal(t, []string{}, cfg.LLM.Fallback)
 	assert.Equal(t, 60, cfg.LLM.TimeoutSeconds)
+	assert.Equal(t, 0, cfg.LLM.IdleTimeoutSeconds)
 	assert.Equal(t, 2048, cfg.LLM.MaxTokens)
 	assert.Equal(t, "https://api.openai.com/v1", cfg.LLM.OpenAICompat.BaseURL)
 	assert.Equal(t, "http://localhost:11434", cfg.LLM.Ollama.BaseURL)

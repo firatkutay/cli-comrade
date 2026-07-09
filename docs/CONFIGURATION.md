@@ -33,6 +33,7 @@ gösterir.
 | `llm.model` | *(boş)* | Boşsa sağlayıcının kendi varsayılanı | `COMRADE_MODEL` |
 | `llm.fallback` | `[]` | Yedek sağlayıcı/model listesi (virgülle ayrılmış) | `COMRADE_LLM_FALLBACK` |
 | `llm.timeout_seconds` | `60` | Tek bir LLM isteği için zaman aşımı | `COMRADE_LLM_TIMEOUT_SECONDS` |
+| `llm.idle_timeout_seconds` | `0` | Akış (stream) modunda iki chunk arası azami boşluk; `0` = kapalı (yalnızca `timeout_seconds` uygulanır) | `COMRADE_LLM_IDLE_TIMEOUT_SECONDS` |
 | `llm.max_tokens` | `2048` | Yanıt başına azami token | `COMRADE_LLM_MAX_TOKENS` |
 | `llm.openai_compat.base_url` | `https://api.openai.com/v1` | OpenAI-uyumlu uç nokta (Mistral/Groq/GLM/Qwen/Kimi/OpenRouter/LM Studio) | `COMRADE_LLM_OPENAI_COMPAT_BASE_URL` |
 | `llm.ollama.base_url` | `http://localhost:11434` | Yerel Ollama sunucusu | `COMRADE_LLM_OLLAMA_BASE_URL` |
@@ -114,6 +115,7 @@ default**. `comrade config list` shows each key's actual source
 | `llm.model` | *(empty)* | Empty means the provider's own default | `COMRADE_MODEL` |
 | `llm.fallback` | `[]` | Fallback provider/model chain (comma-separated) | `COMRADE_LLM_FALLBACK` |
 | `llm.timeout_seconds` | `60` | Timeout for a single LLM request | `COMRADE_LLM_TIMEOUT_SECONDS` |
+| `llm.idle_timeout_seconds` | `0` | Max gap between two chunks while streaming; `0` = disabled (only `timeout_seconds` applies) | `COMRADE_LLM_IDLE_TIMEOUT_SECONDS` |
 | `llm.max_tokens` | `2048` | Max tokens per response | `COMRADE_LLM_MAX_TOKENS` |
 | `llm.openai_compat.base_url` | `https://api.openai.com/v1` | OpenAI-compatible endpoint (Mistral/Groq/GLM/Qwen/Kimi/OpenRouter/LM Studio) | `COMRADE_LLM_OPENAI_COMPAT_BASE_URL` |
 | `llm.ollama.base_url` | `http://localhost:11434` | Local Ollama server | `COMRADE_LLM_OLLAMA_BASE_URL` |

@@ -205,7 +205,10 @@ func (c *ollamaConnector) Stream(ctx context.Context, req CompletionRequest) (<-
 				break
 			}
 			if typed.Message.Content != "" {
-				ch <- Chunk{Text: typed.Message.Content}
+				if !sendChunk(ctx, ch, Chunk{Text: typed.Message.Content}) {
+					streamErr = ctx.Err()
+					break
+				}
 			}
 			if typed.Done {
 				break
@@ -216,7 +219,7 @@ func (c *ollamaConnector) Stream(ctx context.Context, req CompletionRequest) (<-
 				streamErr = fmt.Errorf("ollama: read stream: %w", err)
 			}
 		}
-		ch <- Chunk{Done: true, Err: streamErr}
+		sendChunk(ctx, ch, Chunk{Done: true, Err: streamErr})
 	}()
 	return ch, nil
 }

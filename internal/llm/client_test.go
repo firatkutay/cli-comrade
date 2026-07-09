@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 	"time"
 
@@ -176,6 +177,56 @@ func TestClientStreamFallsBackOnInitialHandshakeFailure(t *testing.T) {
 	assert.Equal(t, "ok", text)
 }
 
+// TestClientStreamGoroutineExitsWhenContextCancelledWithoutDraining is the
+// FAZ 6 hardening regression test at the Client level: it proves the full
+// chain — the connector's own producer goroutine (guarded by sendChunk)
+// AND releaseOnClose's forwarding goroutine (guarded the same way) — both
+// exit once the caller cancels ctx without ever draining the channel
+// Client.Stream returned. The fake server streams three deltas so the
+// producer is guaranteed to still be mid-stream by the time the test
+// cancels.
+func TestClientStreamGoroutineExitsWhenContextCancelledWithoutDraining(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		frames := []string{
+			`data: {"choices":[{"delta":{"content":"one"}}]}` + "\n\n",
+			`data: {"choices":[{"delta":{"content":"two"}}]}` + "\n\n",
+			`data: {"choices":[{"delta":{"content":"three"}}]}` + "\n\n",
+		}
+		for _, f := range frames {
+			_, _ = w.Write([]byte(f))
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	}))
+	defer srv.Close()
+
+	httpClient := srv.Client()
+	disableKeepAlives(t, httpClient)
+
+	client := &Client{
+		timeout: 5 * time.Second,
+		attempts: []clientAttempt{
+			{providerName: "openai_compat", provider: newOpenAICompatConnector("k", "m", srv.URL, httpClient)},
+		},
+	}
+
+	baseline := runtime.NumGoroutine()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ch, err := client.Stream(ctx, CompletionRequest{Messages: []Message{{Role: "user", Content: "hi"}}, MaxTokens: 8})
+	require.NoError(t, err)
+
+	first := <-ch
+	require.Equal(t, "one", first.Text, "sanity: must have received the first chunk before cancelling")
+
+	cancel() // abandon ch without draining it
+
+	assertGoroutinesReturnToBaseline(t, baseline)
+}
+
 func TestNewUnknownProviderErrors(t *testing.T) {
 	cfg := config.Default()
 	cfg.LLM.Provider = "bogus"
@@ -272,4 +323,114 @@ func TestHTTPTimeoutDefaultsForNonPositive(t *testing.T) {
 	assert.Equal(t, 60*time.Second, httpTimeout(0))
 	assert.Equal(t, 60*time.Second, httpTimeout(-5))
 	assert.Equal(t, 30*time.Second, httpTimeout(30))
+}
+
+// TestIdleTimeoutDurationDisabledForNonPositive pins idleTimeoutDuration's
+// contract deliberately diverging from httpTimeout's: 0 and negative both
+// mean "disabled" (return 0), never a fallback default duration — because
+// 0 is idle_timeout_seconds's own documented default, and defaulting it
+// to some non-zero duration would silently turn the feature on for every
+// existing config file that predates it.
+func TestIdleTimeoutDurationDisabledForNonPositive(t *testing.T) {
+	assert.Equal(t, time.Duration(0), idleTimeoutDuration(0))
+	assert.Equal(t, time.Duration(0), idleTimeoutDuration(-5))
+	assert.Equal(t, 30*time.Second, idleTimeoutDuration(30))
+}
+
+// TestClientStreamIdleTimeoutAbortsWhenGapBetweenChunksExceeded proves
+// idle_timeout_seconds actually enforces a per-chunk gap, independent of
+// the whole-stream timeout_seconds deadline: the fake server sends one
+// chunk, then sleeps far longer than the configured idle timeout before
+// sending a second one. Client.Stream must abort — with a final Chunk
+// wrapping ErrIdleTimeout — well before that second, late chunk ever
+// arrives.
+func TestClientStreamIdleTimeoutAbortsWhenGapBetweenChunksExceeded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"first"}}]}` + "\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+		time.Sleep(300 * time.Millisecond) // far longer than the 50ms idle timeout below
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"late"}}]}` + "\n\n" + `data: [DONE]` + "\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		timeout:     5 * time.Second,
+		idleTimeout: 50 * time.Millisecond,
+		attempts: []clientAttempt{
+			{providerName: "openai_compat", provider: newOpenAICompatConnector("k", "m", srv.URL, srv.Client())},
+		},
+	}
+
+	start := time.Now()
+	ch, err := client.Stream(context.Background(), CompletionRequest{Messages: []Message{{Role: "user", Content: "hi"}}, MaxTokens: 8})
+	require.NoError(t, err)
+
+	var text string
+	var final Chunk
+	for chunk := range ch {
+		if chunk.Done {
+			final = chunk
+			continue
+		}
+		text += chunk.Text
+	}
+	elapsed := time.Since(start)
+
+	assert.Equal(t, "first", text, "the late second chunk must never arrive — the idle timeout must abort before it does")
+	require.Error(t, final.Err)
+	assert.True(t, errors.Is(final.Err, ErrIdleTimeout))
+	assert.Less(t, elapsed, 250*time.Millisecond, "must abort on the ~50ms idle timeout, not wait out the server's 300ms sleep")
+}
+
+// TestClientStreamIdleTimeoutDisabledByDefaultAllowsSlowGaps proves
+// idle_timeout_seconds's 0 default is truly a no-op: a Client built
+// without idleTimeout set (its zero value) must tolerate an inter-chunk
+// gap that would trip a configured idle timeout, and complete normally —
+// this is the "identical to today" backward-compatibility requirement.
+func TestClientStreamIdleTimeoutDisabledByDefaultAllowsSlowGaps(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"first"}}]}` + "\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+		time.Sleep(80 * time.Millisecond)
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"second"}}]}` + "\n\n" + `data: [DONE]` + "\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		timeout: 5 * time.Second,
+		// idleTimeout intentionally left at its zero value: disabled.
+		attempts: []clientAttempt{
+			{providerName: "openai_compat", provider: newOpenAICompatConnector("k", "m", srv.URL, srv.Client())},
+		},
+	}
+
+	ch, err := client.Stream(context.Background(), CompletionRequest{Messages: []Message{{Role: "user", Content: "hi"}}, MaxTokens: 8})
+	require.NoError(t, err)
+
+	var text string
+	var final Chunk
+	for chunk := range ch {
+		if chunk.Done {
+			final = chunk
+			continue
+		}
+		text += chunk.Text
+	}
+
+	assert.Equal(t, "firstsecond", text)
+	assert.NoError(t, final.Err)
 }

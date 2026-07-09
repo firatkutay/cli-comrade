@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stream goroutine leak on an abandoned channel** (FAZ 6 hardening item
+  deferred at review time): every connector's `Stream` goroutine
+  (`anthropic`, `google`, `ollama`, `openai_compat`) and `Client.Stream`'s
+  own `releaseOnClose` forwarding goroutine sent each `Chunk` on an
+  unbuffered channel with no escape hatch — if the consumer stopped
+  reading (e.g. a Ctrl-C disconnect) without draining the channel, the
+  producer goroutine blocked forever on that send, leaking one goroutine
+  (plus its still-open response body) per abandoned stream. Every such
+  send now goes through a new `sendChunk` helper that also selects on
+  `ctx.Done()`, so a cancelled context always unblocks the producer.
+  Covered by five `-race`-clean regression tests in `internal/llm` that
+  poll `runtime.NumGoroutine()` back to baseline after cancelling an
+  undrained stream.
+
+### Added
+
+- **`llm.idle_timeout_seconds` config key** (default `0` = disabled):
+  bounds the gap between two consecutive chunks of a `Stream`, separately
+  from `llm.timeout_seconds`'s whole-stream deadline. Enforced centrally
+  in `Client.Stream`'s `releaseOnClose`, so no connector's own read loop
+  needed to change. A new `ErrIdleTimeout` sentinel classifies the
+  resulting failure. See `docs/CONFIGURATION.md`.
+
 ## [0.1.0-rc1] - 2026-07-09
 
 Release-candidate hardening pass. No new product features (FAZ 0-10

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 )
@@ -39,6 +40,14 @@ func (cmd LastCommand) Age(now time.Time) time.Duration {
 //   - otherwise: $XDG_STATE_HOME/cli-comrade/last_command.json, falling
 //     back to ~/.local/state/cli-comrade/last_command.json when
 //     XDG_STATE_HOME is unset
+//
+// The unix branches use path.Join (always "/"), not filepath.Join, for
+// the same reason config.ResolveDir/audit.PathFor do (see their doc
+// comments): filepath.Join uses the separator of the OS the calling
+// process actually runs on, which would silently produce backslash
+// paths if this function is ever called with an injected
+// goos="linux"/"darwin" on a Windows host — keeping the unix branches on
+// literal "/" ties the output to goos, not runtime.GOOS.
 func LastCommandPath(goos string, getenv func(string) string) (string, error) {
 	if goos == "windows" {
 		localAppData := getenv("LOCALAPPDATA")
@@ -49,14 +58,14 @@ func LastCommandPath(goos string, getenv func(string) string) (string, error) {
 	}
 
 	if xdg := getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "cli-comrade", "last_command.json"), nil
+		return path.Join(xdg, "cli-comrade", "last_command.json"), nil
 	}
 
 	home := getenv("HOME")
 	if home == "" {
 		return "", fmt.Errorf("resolve last_command.json path: HOME environment variable is not set")
 	}
-	return filepath.Join(home, ".local", "state", "cli-comrade", "last_command.json"), nil
+	return path.Join(home, ".local", "state", "cli-comrade", "last_command.json"), nil
 }
 
 // WriteLastCommand serializes cmd to JSON and atomically writes it to

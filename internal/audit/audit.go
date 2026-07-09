@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -213,6 +214,13 @@ const auditFileName = "audit.jsonl"
 //   - windows: %LOCALAPPDATA%\cli-comrade\audit.jsonl
 //   - otherwise: $XDG_STATE_HOME/cli-comrade/audit.jsonl, falling back to
 //     ~/.local/state/cli-comrade/audit.jsonl when XDG_STATE_HOME is unset
+//
+// The unix branches use path.Join (always "/"), not filepath.Join:
+// filepath.Join uses the separator of the OS the test binary actually
+// runs on, which would silently produce backslash paths when this
+// function is called with an injected goos="linux"/"darwin" on a
+// Windows CI runner. path.Join keeps the output tied to goos, not
+// runtime.GOOS.
 func PathFor(goos string, getenv func(string) string) (string, error) {
 	if goos == "windows" {
 		localAppData := getenv("LOCALAPPDATA")
@@ -223,14 +231,14 @@ func PathFor(goos string, getenv func(string) string) (string, error) {
 	}
 
 	if xdg := getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "cli-comrade", auditFileName), nil
+		return path.Join(xdg, "cli-comrade", auditFileName), nil
 	}
 
 	home := getenv("HOME")
 	if home == "" {
 		return "", fmt.Errorf("resolve audit.jsonl path: HOME environment variable is not set")
 	}
-	return filepath.Join(home, ".local", "state", "cli-comrade", auditFileName), nil
+	return path.Join(home, ".local", "state", "cli-comrade", auditFileName), nil
 }
 
 // DefaultPath resolves the audit.jsonl path for the OS and environment

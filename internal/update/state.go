@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -35,6 +36,13 @@ type CheckState struct {
 //   - otherwise: $XDG_STATE_HOME/cli-comrade/update_check.json, falling
 //     back to ~/.local/state/cli-comrade/update_check.json when
 //     XDG_STATE_HOME is unset
+//
+// The unix branches use path.Join (always "/"), not filepath.Join — see
+// config.ResolveDir/audit.PathFor/context.LastCommandPath's doc comments
+// for why: filepath.Join uses the separator of the OS the calling
+// process actually runs on, which would silently produce backslash
+// paths if this function is called with an injected
+// goos="linux"/"darwin" on a Windows host.
 func StatePathFor(goos string, getenv func(string) string) (string, error) {
 	if goos == "windows" {
 		localAppData := getenv("LOCALAPPDATA")
@@ -45,14 +53,14 @@ func StatePathFor(goos string, getenv func(string) string) (string, error) {
 	}
 
 	if xdg := getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "cli-comrade", stateFileName), nil
+		return path.Join(xdg, "cli-comrade", stateFileName), nil
 	}
 
 	home := getenv("HOME")
 	if home == "" {
 		return "", fmt.Errorf("resolve update_check.json path: HOME environment variable is not set")
 	}
-	return filepath.Join(home, ".local", "state", "cli-comrade", stateFileName), nil
+	return path.Join(home, ".local", "state", "cli-comrade", stateFileName), nil
 }
 
 // DefaultStatePath resolves update_check.json's path for the OS and

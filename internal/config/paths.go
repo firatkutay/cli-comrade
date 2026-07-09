@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"path"
 	"runtime"
 )
 
@@ -29,10 +29,14 @@ const configFileName = "config.toml"
 //     ~/.config/cli-comrade when XDG_CONFIG_HOME is unset.
 //
 // The windows branch is built with an explicit backslash rather than
-// filepath.Join: filepath.Join uses the separator of the OS the test
-// binary is actually running on, which would silently produce a
-// forward-slash path when this branch is exercised on a Linux/macOS CI
-// runner.
+// filepath.Join, and the unix branches with path.Join (always "/")
+// rather than filepath.Join: filepath.Join uses the separator of the OS
+// the test binary is actually running on, which would silently produce
+// backslash paths for the unix branch (or forward slashes for the
+// windows branch) when exercised via an injected goos on a host of the
+// other OS family — e.g. a goos="linux" call running on a Windows CI
+// runner. Using literal-separator joins keeps each branch's output tied
+// to goos, not runtime.GOOS, matching the doc comment's contract.
 func ResolveDir(goos string, getenv func(string) string) (string, error) {
 	if goos == "windows" {
 		appData := getenv("APPDATA")
@@ -43,14 +47,14 @@ func ResolveDir(goos string, getenv func(string) string) (string, error) {
 	}
 
 	if xdg := getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, configDirName), nil
+		return path.Join(xdg, configDirName), nil
 	}
 
 	home := getenv("HOME")
 	if home == "" {
 		return "", fmt.Errorf("resolve config directory: HOME environment variable is not set")
 	}
-	return filepath.Join(home, ".config", configDirName), nil
+	return path.Join(home, ".config", configDirName), nil
 }
 
 // ResolvePath computes the config file path for the given target OS,
@@ -65,7 +69,7 @@ func ResolvePath(goos string, getenv func(string) string) (string, error) {
 	if goos == "windows" {
 		return dir + `\` + configFileName, nil
 	}
-	return filepath.Join(dir, configFileName), nil
+	return path.Join(dir, configFileName), nil
 }
 
 // DefaultDir resolves the config directory for the OS and environment

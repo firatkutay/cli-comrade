@@ -36,7 +36,7 @@ func TestStatePathForUnixHonorsXDGStateHome(t *testing.T) {
 	}
 	got, err := StatePathFor("linux", getenv)
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join("/home/alice/.state-custom", "cli-comrade", "update_check.json"), got)
+	assert.Equal(t, "/home/alice/.state-custom/cli-comrade/update_check.json", got)
 }
 
 func TestStatePathForUnixFallsBackToHome(t *testing.T) {
@@ -48,7 +48,7 @@ func TestStatePathForUnixFallsBackToHome(t *testing.T) {
 	}
 	got, err := StatePathFor("linux", getenv)
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join("/home/alice", ".local", "state", "cli-comrade", "update_check.json"), got)
+	assert.Equal(t, "/home/alice/.local/state/cli-comrade/update_check.json", got)
 }
 
 func TestStatePathForUnixMissingHome(t *testing.T) {

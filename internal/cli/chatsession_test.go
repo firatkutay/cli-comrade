@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -76,7 +77,13 @@ func TestSaveTranscriptWritesExactRenderedContentWithRestrictivePermissions(t *t
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	if os.Getenv("GOOS") != "windows" {
+	// Windows' os.Chmod/FileMode does not model Unix permission bits, so
+	// 0600 is not a meaningful assertion there (this was previously
+	// guarded by the nonexistent "GOOS" env var, which is never actually
+	// set at runtime — a no-op guard that always evaluated true,
+	// including on Windows itself; runtime.GOOS is the real check). The
+	// content assertion above already runs unconditionally on every OS.
+	if runtime.GOOS != "windows" {
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	}
 }

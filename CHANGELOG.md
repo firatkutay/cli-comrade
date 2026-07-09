@@ -9,6 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FAZ 5: engine (plan generation) + safety rule engine — `internal/safety`:
+  an LLM-independent, config-driven `Engine.Evaluate(command, declared)`
+  implementing CLAUDE.md's five-class `RiskClass` (read/write/network/
+  elevated/destructive, ascending severity) and `Action`
+  (Allow/Confirm/Block). Every matcher runs against a single
+  `normalizeCommand`'d form (all quote characters stripped, whitespace
+  collapsed) rather than the raw string, so a stray quote can never defeat
+  a rule. A hardcoded denylist (`rm -rf /`/`~`/`$HOME` variants and their
+  near-equivalents — `//`, `/.`, trailing slashes, an absolute path to
+  `rm` — canonicalized before matching; `mkfs`; `dd`/redirect writes to
+  any real disk device, an explicit safe-pseudo-device allowlist
+  (`null`/`zero`/`tty*`/`random`/`urandom`/`full`/`stdin`/`stdout`/
+  `stderr`/`fd/*`/`pts/*`) aside; `diskpart`+`clean`; a PowerShell
+  drive-root recursive delete recognized across the whole Remove-Item
+  alias family (`Remove-Item`, `Remove-ItemProperty`, `ri`, `rd`,
+  `rmdir`, `del`, `erase`, `rm`), accepting abbreviated
+  (`-r`/`-rec`/`-fo`/...) and cmd.exe-legacy (`/s`/`/q`) flag spellings;
+  `format <drive>:`; the classic fork bomb) always returns Block, plus
+  `safety.denylist_extra` user regexes (an invalid one is skipped with
+  one stderr warning at construction, never a crash); ten escalation
+  rules (`rm -r`/`-f`, the same Remove-Item alias family with any
+  target, `chmod -R 777`, disk-write redirects, registry `Remove-Item*`
+  on `HKLM:`/`HKCU:`, `killall`/`taskkill /F`, `iptables -F`/`netsh
+  advfirewall reset`, `git push --force`, `sudo`/`runas`/`-Verb RunAs`,
+  package-manager installs, network verbs) only ever raise a command's
+  effective risk, never lower it — a step the LLM declared `destructive`
+  stays `destructive` even when nothing else matches. 236 table-driven
+  sub-cases across both Unix and PowerShell command families (up from an
+  initial 99 after an independent security review's `CHANGES_REQUIRED`
+  hardening pass, plus a residual `path.Clean`-based fix on
+  re-verification — see docs/phases/FAZ-05.md), including the documented
+  near-miss set (`rm -rf ./build`/`rm -rf ~/project` escalate but never
+  Block) and the deliberately-accepted `echo "rm -rf /"` quoted false
+  positive (fail-closed by design).
+  `internal/engine`: `Planner.GeneratePlan` builds a `go:embed`'d system
+  prompt (English core instruction + a Turkish block injected per
+  `general.language`'s auto/LANG resolution) carrying the OS/arch/shell/
+  cwd/package-manager/admin context (never env values), requests a
+  single structured-JSON completion through a minimal `Completer`
+  interface any `*llm.Client` satisfies, recovers from an empty `steps`
+  array or a `max_auto_steps` overrun with exactly one automatic
+  corrective re-prompt each (hard error / hard-truncate-with-a-summary-
+  marker respectively if the retry doesn't fix it), fails closed to
+  `RiskDestructive` for any step whose `risk` label doesn't parse, and
+  runs every step through `safety.Engine` before returning — the LLM's
+  declared risk is never the last word. New hidden `comrade do
+  <request...> --dry-run` (execution itself is FAZ 6's job; without
+  `--dry-run` this phase refuses to run at all) renders the plan as a
+  `STEP|COMMAND|RISK|REVERSIBLE|RATIONALE` table showing the safety
+  engine's own verdict — `CONFIRM(<effective risk>)` or
+  `BLOCKED(<reason>)` — never the model's raw declared risk, proven
+  end-to-end against an `httptest` mock `openai_compat` server whose
+  canned "docker kur" plan includes a `sudo apt-get install` (elevated)
+  step and a `rm -rf /` decoy step the model itself labels `read` and
+  that still renders Blocked.
 - FAZ 4: shell integration — `comrade init [bash|zsh|fish|powershell]`
   (replacing the FAZ 0 stub) installs an idempotent, marker-delimited
   hook block (`internal/shellinit`, `go:embed`'d per-shell snippets)

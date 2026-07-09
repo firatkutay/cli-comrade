@@ -19,6 +19,7 @@ const defaultConfigTOML = `[general]
 mode = "ask"              # auto | ask | info
 language = "auto"         # auto | tr | en
 color = true
+update_check = true       # check GitHub Releases for a newer version at most once/week
 
 [llm]
 provider = "anthropic"    # anthropic | openai_compat | google | ollama
@@ -59,9 +60,10 @@ step_timeout_seconds = 300   # max seconds a single executed step may run before
 
 // GeneralConfig holds the [general] section.
 type GeneralConfig struct {
-	Mode     string `mapstructure:"mode"`
-	Language string `mapstructure:"language"`
-	Color    bool   `mapstructure:"color"`
+	Mode        string `mapstructure:"mode"`
+	Language    string `mapstructure:"language"`
+	Color       bool   `mapstructure:"color"`
+	UpdateCheck bool   `mapstructure:"update_check"`
 }
 
 // OpenAICompatConfig holds the [llm.openai_compat] section.

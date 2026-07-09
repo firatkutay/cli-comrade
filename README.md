@@ -41,6 +41,28 @@ Temel senaryolar:
 **Güvenlik istisnası (pazarlık edilemez):** `auto` modda bile risk sınıfı
 `destructive` olan komutlar HER ZAMAN onay ister.
 
+### Kurulum
+
+```sh
+# macOS/Linux — Homebrew
+brew tap firatkutay/tap && brew install --cask comrade
+
+# Windows — winget
+winget install FiratKutay.comrade
+
+# Windows — Scoop
+scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket && scoop install comrade
+
+# macOS/Linux — kurulum script'i (checksum doğrulamalı)
+curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
+Debian/Ubuntu (.deb), Fedora/RHEL (.rpm) ve `go install` dahil tüm
+seçenekler için: [docs/INSTALL.md](docs/INSTALL.md). Yapılandırma
+anahtarları için [docs/CONFIGURATION.md](docs/CONFIGURATION.md),
+güvenlik modeli için [docs/SECURITY.md](docs/SECURITY.md), yaygın
+sorunlar için [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
 ### Durum
 
 Proje şu anda **FAZ 0 — Proje İskeleti** aşamasındadır. Henüz gerçek bir
@@ -79,6 +101,28 @@ Core scenarios:
 
 **Non-negotiable safety exception:** even in `auto` mode, commands classified
 as `destructive` ALWAYS require confirmation.
+
+### Install
+
+```sh
+# macOS/Linux — Homebrew
+brew tap firatkutay/tap && brew install --cask comrade
+
+# Windows — winget
+winget install FiratKutay.comrade
+
+# Windows — Scoop
+scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket && scoop install comrade
+
+# macOS/Linux — install script (checksum-verified)
+curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
+See [docs/INSTALL.md](docs/INSTALL.md) for every option, including
+Debian/Ubuntu (.deb), Fedora/RHEL (.rpm), and `go install`. Also see
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md) for every config key,
+[docs/SECURITY.md](docs/SECURITY.md) for the security model, and
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues.
 
 ### Status
 

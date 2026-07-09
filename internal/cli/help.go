@@ -48,6 +48,7 @@ var helpShortByPath = map[string]i18n.MessageID{
 	"comrade history":         i18n.MsgHelpShortHistory,
 	"comrade hook":            i18n.MsgHelpShortHook,
 	"comrade hook record":     i18n.MsgHelpShortHookRecord,
+	"comrade upgrade":         i18n.MsgHelpShortUpgrade,
 }
 
 // flagUsageByName maps a flag's NAME (not its command path — the same
@@ -70,6 +71,7 @@ var flagUsageByName = map[string]i18n.MessageID{
 	"print":   i18n.MsgFlagPrint,
 	"remove":  i18n.MsgFlagRemove,
 	"yes":     i18n.MsgFlagYes,
+	"check":   i18n.MsgFlagCheck,
 }
 
 // enUsageDefault renders id in English — the flag-registration-time

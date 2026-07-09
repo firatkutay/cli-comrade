@@ -1,6 +1,8 @@
 GOLANGCI_LINT_VERSION := v2.12.2
+GORELEASER_VERSION     := v2.16.0
 GOPATH_BIN             := $(shell go env GOPATH)/bin
 GOLANGCI_LINT          := $(GOPATH_BIN)/golangci-lint
+GORELEASER             := $(GOPATH_BIN)/goreleaser
 
 BINARY   := comrade
 VERSION  ?= dev
@@ -14,7 +16,7 @@ CROSS_TARGETS := \
 	darwin/arm64 \
 	windows/amd64
 
-.PHONY: build test lint vet cross tools clean
+.PHONY: build test lint vet cross tools clean release-check release-snapshot
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o ./$(BINARY) ./cmd/comrade
@@ -33,6 +35,23 @@ tools:
 		echo "installing golangci-lint $(GOLANGCI_LINT_VERSION)..."; \
 		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	fi
+	@if [ ! -x "$(GORELEASER)" ]; then \
+		echo "installing goreleaser $(GORELEASER_VERSION)..."; \
+		go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION); \
+	fi
+
+# release-check validates .goreleaser.yaml (schema + deprecations) without
+# building anything — the fast, no-side-effects half of the FAZ 10
+# acceptance check.
+release-check: tools
+	$(GORELEASER) check
+
+# release-snapshot performs a full local dry-run build of every release
+# artifact (archives, checksums, .deb/.rpm, brew/scoop/winget manifests)
+# with --clean --snapshot, so it never publishes or requires a real tag —
+# UYGULAMA_PLANI.md FAZ 10's acceptance check, runnable with no GITHUB_TOKEN.
+release-snapshot: tools
+	$(GORELEASER) release --snapshot --clean
 
 cross:
 	@mkdir -p $(DIST_DIR)

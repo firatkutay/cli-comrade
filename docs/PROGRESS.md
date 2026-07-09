@@ -1,6 +1,6 @@
 # PROGRESS
 module_path: github.com/firatkutay/cli-comrade
-current_phase: 10
+current_phase: 11
 status: in_progress
 
 ## Tamamlanan Fazlar
@@ -14,6 +14,7 @@ status: in_progress
 - [x] FAZ 7 — commit: f6b89ba
 - [x] FAZ 8 — commit: a90d74e
 - [x] FAZ 9 — commit: 5b8fca4
+- [x] FAZ 10 — commit: 04d52c8
 
 ## Notlar / Ertelenen İşler
 - golangci-lint GPL-3.0 lisanslıdır; yalnızca ayrı süreç (CI/dev aracı) olarak çağrılır, koda gömülmez/vendorlanmaz.
@@ -28,3 +29,6 @@ status: in_progress
 - Manuel doğrulama: comrade fix gerçek LLM ile "pyton --version" senaryosu API key gerektirir (mock ile uçtan uca doğrulandı); kullanıcı gerçek key ile bir kez denemeli.
 - Manuel doğrulama: gerçek OS keychain (macOS Keychain / Windows Credential Manager / Linux Secret Service) ve gerçek TTY no-echo parola girişi bu ortamda test edilemedi (go-keyring mock + injectable reader ile doğrulandı); kullanıcı bir platformda comrade auth login ile doğrulamalı.
 - i18n istisnaları (gerekçeli, docs/phases/FAZ-09.md'de belgeli): confirm.go seçenek harfleri (CLAUDE.md), cobra Use komut adları, hook.go gizli komut/debug satırı, promptui.go LLM prompt'u, ~40 "işlem: %w" hata sarmalama zinciri.
+- FAZ 10 gerçek yayın için hazır ama henüz tag atılmadı: goreleaser snapshot tüm artefaktları üretiyor; gerçek release öncesi homebrew-tap / scoop-bucket / winget-pkgs hedef repoları ve tap PAT secret'ı oluşturulmalı.
+- cosign imzalama .goreleaser.yaml'de yorumlu (etkinleştirme notu); anahtar/keyless kurulumu gerektirir.
+- Manuel doğrulama: install.sh/install.ps1 ve comrade upgrade gerçek ağ yolu (GitHub Releases) canlı test edilmedi (mock/snapshot ile doğrulandı); ilk gerçek release'te doğrulanmalı.

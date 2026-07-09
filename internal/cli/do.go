@@ -16,9 +16,7 @@ import (
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
 	"github.com/firatkutay/cli-comrade/internal/engine"
 	"github.com/firatkutay/cli-comrade/internal/executor"
-	"github.com/firatkutay/cli-comrade/internal/llm"
 	"github.com/firatkutay/cli-comrade/internal/safety"
-	"github.com/firatkutay/cli-comrade/internal/tui"
 )
 
 // newDoCmd builds "comrade do <request...>": the product's real entry
@@ -53,33 +51,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		return err
 	}
 
-	loader, err := newLoader()
-	if err != nil {
-		return err
-	}
-	cfg, created, err := loader.Load()
-	if err != nil {
-		return err
-	}
-	if created {
-		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), firstRunNoticeFormat, loader.Path()); err != nil {
-			return err
-		}
-	}
-
-	// CLAUDE.md security rule #6: --yolo prints a red warning on every
-	// use, regardless of whether the config-side bypass conditions
-	// (safety.confirm_destructive/confirm_elevated=false) actually let it
-	// do anything this particular run.
-	if flags.yolo {
-		if err := tui.PrintWarning(cmd.ErrOrStderr(),
-			"--yolo is set: destructive/elevated steps may run WITHOUT confirmation in auto mode, if safety.confirm_destructive/confirm_elevated is also disabled in config.",
-			cfg.General.Color); err != nil {
-			return err
-		}
-	}
-
-	client, err := llm.New(*cfg)
+	cfg, client, err := setupCLIRuntime(cmd, newLoader, flags)
 	if err != nil {
 		return fmt.Errorf("comrade do: %w", err)
 	}
@@ -91,7 +63,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		SendEnvNames: cfg.Context.SendEnvNames,
 	})
 
-	planner := engine.NewPlanner(client, *cfg)
+	planner := engine.NewPlanner(client, cfg)
 	plan, err := planner.GeneratePlan(cmd.Context(), request, sysCtx)
 	if err != nil {
 		return fmt.Errorf("comrade do: %w", err)
@@ -106,7 +78,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		return fmt.Errorf("comrade do: %w", err)
 	}
 
-	auditSink, err := buildAuditSink(cmd, *cfg)
+	auditSink, err := buildAuditSink(cmd, cfg)
 	if err != nil {
 		return fmt.Errorf("comrade do: %w", err)
 	}
@@ -119,7 +91,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 
 	deps := engine.RunDeps{
 		Executor:           executor.New(cmd.OutOrStdout(), cmd.ErrOrStderr()),
-		Safety:             safety.NewEngine(*cfg),
+		Safety:             safety.NewEngine(cfg),
 		LLM:                client,
 		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: cfg.General.Color, llm: client},
 		Audit:              auditSink,

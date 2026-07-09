@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FAZ 7: `comrade fix` — the main use-case, error-diagnosis flow (replacing the
+  FAZ 0 stub). `internal/engine`: new `Diagnoser.Diagnose(ctx, ErrorContext)
+  (Diagnosis, error)` — a `go:embed`'d diagnose system prompt (root-cause/
+  explanation/plan JSON schema, package-manager-aware install suggestions, a
+  16-example TR/EN few-shot grounding block covering command-not-found,
+  permission denied, port-in-use, ENOENT, Python `ModuleNotFoundError`, git
+  merge conflicts, DNS/proxy failures, and PowerShell `ExecutionPolicy`) reusing
+  `Planner`'s `rawPlan`/`toPlan`/language-resolution machinery verbatim for the
+  plan portion, so the fix plan is safety-annotated exactly like `comrade do`'s.
+  New `OfferVerification(ctx, RunDeps, Mode, command)` implements post-solution
+  verification: offers to re-run the original failing command once the fix
+  plan completes cleanly (info suggests it, ask prompts via the same confirm
+  loop a real plan step gets, auto runs it directly except for `elevated`,
+  which still confirms) — skipped entirely when the command is independently
+  classified destructive/Blocked, in any mode; the re-run is itself audited
+  like any other executed command. `internal/cli/fix.go`: the fallback chain
+  (a fresh, failed `last_command.json` entry used directly; `--rerun` or
+  `-- <command>` re-executes and captures fresh output, refusing outright —
+  falling through to interactive paste mode instead — when the command is
+  independently classified destructive; otherwise interactive paste mode reads
+  a pasted command + error transcript from stdin) feeds `Diagnoser`, then hands
+  the resulting plan to the exact same `engine.Execute`/mode-resolution/audit
+  machinery `comrade do` uses — no execution logic is duplicated. New
+  `internal/cli/runtime.go` factors the load-config/first-run-notice/
+  `--yolo`-warning/`llm.New` sequence, now shared verbatim by `do` and `fix`.
+  Proven end-to-end against a real compiled binary and an `httptest`/standalone
+  mock `openai_compat` server: the `pyton --version` (typo'd `python3`)
+  acceptance scenario surfaces the right root cause/explanation/install plan in
+  info mode, and a destructive `rm -rf <dir>` last command is refused before
+  ever reaching the executor (independently confirmed: the target directory's
+  marker file survives) — see docs/phases/FAZ-07.md.
 - FAZ 6: executor + three behavior modes (auto/ask/info) — the product's
   core execution loop. `internal/engine`: `Mode` (`auto`/`ask`/`info`) +
   `ResolveMode(flag, env, config)` implementing the exact flag >

@@ -69,7 +69,7 @@ func NewRootCmd(version string) *cobra.Command {
 	}
 
 	root.AddCommand(
-		newFixCmd(),
+		newFixCmd(newLoader),
 		newExplainCmd(),
 		newChatCmd(),
 		newConfigCmd(newLoader),

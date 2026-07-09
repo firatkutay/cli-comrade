@@ -42,8 +42,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calls `GetUserDefaultLocaleName` (a BCP-47 tag like `tr-TR`); on every
   other OS it is always `""`, a guaranteed no-op — Linux/macOS behavior
   is byte-identical to before. See `docs/CONFIGURATION.md`.
-
-### Added
+- **`comrade init powershell` now installs into EVERY installed
+  PowerShell variant's own profile on Windows, not just one**: it used to
+  target a single profile guessed purely from `runtime.GOOS` (always
+  Windows PowerShell 5.1's own `$PROFILE` on Windows, via the
+  `"powershell"` binary — never `"pwsh"`, regardless of which shell
+  actually launched `comrade.exe`), so PowerShell 7 users' own profile
+  was silently never touched. `internal/shellinit` gained
+  `ResolvePowerShellProfiles`, which probes both the `"powershell"` and
+  `"pwsh"` binaries on `GOOS=windows` and resolves each one found via its
+  own `$PROFILE`; `comrade init powershell`/`--remove` now
+  install/upgrade/remove independently per resolved profile (one combined
+  y/N confirmation covers every pending install, not one prompt per
+  profile), reporting one line per profile (variant name + path +
+  status). A machine with only one PowerShell edition installed is not an
+  error — only having neither is. Non-Windows behavior is unchanged
+  (`pwsh` is still the only candidate there, exactly as before). All new
+  report/error strings are routed through `internal/i18n` (TR+EN).
 
 - **`llm.idle_timeout_seconds` config key** (default `0` = disabled):
   bounds the gap between two consecutive chunks of a `Stream`, separately

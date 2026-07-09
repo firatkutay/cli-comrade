@@ -231,3 +231,301 @@ func TestInitPowerShellFallsBackToPrintingWhenProfileCannotBeResolved(t *testing
 	assert.Contains(t, out, "Could not automatically locate a profile file")
 	assert.Contains(t, out, shellinit.MarkerBegin)
 }
+
+// testInitDepsWindowsPS builds an initDeps simulating GOOS=windows with
+// controlled PowerShell variant detection: lookPath succeeds only for the
+// binary names that are keys of profileFor, and run resolves each
+// present binary's $PROFILE to profileFor[bin] — a real path under dir
+// (not Windows syntax; readFileOrEmpty/writeFileContent just need a real
+// path on whatever host this test actually runs on), so file content can
+// be asserted directly with os.ReadFile.
+func testInitDepsWindowsPS(profileFor map[string]string) initDeps {
+	return initDeps{
+		goos:   "windows",
+		getenv: func(string) string { return "" },
+		lookPath: func(name string) (string, error) {
+			if _, ok := profileFor[name]; ok {
+				return `C:\fake\` + name + `.exe`, nil
+			}
+			return "", errors.New("not found")
+		},
+		run: func(_ stdctx.Context, name string, _ ...string) ([]byte, error) {
+			if path, ok := profileFor[name]; ok {
+				return []byte(path), nil
+			}
+			return nil, errors.New("unexpected binary " + name)
+		},
+	}
+}
+
+func TestInitPowerShellWindowsInstallsIntoBothVariantProfilesWithSingleConfirmation(t *testing.T) {
+	dir := t.TempDir()
+	winPSProfile := filepath.Join(dir, "windowspowershell_profile.ps1")
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+	deps := testInitDepsWindowsPS(map[string]string{
+		"powershell": winPSProfile,
+		"pwsh":       pwshProfile,
+	})
+
+	out := execInitCmd(t, deps, "y\n", "powershell")
+
+	// Both profiles previewed and reported, but only ONE confirmation
+	// prompt asked (a single "y\n" on stdin satisfies both writes) — a
+	// second unconsumed prompt would leave the reader blocked on empty
+	// stdin and this call would never return.
+	assert.Contains(t, out, "Windows PowerShell 5.1: Installed cli-comrade shell integration in "+winPSProfile)
+	assert.Contains(t, out, "PowerShell 7: Installed cli-comrade shell integration in "+pwshProfile)
+	assert.Equal(t, 1, strings.Count(out, "Add cli-comrade shell integration to the profile(s) above?"))
+
+	block, err := shellinit.Block(shellinit.PowerShell)
+	require.NoError(t, err)
+
+	winData, err := os.ReadFile(winPSProfile)
+	require.NoError(t, err)
+	assert.Equal(t, block+"\n", string(winData))
+
+	pwshData, err := os.ReadFile(pwshProfile)
+	require.NoError(t, err)
+	assert.Equal(t, block+"\n", string(pwshData))
+}
+
+func TestInitPowerShellWindowsYesFlagSkipsConfirmation(t *testing.T) {
+	dir := t.TempDir()
+	winPSProfile := filepath.Join(dir, "windowspowershell_profile.ps1")
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+	deps := testInitDepsWindowsPS(map[string]string{
+		"powershell": winPSProfile,
+		"pwsh":       pwshProfile,
+	})
+
+	out := execInitCmd(t, deps, "", "powershell", "--yes")
+
+	assert.Contains(t, out, "Windows PowerShell 5.1: Installed cli-comrade shell integration in "+winPSProfile)
+	assert.Contains(t, out, "PowerShell 7: Installed cli-comrade shell integration in "+pwshProfile)
+
+	_, err := os.Stat(winPSProfile)
+	assert.NoError(t, err)
+	_, err = os.Stat(pwshProfile)
+	assert.NoError(t, err)
+}
+
+func TestInitPowerShellWindowsOnlyOneVariantPresentInstallsJustThatOne(t *testing.T) {
+	dir := t.TempDir()
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+	deps := testInitDepsWindowsPS(map[string]string{"pwsh": pwshProfile})
+
+	out := execInitCmd(t, deps, "", "powershell", "--yes")
+
+	assert.Contains(t, out, "PowerShell 7: Installed cli-comrade shell integration in "+pwshProfile)
+	assert.NotContains(t, out, "Windows PowerShell 5.1")
+
+	_, err := os.Stat(pwshProfile)
+	assert.NoError(t, err)
+}
+
+func TestInitPowerShellWindowsNeitherVariantPresentErrors(t *testing.T) {
+	deps := testInitDeps("windows", map[string]string{}) // lookPath always fails
+
+	err := execInitCmdErr(t, deps, "powershell")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "no PowerShell installation found")
+}
+
+func TestInitPowerShellWindowsSecondRunReportsAlreadyInstalledForBothVariants(t *testing.T) {
+	dir := t.TempDir()
+	winPSProfile := filepath.Join(dir, "windowspowershell_profile.ps1")
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+	deps := testInitDepsWindowsPS(map[string]string{
+		"powershell": winPSProfile,
+		"pwsh":       pwshProfile,
+	})
+
+	execInitCmd(t, deps, "", "powershell", "--yes")
+	winBefore, err := os.ReadFile(winPSProfile)
+	require.NoError(t, err)
+	pwshBefore, err := os.ReadFile(pwshProfile)
+	require.NoError(t, err)
+
+	// No stdin line is provided: if the second run tried to prompt at
+	// all, this would hang or fail — proving no write, and therefore no
+	// confirmation, was attempted for either already-installed profile.
+	out := execInitCmd(t, deps, "", "powershell", "--yes")
+	assert.Contains(t, out, "Windows PowerShell 5.1: cli-comrade shell integration is already installed in "+winPSProfile)
+	assert.Contains(t, out, "PowerShell 7: cli-comrade shell integration is already installed in "+pwshProfile)
+
+	winAfter, err := os.ReadFile(winPSProfile)
+	require.NoError(t, err)
+	pwshAfter, err := os.ReadFile(pwshProfile)
+	require.NoError(t, err)
+	assert.Equal(t, string(winBefore), string(winAfter))
+	assert.Equal(t, string(pwshBefore), string(pwshAfter))
+}
+
+func TestInitPowerShellWindowsUpgradesStaleBlockInOneProfileWhileFreshInstallingTheOther(t *testing.T) {
+	dir := t.TempDir()
+	winPSProfile := filepath.Join(dir, "windowspowershell_profile.ps1")
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+
+	oldBlock := shellinit.MarkerBegin + "\n# an old cli-comrade hook body\n" + shellinit.MarkerEnd
+	require.NoError(t, os.WriteFile(winPSProfile, []byte("# my profile\n"+oldBlock+"\n"), 0o644))
+	// pwshProfile deliberately does not exist yet — a fresh install.
+
+	deps := testInitDepsWindowsPS(map[string]string{
+		"powershell": winPSProfile,
+		"pwsh":       pwshProfile,
+	})
+
+	out := execInitCmd(t, deps, "y\n", "powershell")
+	assert.Contains(t, out, "Windows PowerShell 5.1: Installed cli-comrade shell integration in "+winPSProfile)
+	assert.Contains(t, out, "PowerShell 7: Installed cli-comrade shell integration in "+pwshProfile)
+	// One combined confirmation must cover both the upgrade and the
+	// fresh install — not one prompt each.
+	assert.Equal(t, 1, strings.Count(out, "Add cli-comrade shell integration to the profile(s) above?"))
+
+	winData, err := os.ReadFile(winPSProfile)
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(string(winData), shellinit.MarkerBegin))
+	assert.NotContains(t, string(winData), "an old cli-comrade hook body")
+
+	_, err = os.Stat(pwshProfile)
+	assert.NoError(t, err)
+}
+
+func TestInitPowerShellWindowsRemoveDeletesBlockFromBothVariantProfiles(t *testing.T) {
+	dir := t.TempDir()
+	winPSProfile := filepath.Join(dir, "windowspowershell_profile.ps1")
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+	deps := testInitDepsWindowsPS(map[string]string{
+		"powershell": winPSProfile,
+		"pwsh":       pwshProfile,
+	})
+
+	execInitCmd(t, deps, "", "powershell", "--yes")
+
+	out := execInitCmd(t, deps, "", "powershell", "--remove")
+	assert.Contains(t, out, "Windows PowerShell 5.1: Removed cli-comrade shell integration from "+winPSProfile)
+	assert.Contains(t, out, "PowerShell 7: Removed cli-comrade shell integration from "+pwshProfile)
+
+	winData, err := os.ReadFile(winPSProfile)
+	require.NoError(t, err)
+	assert.Equal(t, "", string(winData))
+	pwshData, err := os.ReadFile(pwshProfile)
+	require.NoError(t, err)
+	assert.Equal(t, "", string(pwshData))
+}
+
+func TestInitPowerShellWindowsRemoveWithOnlyOneVariantInstalledReportsBoth(t *testing.T) {
+	dir := t.TempDir()
+	winPSProfile := filepath.Join(dir, "windowspowershell_profile.ps1")
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+	deps := testInitDepsWindowsPS(map[string]string{
+		"powershell": winPSProfile,
+		"pwsh":       pwshProfile,
+	})
+
+	// Only install into the Windows PowerShell 5.1 profile by hand,
+	// leaving pwsh's profile untouched (as if the block was never
+	// installed there).
+	block, err := shellinit.Block(shellinit.PowerShell)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(winPSProfile, []byte(block+"\n"), 0o644))
+	require.NoError(t, os.WriteFile(pwshProfile, []byte("# untouched profile\n"), 0o644))
+
+	out := execInitCmd(t, deps, "", "powershell", "--remove")
+	assert.Contains(t, out, "Windows PowerShell 5.1: Removed cli-comrade shell integration from "+winPSProfile)
+	assert.Contains(t, out, "PowerShell 7: cli-comrade shell integration is not installed in "+pwshProfile+"; nothing to do.")
+
+	pwshData, err := os.ReadFile(pwshProfile)
+	require.NoError(t, err)
+	assert.Equal(t, "# untouched profile\n", string(pwshData))
+}
+
+func TestInitPowerShellWindowsUnresolvedVariantIsReportedAndSkippedWithoutBlockingOthers(t *testing.T) {
+	dir := t.TempDir()
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+	deps := initDeps{
+		goos:   "windows",
+		getenv: func(string) string { return "" },
+		lookPath: func(name string) (string, error) {
+			// Both binaries are "installed" (found on PATH)...
+			return `C:\fake\` + name + `.exe`, nil
+		},
+		run: func(_ stdctx.Context, name string, _ ...string) ([]byte, error) {
+			if name == "powershell" {
+				// ...but querying Windows PowerShell 5.1's own $PROFILE
+				// fails (e.g. a transient process-launch error).
+				return nil, errors.New("exit status 1")
+			}
+			return []byte(pwshProfile), nil
+		},
+	}
+
+	out := execInitCmd(t, deps, "", "powershell", "--yes")
+	assert.Contains(t, out, "Windows PowerShell 5.1: could not resolve profile path")
+	assert.Contains(t, out, "PowerShell 7: Installed cli-comrade shell integration in "+pwshProfile)
+
+	_, err := os.Stat(pwshProfile)
+	assert.NoError(t, err, "pwsh's profile must still be installed even though the other variant's resolution failed")
+}
+
+// TestInitPowerShellWindowsMessagesRenderInTurkish is this feature's TR
+// i18n smoke test (per this project's established
+// TestI18nSmoke*InTurkish convention, e.g. i18n_smoke_test.go): every
+// new MsgInitPSVariantXxx/MsgInitConfirmPromptMulti string must actually
+// route through the resolved Translator, not a hardcoded English
+// literal, when general.language resolves to Turkish.
+func TestInitPowerShellWindowsMessagesRenderInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	dir := t.TempDir()
+	winPSProfile := filepath.Join(dir, "windowspowershell_profile.ps1")
+	pwshProfile := filepath.Join(dir, "pwsh_profile.ps1")
+
+	deps := initDeps{
+		goos:   "windows",
+		getenv: func(k string) string { return map[string]string{"COMRADE_LANG": "tr"}[k] },
+		lookPath: func(name string) (string, error) {
+			if name == "powershell" || name == "pwsh" {
+				return `C:\fake\` + name + `.exe`, nil
+			}
+			return "", errors.New("not found")
+		},
+		run: func(_ stdctx.Context, name string, _ ...string) ([]byte, error) {
+			switch name {
+			case "powershell":
+				return []byte(winPSProfile), nil
+			case "pwsh":
+				return []byte(pwshProfile), nil
+			default:
+				return nil, errors.New("unexpected binary " + name)
+			}
+		},
+	}
+
+	// NOTE (pre-existing, out of scope for this feature): confirmYesNo
+	// only accepts literal "y"/"yes" regardless of the active language,
+	// even though the TR prompt itself displays "[e/H]" — "e"/"evet" is
+	// NOT actually accepted. Using "y" here to reach the install path;
+	// this discrepancy is unrelated to the multi-profile PowerShell
+	// change and is not fixed by it.
+	out := execInitCmd(t, deps, "y\n", "powershell")
+	assert.Contains(t, out, "Windows PowerShell 5.1: cli-comrade kabuk entegrasyonu "+winPSProfile+" içine kuruldu")
+	assert.Contains(t, out, "PowerShell 7: cli-comrade kabuk entegrasyonu "+pwshProfile+" içine kuruldu")
+	assert.Contains(t, out, "Yukarıdaki profil(ler)e cli-comrade kabuk entegrasyonu eklensin mi?")
+	assert.NotContains(t, out, "Installed cli-comrade shell integration")
+}
+
+// TestInitPowerShellWindowsNoneFoundErrorRendersInTurkish proves
+// MsgInitPowerShellNoneFoundError is also translated, not a hardcoded
+// English literal, when general.language resolves to Turkish.
+func TestInitPowerShellWindowsNoneFoundErrorRendersInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+	deps := testInitDeps("windows", map[string]string{}) // lookPath always fails
+
+	err := execInitCmdErr(t, deps, "powershell")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "hiçbir PowerShell kurulumu bulunamadı")
+	assert.NotContains(t, err.Error(), "no PowerShell installation found")
+}

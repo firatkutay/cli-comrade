@@ -89,6 +89,26 @@ func newInitCmd(deps initDeps, newLoader loaderFactory) *cobra.Command {
 				return err
 			}
 
+			// GOOS=windows PowerShell is the one multi-profile case: it
+			// targets EVERY installed PowerShell variant's own profile
+			// (Windows PowerShell 5.1 AND PowerShell 7, whichever are
+			// actually present) rather than RCPath's single goos-keyed
+			// guess — see shellinit.ResolvePowerShellProfiles' doc
+			// comment for the "pwsh gap" this closes. Every other
+			// shell — including PowerShell on non-Windows, where only
+			// pwsh has ever existed — keeps using RCPath's original
+			// single-profile path unchanged, byte-for-byte.
+			if shell == shellinit.PowerShell && deps.goos == "windows" {
+				profiles, err := shellinit.ResolvePowerShellProfiles(cmd.Context(), deps.goos, deps.lookPath, deps.run)
+				if err != nil {
+					return fmt.Errorf("%s", tr.T(i18n.MsgInitPowerShellNoneFoundError))
+				}
+				if remove {
+					return runInitRemovePowerShell(cmd, profiles, tr)
+				}
+				return runInitInstallPowerShell(cmd, profiles, assumeYes, tr)
+			}
+
 			path, ok, note := shellinit.RCPath(cmd.Context(), shell, deps.goos, deps.getenv, deps.lookPath, deps.run)
 			if remove {
 				return runInitRemove(cmd, path, ok, note, tr)
@@ -197,6 +217,131 @@ func runInitRemove(cmd *cobra.Command, path string, ok bool, note string, tr i18
 	}
 	_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitRemoved, path))
 	return err
+}
+
+// pendingPSInstall is one PowerShell profile runInitInstallPowerShell has
+// already decided needs a write (ApplyBlock returned StatusInstalled or
+// StatusUpgraded) — collected during the preview pass so the single
+// combined confirmation only has to be asked once, then applied to every
+// pending profile in a second pass.
+type pendingPSInstall struct {
+	profile shellinit.PSProfile
+	updated string
+}
+
+// runInitInstallPowerShell implements comrade init powershell's
+// GOOS=windows multi-variant install path: every profile in profiles
+// (one per installed PowerShell variant — see shellinit.
+// ResolvePowerShellProfiles) is evaluated independently via the same
+// ApplyBlock idempotency machinery runInitInstall uses for a single
+// profile, but the y/N confirmation is asked only ONCE, covering every
+// profile that actually needs a write — not once per profile — so a
+// two-variant machine is not prompted twice for what is, from the
+// user's perspective, a single "comrade init powershell" invocation.
+//
+// A profile whose OK is false (its variant's binary was found but its
+// own $PROFILE could not be resolved) is reported and skipped — it never
+// blocks the other profile(s) from being processed normally.
+func runInitInstallPowerShell(cmd *cobra.Command, profiles []shellinit.PSProfile, assumeYes bool, tr i18n.Translator) error {
+	block, err := shellinit.Block(shellinit.PowerShell)
+	if err != nil {
+		return err
+	}
+
+	var pending []pendingPSInstall
+	for _, p := range profiles {
+		if !p.OK {
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPSVariantUnresolved, p.Variant.Label(), p.Note)); err != nil {
+				return err
+			}
+			continue
+		}
+
+		existing, err := readFileOrEmpty(p.Path)
+		if err != nil {
+			return err
+		}
+
+		updated, status, err := shellinit.ApplyBlock(existing, shellinit.PowerShell)
+		if err != nil {
+			return err
+		}
+
+		if status == shellinit.StatusAlreadyInstalled {
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPSVariantAlreadyInstalled, p.Variant.Label(), p.Path)); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPreview, p.Path, block)); err != nil {
+			return err
+		}
+		pending = append(pending, pendingPSInstall{profile: p, updated: updated})
+	}
+
+	if len(pending) == 0 {
+		return nil
+	}
+
+	if !assumeYes {
+		confirmed, err := confirmYesNo(cmd, tr.T(i18n.MsgInitConfirmPromptMulti))
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), tr.T(i18n.MsgInitAborted))
+			return err
+		}
+	}
+
+	for _, pi := range pending {
+		if err := writeFileContent(pi.profile.Path, pi.updated); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPSVariantInstalled, pi.profile.Variant.Label(), pi.profile.Path)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// runInitRemovePowerShell implements comrade init powershell --remove's
+// GOOS=windows multi-variant path: every profile in profiles is
+// processed independently via RemoveBlock, with no confirmation prompt —
+// matching runInitRemove's single-profile behavior exactly, just applied
+// once per installed variant instead of once for a single goos-guessed
+// binary.
+func runInitRemovePowerShell(cmd *cobra.Command, profiles []shellinit.PSProfile, tr i18n.Translator) error {
+	for _, p := range profiles {
+		if !p.OK {
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPSVariantUnresolved, p.Variant.Label(), p.Note)); err != nil {
+				return err
+			}
+			continue
+		}
+
+		existing, err := readFileOrEmpty(p.Path)
+		if err != nil {
+			return err
+		}
+
+		updated, removed := shellinit.RemoveBlock(existing)
+		if !removed {
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPSVariantNotInstalled, p.Variant.Label(), p.Path)); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := writeFileContent(p.Path, updated); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitPSVariantRemoved, p.Variant.Label(), p.Path)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // confirmYesNo prints prompt to cmd's stdout and reads a single line

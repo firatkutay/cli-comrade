@@ -323,6 +323,53 @@ const (
 	// the rc/profile file path.
 	MsgInitRemoved MessageID = "init_removed"
 
+	// -- comrade init powershell (multi-variant: Windows PowerShell 5.1 +
+	// PowerShell 7) --------------------------------------------------------
+	//
+	// On GOOS=windows, "comrade init powershell" targets EVERY installed
+	// PowerShell variant's own profile independently (shellinit.
+	// ResolvePowerShellProfiles) rather than guessing one from goos — the
+	// "pwsh gap" fix (docs/PROGRESS.md). Every message below takes the
+	// variant's product-name Label() (shellinit.PSVariant.Label — itself
+	// deliberately untranslated, see that method's own doc comment) as
+	// its first arg, then behaves exactly like this same message's
+	// single-profile MsgInitXxx counterpart above.
+
+	// MsgInitPSVariantAlreadyInstalled is one variant's line in a
+	// multi-profile install report when that variant's profile already
+	// has the current block. Two args: the variant label, then the
+	// profile path.
+	MsgInitPSVariantAlreadyInstalled MessageID = "init_ps_variant_already_installed"
+
+	// MsgInitPSVariantInstalled confirms one variant's profile was
+	// installed or upgraded. Two args: the variant label, then the
+	// profile path.
+	MsgInitPSVariantInstalled MessageID = "init_ps_variant_installed"
+
+	// MsgInitPSVariantNotInstalled reports one variant's --remove found
+	// no installed block in that variant's profile. Two args: the
+	// variant label, then the profile path.
+	MsgInitPSVariantNotInstalled MessageID = "init_ps_variant_not_installed"
+
+	// MsgInitPSVariantRemoved confirms one variant's profile had the
+	// block removed. Two args: the variant label, then the profile path.
+	MsgInitPSVariantRemoved MessageID = "init_ps_variant_removed"
+
+	// MsgInitPSVariantUnresolved reports one variant whose binary was
+	// found but whose own $PROFILE could not be resolved — every OTHER
+	// variant is still processed normally (see shellinit.
+	// ResolvePowerShellProfiles' doc comment). Two args: the variant
+	// label, then the underlying (untranslated, English) resolution-
+	// failure note.
+	MsgInitPSVariantUnresolved MessageID = "init_ps_variant_unresolved"
+
+	// MsgInitConfirmPromptMulti is the y/N install confirmation prompt
+	// for a multi-profile PowerShell install, asked once for every
+	// pending profile shown in the preceding MsgInitPreview line(s). No
+	// args — unlike MsgInitConfirmPrompt, it does not repeat the
+	// path(s); those were already printed just above it.
+	MsgInitConfirmPromptMulti MessageID = "init_confirm_prompt_multi"
+
 	// -- cobra --help Short text (one per command) -----------------------
 	//
 	// cobra reads a command's Short field directly (both for its own
@@ -459,6 +506,13 @@ const (
 	// MsgInitShellUnsupportedError is `comrade init`'s error when the
 	// detected/given shell name isn't one this project supports.
 	MsgInitShellUnsupportedError MessageID = "init_shell_unsupported_error"
+	// MsgInitPowerShellNoneFoundError is `comrade init powershell`'s
+	// error on GOOS=windows when NEITHER Windows PowerShell 5.1 nor
+	// PowerShell 7 could be found on PATH (shellinit.
+	// ErrNoPowerShellFound) — the one case the multi-variant install
+	// cannot proceed with at all; finding only one of the two is not an
+	// error (see shellinit.ResolvePowerShellProfiles).
+	MsgInitPowerShellNoneFoundError MessageID = "init_powershell_none_found_error"
 	// MsgModelsNoModelsError is `comrade config models`'s error when the
 	// active provider returned an empty model list. One arg: the
 	// provider name.
@@ -625,6 +679,13 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgInitNotInstalled:             "cli-comrade shell integration is not installed in %s; nothing to do.\n",
 	MsgInitRemoved:                  "Removed cli-comrade shell integration from %s\n",
 
+	MsgInitPSVariantAlreadyInstalled: "%s: cli-comrade shell integration is already installed in %s\n",
+	MsgInitPSVariantInstalled:        "%s: Installed cli-comrade shell integration in %s\n",
+	MsgInitPSVariantNotInstalled:     "%s: cli-comrade shell integration is not installed in %s; nothing to do.\n",
+	MsgInitPSVariantRemoved:          "%s: Removed cli-comrade shell integration from %s\n",
+	MsgInitPSVariantUnresolved:       "%s: could not resolve profile path (%s)\n",
+	MsgInitConfirmPromptMulti:        "Add cli-comrade shell integration to the profile(s) above? [y/N] ",
+
 	MsgHelpShortRoot:          "comrade is a cross-platform AI CLI companion for the terminal",
 	MsgHelpShortDo:            "Generate a plan for a free-text request and run it per the active mode",
 	MsgHelpShortFix:           "Diagnose the last failed command (or a given one) and fix it",
@@ -667,6 +728,7 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgInitPrintRemoveExclusiveError: "init: --print and --remove are mutually exclusive",
 	MsgInitShellUndetectedError:      "init: could not detect your shell; run e.g. \"comrade init bash\" explicitly",
 	MsgInitShellUnsupportedError:     "init: detected shell %q is not supported; run \"comrade init bash|zsh|fish|powershell\" explicitly",
+	MsgInitPowerShellNoneFoundError:  "init: no PowerShell installation found on this machine (neither \"powershell\" nor \"pwsh\" was found on PATH)",
 	MsgModelsNoModelsError:           "config models: provider %q returned no models",
 	MsgModelsUnknownProviderError:    "unknown provider %q",
 	MsgModelsChoiceNotANumber:        "%q is not a number (expected 1-%d)",
@@ -780,6 +842,13 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgInitNotInstalled:             "cli-comrade kabuk entegrasyonu %s içinde kurulu değil; yapılacak bir şey yok.\n",
 	MsgInitRemoved:                  "cli-comrade kabuk entegrasyonu %s içinden kaldırıldı\n",
 
+	MsgInitPSVariantAlreadyInstalled: "%s: cli-comrade kabuk entegrasyonu zaten %s içinde kurulu\n",
+	MsgInitPSVariantInstalled:        "%s: cli-comrade kabuk entegrasyonu %s içine kuruldu\n",
+	MsgInitPSVariantNotInstalled:     "%s: cli-comrade kabuk entegrasyonu %s içinde kurulu değil; yapılacak bir şey yok.\n",
+	MsgInitPSVariantRemoved:          "%s: cli-comrade kabuk entegrasyonu %s içinden kaldırıldı\n",
+	MsgInitPSVariantUnresolved:       "%s: profil yolu çözülemedi (%s)\n",
+	MsgInitConfirmPromptMulti:        "Yukarıdaki profil(ler)e cli-comrade kabuk entegrasyonu eklensin mi? [e/H] ",
+
 	MsgHelpShortRoot:          "comrade, terminalde çapraz platform çalışan bir yapay zeka CLI yoldaşıdır",
 	MsgHelpShortDo:            "Serbest metinli bir istek için plan üretir ve aktif moda göre çalıştırır",
 	MsgHelpShortFix:           "Son başarısız komutu (veya verilen bir komutu) teşhis eder ve düzeltir",
@@ -822,6 +891,7 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgInitPrintRemoveExclusiveError: "init: --print ve --remove birlikte kullanılamaz",
 	MsgInitShellUndetectedError:      "init: kabuğunuz tespit edilemedi; örneğin \"comrade init bash\" komutunu açıkça çalıştırın",
 	MsgInitShellUnsupportedError:     "init: tespit edilen kabuk %q desteklenmiyor; \"comrade init bash|zsh|fish|powershell\" komutunu açıkça çalıştırın",
+	MsgInitPowerShellNoneFoundError:  "init: bu makinede hiçbir PowerShell kurulumu bulunamadı (PATH üzerinde ne \"powershell\" ne de \"pwsh\" bulundu)",
 	MsgModelsNoModelsError:           "config models: %q sağlayıcısı hiçbir model döndürmedi",
 	MsgModelsUnknownProviderError:    "bilinmeyen sağlayıcı %q",
 	MsgModelsChoiceNotANumber:        "%q bir sayı değil (beklenen: 1-%d)",

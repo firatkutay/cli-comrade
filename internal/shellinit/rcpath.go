@@ -77,7 +77,14 @@ func RCPath(ctx stdctx.Context, shell Shell, goos string, getenv func(string) st
 }
 
 // resolvePowerShellProfile is RCPath's PowerShell branch: see RCPath's
-// doc comment for the resolution strategy and rationale.
+// doc comment for the resolution strategy and rationale. It always
+// queries exactly one binary, chosen purely from goos ("powershell" on
+// Windows, "pwsh" everywhere else) — see ResolvePowerShellProfiles
+// (psprofiles.go) for the Windows-aware variant that probes BOTH
+// PowerShell 5.1 and PowerShell 7 instead of guessing one from goos,
+// used by "comrade init powershell" on GOOS=windows so the hook reaches
+// every installed variant's own profile, not just whichever one this
+// function would have guessed.
 func resolvePowerShellProfile(ctx stdctx.Context, goos string, lookPath func(string) (string, error), run CommandRunner) (string, bool, string) {
 	bin := "pwsh"
 	if goos == "windows" {
@@ -90,7 +97,18 @@ func resolvePowerShellProfile(ctx stdctx.Context, goos string, lookPath func(str
 	if _, err := lookPath(bin); err != nil {
 		return "", false, fmt.Sprintf("cannot resolve PowerShell profile path: %s not found on PATH", bin)
 	}
+	return queryProfilePath(ctx, bin, run)
+}
 
+// queryProfilePath runs bin (a PowerShell-family executable already
+// confirmed to be on PATH) with `-NoProfile -Command '$PROFILE'` and
+// returns bin's own profile path. This is the common tail shared by
+// resolvePowerShellProfile (RCPath's single-guess-from-goos PowerShell
+// branch) and ResolvePowerShellProfiles (psprofiles.go's multi-variant,
+// lookPath-based resolver): both already know which specific binary to
+// query by the time they reach this point, they just differ in HOW they
+// arrived at that binary name.
+func queryProfilePath(ctx stdctx.Context, bin string, run CommandRunner) (string, bool, string) {
 	out, err := run(ctx, bin, "-NoProfile", "-Command", "$PROFILE")
 	if err != nil {
 		return "", false, fmt.Sprintf("cannot resolve PowerShell profile path: %s failed: %v", bin, err)

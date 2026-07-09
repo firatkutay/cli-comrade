@@ -93,7 +93,7 @@ func TestShellVersionSilentOnNilRunner(t *testing.T) {
 
 func TestShellVersionPowerShellUsesPSVersionCommand(t *testing.T) {
 	var gotArgs []string
-	run := func(_ stdctx.Context, name string, args ...string) ([]byte, error) {
+	run := func(_ stdctx.Context, _ string, args ...string) ([]byte, error) {
 		gotArgs = args
 		return []byte("7.4.1\n"), nil
 	}

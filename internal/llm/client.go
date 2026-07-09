@@ -256,7 +256,36 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (Completio
 			return CompletionResponse{}, lastErr
 		}
 	}
-	return CompletionResponse{}, fmt.Errorf("llm: all providers failed: %w", lastErr)
+	return CompletionResponse{}, c.finalChainError(lastErr)
+}
+
+// finalChainError wraps lastErr — the last configured attempt's own
+// (already provider-prefixed) failure — as Complete/Stream's final
+// returned error once every attempt in the chain has failed, appending
+// UYGULAMA_PLANI.md FAZ 11 item 2's "Ollama varsa ona düşme önerisi" when
+// two conditions both hold: lastErr is (or wraps) ErrOffline — a
+// transport-level failure, not a rejection or malformed response the
+// suggestion wouldn't fix — and no attempt already configured is Ollama
+// (suggesting a user add what they already have configured would be
+// useless noise, and would also misattribute a failure that occurred
+// AFTER trying Ollama).
+func (c *Client) finalChainError(lastErr error) error {
+	err := fmt.Errorf("llm: all providers failed: %w", lastErr)
+	if errors.Is(lastErr, ErrOffline) && !c.hasOllamaAttempt() {
+		return fmt.Errorf("%w; if you have Ollama running locally, add \"ollama\" to llm.fallback (or set llm.provider=ollama) to keep working offline", err)
+	}
+	return err
+}
+
+// hasOllamaAttempt reports whether any configured attempt in c.attempts
+// is the ollama provider.
+func (c *Client) hasOllamaAttempt() bool {
+	for _, attempt := range c.attempts {
+		if attempt.providerName == "ollama" {
+			return true
+		}
+	}
+	return false
 }
 
 // redactPayload returns a copy of req with System and every message's
@@ -349,7 +378,7 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (<-chan Chun
 			return nil, lastErr
 		}
 	}
-	return nil, fmt.Errorf("llm: all providers failed: %w", lastErr)
+	return nil, c.finalChainError(lastErr)
 }
 
 // releaseOnClose forwards every Chunk from ch to a new channel, calling

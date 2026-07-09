@@ -72,7 +72,7 @@ func LastCommandPath(goos string, getenv func(string) string) (string, error) {
 // encoding/json.
 func WriteLastCommand(path string, cmd LastCommand) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("write last command: create directory %s: %w", dir, err)
 	}
 
@@ -100,7 +100,7 @@ func WriteLastCommand(path string, cmd LastCommand) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("write last command: close temp file: %w", err)
 	}
-	if err := os.Chmod(tmpPath, 0o644); err != nil {
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
 		return fmt.Errorf("write last command: chmod temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
@@ -119,7 +119,7 @@ func ReadLastCommand(path string) (cmd LastCommand, ok bool) {
 	if path == "" {
 		return LastCommand{}, false
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is this process's own fixed XDG-state last_command.json location (LastCommandPath), not attacker-controlled input
 	if err != nil {
 		return LastCommand{}, false
 	}

@@ -12,7 +12,7 @@ import (
 
 func TestOfferVerificationSkipsEmptyCommand(t *testing.T) {
 	exec := &fakeExecutor{}
-	deps, stdout, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	for _, mode := range []Mode{ModeInfo, ModeAsk, ModeAuto} {
 		err := OfferVerification(context.Background(), deps, mode, "   ")
@@ -31,7 +31,7 @@ func TestOfferVerificationSkipsEmptyCommand(t *testing.T) {
 func TestOfferVerificationSkippedWhenOriginalCommandIsDestructive(t *testing.T) {
 	for _, mode := range []Mode{ModeInfo, ModeAsk, ModeAuto} {
 		exec := &fakeExecutor{}
-		deps, stdout, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+		deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 		err := OfferVerification(context.Background(), deps, mode, "rm -rf /tmp/somedir")
 		require.NoError(t, err)
@@ -45,7 +45,7 @@ func TestOfferVerificationSkippedWhenOriginalCommandIsDestructive(t *testing.T) 
 // item 4's info-mode behavior: print the suggested command, run nothing.
 func TestOfferVerificationInfoModePrintsSuggestionWithoutExecuting(t *testing.T) {
 	exec := &fakeExecutor{}
-	deps, stdout, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	err := OfferVerification(context.Background(), deps, ModeInfo, "echo ok")
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestOfferVerificationAutoModeRunsNonElevatedCommandDirectly(t *testing.T) {
 		return executor.Result{ExitCode: 0}, nil
 	}}
 	aud := &fakeAudit{}
-	deps, stdout, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, aud)
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, aud)
 
 	err := OfferVerification(context.Background(), deps, ModeAuto, "echo verify-marker")
 	require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestOfferVerificationAutoModeReportsFailure(t *testing.T) {
 	exec := &fakeExecutor{respond: func(int, string) (executor.Result, error) {
 		return executor.Result{ExitCode: 1}, nil
 	}}
-	deps, stdout, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	err := OfferVerification(context.Background(), deps, ModeAuto, "false")
 	require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestOfferVerificationAutoModeElevatedDropsToConfirm(t *testing.T) {
 		return executor.Result{ExitCode: 0}, nil
 	}}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceYes}}}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	err := OfferVerification(context.Background(), deps, ModeAuto, "sudo systemctl restart nginx")
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestOfferVerificationAutoModeElevatedDropsToConfirm(t *testing.T) {
 func TestOfferVerificationAutoModeElevatedDeclinedNeverRuns(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceNo}}}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	err := OfferVerification(context.Background(), deps, ModeAuto, "sudo systemctl restart nginx")
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestOfferVerificationAskModePromptsAndRunsOnYes(t *testing.T) {
 		return executor.Result{ExitCode: 0}, nil
 	}}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceYes}}}
-	deps, stdout, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	err := OfferVerification(context.Background(), deps, ModeAsk, "echo verify-marker")
 	require.NoError(t, err)
@@ -146,7 +146,7 @@ func TestOfferVerificationAskModePromptsAndRunsOnYes(t *testing.T) {
 func TestOfferVerificationAskModeSkipsOnNo(t *testing.T) {
 	exec := &fakeExecutor{}
 	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceNo}}}
-	deps, _, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
 
 	err := OfferVerification(context.Background(), deps, ModeAsk, "echo verify-marker")
 	require.NoError(t, err)

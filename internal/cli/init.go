@@ -232,7 +232,7 @@ func readFileOrEmpty(path string) (string, error) {
 // directory first if needed (e.g. fish's ~/.config/fish/ on a machine
 // that has never run fish).
 func writeFileContent(path, content string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("init: create directory for %s: %w", path, err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { // #nosec G306 -- an rc/profile file is meant to be user-readable, matching its pre-existing permissions convention

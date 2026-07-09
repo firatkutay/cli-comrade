@@ -46,3 +46,27 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.2
+
+  # FAZ 11 hardening: fails the PR if any dependency (stdlib included —
+  # setup-go's go-version-file resolves the exact toolchain this repo's
+  # go.mod pins, so a stdlib CVE fixed in a newer patch release is
+  # caught too, not just third-party module CVEs) has a known,
+  # call-reachable vulnerability. Pinned to v1.4.0 (see go.mod's own
+  # comment trail / docs/phases/FAZ-11.md for the 15-day version-
+  # selection rationale) via `go install`, not a third-party Action, so
+  # this step's supply-chain surface is exactly "the Go toolchain +
+  # golang.org/x/vuln" — nothing else to audit or pin by SHA.
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
+
+      - name: govulncheck
+        run: govulncheck ./...

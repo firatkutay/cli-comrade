@@ -109,9 +109,9 @@ func runVerification(ctx context.Context, deps RunDeps, mode Mode, command strin
 	appendAudit(deps, mode, command, risk, res)
 
 	if res.ExitCode == 0 && !res.Canceled && !res.TimedOut {
-		tui.PrintStatus(deps.Stdout, fmt.Sprintf("verification: %s succeeded", command), deps.ColorEnabled) //nolint:errcheck
+		tui.PrintStatus(deps.Stdout, fmt.Sprintf("verification: %s succeeded", command), deps.ColorEnabled) //nolint:errcheck,gosec // stdout print failure is never actionable here (G104: unhandled error)
 	} else {
-		tui.PrintWarning(deps.Stdout, fmt.Sprintf("verification: %s still fails (exit %d)", command, res.ExitCode), deps.ColorEnabled) //nolint:errcheck
+		tui.PrintWarning(deps.Stdout, fmt.Sprintf("verification: %s still fails (exit %d)", command, res.ExitCode), deps.ColorEnabled) //nolint:errcheck,gosec // stdout print failure is never actionable here (G104: unhandled error)
 	}
 	return nil
 }

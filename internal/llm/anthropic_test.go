@@ -65,7 +65,7 @@ func TestAnthropicCompleteRequestShape(t *testing.T) {
 }
 
 func TestAnthropicComplete401IsAuthRejected(t *testing.T) {
-	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`))
 	})
@@ -82,7 +82,7 @@ func TestAnthropicComplete401IsAuthRejected(t *testing.T) {
 }
 
 func TestAnthropicComplete429IsOverloaded(t *testing.T) {
-	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`))
 	})
@@ -93,7 +93,7 @@ func TestAnthropicComplete429IsOverloaded(t *testing.T) {
 }
 
 func TestAnthropicComplete529IsOverloaded(t *testing.T) {
-	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(529)
 		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"overloaded_error","message":"overloaded"}}`))
 	})
@@ -104,7 +104,7 @@ func TestAnthropicComplete529IsOverloaded(t *testing.T) {
 }
 
 func TestAnthropicComplete500IsOverloaded(t *testing.T) {
-	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"api_error","message":"boom"}}`))
 	})
@@ -115,7 +115,7 @@ func TestAnthropicComplete500IsOverloaded(t *testing.T) {
 }
 
 func TestAnthropicStreamConcatenatesDeltasAndClosesCleanly(t *testing.T) {
-	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("content-type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		frames := []string{
@@ -157,7 +157,7 @@ func TestAnthropicStreamConcatenatesDeltasAndClosesCleanly(t *testing.T) {
 }
 
 func TestAnthropicStreamMidStreamErrorEvent(t *testing.T) {
-	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("content-type", "text/event-stream")
 		flusher, _ := w.(http.Flusher)
 		frames := []string{
@@ -191,7 +191,7 @@ func TestAnthropicStreamMidStreamErrorEvent(t *testing.T) {
 }
 
 func TestAnthropicStreamHTTPErrorBeforeStreaming(t *testing.T) {
-	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"authentication_error","message":"bad key"}}`))
 	})
@@ -205,7 +205,7 @@ func TestAnthropicStreamHTTPErrorBeforeStreaming(t *testing.T) {
 // (guards against a silently-broken httptest wiring making every other
 // test in this file vacuously pass).
 func TestAnthropicTestServerReachable(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -220,7 +220,7 @@ func TestAnthropicTestServerReachable(t *testing.T) {
 }
 
 func TestAnthropicCompleteRespectsContextTimeout(t *testing.T) {
-	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newAnthropicTestConnector(t, func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"late"}],"model":"claude-haiku-4-5","stop_reason":"end_turn","usage":{}}`))

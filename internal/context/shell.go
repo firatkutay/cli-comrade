@@ -22,7 +22,7 @@ type CommandRunner func(ctx stdctx.Context, name string, args ...string) ([]byte
 
 // RunCommand is the default CommandRunner, backed by exec.CommandContext.
 func RunCommand(ctx stdctx.Context, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) // #nosec G204 -- name is one of a small, fixed set of shell/version-probe binaries this package itself decides to invoke (e.g. detecting the shell's own --version), never attacker/LLM-controlled input
 	return cmd.Output()
 }
 

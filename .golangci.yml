@@ -7,11 +7,25 @@ linters:
     - unconvert
     - unused
     - ineffassign
+    # FAZ 11 (v0.1.0-rc1 hardening) strict-profile addition — a curated
+    # set, not `enable-all`: each one earns its place by catching a real
+    # class of bug this project is exposed to (raw shell exec + network
+    # I/O + concurrency), not just style.
+    - gosec        # this project shells out to a user-composed command and calls raw HTTP APIs — exactly gosec's sweet spot.
+    - errorlint     # CLAUDE.md mandates fmt.Errorf("...: %w", err) everywhere; errorlint catches the one that reverts to %v/Sprintf.
+    - gocritic      # diagnostics (bugs, perf, style) beyond staticcheck's own set.
+    - revive        # golint's maintained successor; broader style/correctness coverage than the default set alone.
+    - bodyclose     # every connector in internal/llm does raw http.Client.Do — an unclosed response body is a real leak here.
+    - noctx         # context.Context is supposed to be threaded through every I/O call (CLAUDE.md); noctx catches the one that skips it.
+    - unparam       # unused function parameters are dead-weight signal in a plan/engine/safety codebase this layered.
+    - prealloc      # slices built from a known-length loop (plan steps, audit entries) should preallocate.
   exclusions:
     rules:
       - path: _test\.go
         linters:
           - misspell
+          - gosec    # test fixtures deliberately construct the exact denylisted/malicious commands (rm -rf /, mkfs, ...) gosec's own subprocess-launch checks would otherwise flag — that IS the test, not a real risk.
+          - noctx    # some test helpers build one-off *http.Request values against httptest servers where a context is genuinely immaterial to what's being asserted.
 
 formatters:
   enable:

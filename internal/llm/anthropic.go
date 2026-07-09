@@ -98,7 +98,7 @@ func (c *anthropicConnector) doRequest(ctx context.Context, body anthropicReques
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("anthropic: request: %w", err)
+		return nil, wrapReachabilityError("anthropic", c.baseURL, fmt.Errorf("anthropic: request: %w", err))
 	}
 	return resp, nil
 }
@@ -184,7 +184,7 @@ type anthropicStreamEvent struct {
 }
 
 func (c *anthropicConnector) Stream(ctx context.Context, req CompletionRequest) (<-chan Chunk, error) {
-	resp, err := c.doRequest(ctx, c.buildRequest(req, true))
+	resp, err := c.doRequest(ctx, c.buildRequest(req, true)) //nolint:bodyclose // closed on both paths below: immediately on a non-200 status, or by the streaming goroutine's own defer once it finishes reading — bodyclose's static path check doesn't see the latter as a guaranteed close.
 	if err != nil {
 		return nil, err
 	}

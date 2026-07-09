@@ -9,6 +9,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FAZ 10: packaging and distribution — a complete `goreleaser` v2
+  pipeline, `comrade upgrade` (hand-rolled, checksum-verified
+  self-update), a passive weekly version notice, and full install/
+  config/security/troubleshooting docs. `.goreleaser.yaml` now produces,
+  in addition to FAZ 0's archives+checksums: a Homebrew **Cask** (not the
+  deprecated-as-of-goreleaser-v2.16 `brews`/Formula shape —
+  `homebrew_casks:`, `firatkutay/homebrew-tap`), a Scoop bucket manifest
+  (`firatkutay/scoop-bucket`), a winget manifest
+  (`FiratKutay.comrade`), and `.deb`/`.rpm` packages via `nfpm`
+  (maintainer, MIT license, `utils` section) — plus an explicit
+  `release: github: {owner, name}` block (this repo has no git remote
+  configured) and a commented-out `signs:` cosign block documenting the
+  key-provisioning steps needed to enable it later. New
+  `.github/workflows/release.yml`: on `v*` tag push, `actions/checkout`
+  (`fetch-depth: 0` — goreleaser refuses a shallow clone) +
+  `actions/setup-go` + `anchore/sbom-action` (a source CycloneDX SBOM,
+  `sbom-source.cdx.json` — this repo ships no container image, so there
+  is no separate container SBOM to also generate) + `goreleaser-action`,
+  every step pinned by full commit SHA with a version comment.
+  New `internal/update` leaf package (stdlib only — `net/http`,
+  `archive/tar`/`archive/zip`, `compress/gzip`, `crypto/sha256` — no new
+  dependency): `GitHubClient`/`HTTPDownloader` (both injectable via the
+  `ReleaseFetcher`/`AssetDownloader` interfaces so every test uses a
+  fake, never the real network), `ArchiveName`/`BinaryName`/
+  `ChecksumsFileName` (the Go-code mirror of goreleaser's own
+  `name_template`), `VerifyChecksum` (SHA-256 against the release's own
+  `checksums.txt` — mandatory before ANY extraction/install),
+  `ExtractBinary` (tar.gz/zip), `IsNewer`/`IsDevBuild` (a minimal,
+  hand-rolled version comparator — not full SemVer precedence, sufficient
+  for this project's own `vX.Y.Z` tags), `ReplaceBinary` (atomic rename
+  on Unix; the Windows rename-running-exe-to-`.old` dance, since a
+  running process can't overwrite or delete its own `.exe`) +
+  `CleanupOldBinary`, and `CheckState`/`ShouldCheck`/`StatePathFor` (the
+  weekly-throttle state file, alongside `audit.jsonl`/
+  `last_command.json` under the platform state dir — never inside
+  `config.toml`). New `comrade upgrade` (`internal/cli/upgrade.go`):
+  `--check` only reports; without it, downloads, checksum-verifies, and
+  atomically replaces the running binary, refusing outright on a `dev`
+  (unversioned local) build. New `general.update_check` config key
+  (default `true`) gating a passive, at-most-once-per-week "a new version
+  is available" notice printed to stderr at the end of any command
+  (`root.PersistentPostRunE`, added to `NewRootCmd`/`newRootCmd` — the
+  latter an unexported, fetcher-injectable variant used only by tests
+  that need to exercise a full successful/failed background check
+  without ever reaching the real GitHub API) — silent on any failure
+  (offline, API error), bounded by a 3s timeout, and skipped for a bare
+  `comrade` invocation, `comrade upgrade` itself, a `dev` build, or
+  `update_check=false`. `docs/phases/FAZ-10.md` has the full design
+  rationale (why hand-rolled over a self-update library, the exact
+  goreleaser/action version-pin decisions and why).
+- FAZ 10: a bidirectional release-name drift guard
+  (`internal/cli/release_names_test.go`,
+  `TestReleaseArchiveNamingIsConsistentAcrossGoreleaserInstallScriptsAndUpdatePackage`)
+  renders `.goreleaser.yaml`'s own `archives[].name_template` (via
+  `text/template`, not a hand-copied string) and cross-checks it against
+  `scripts/install.sh`, `scripts/install.ps1`, and
+  `internal/update.ArchiveName`/`BinaryName`/`ChecksumsFileName` — a Go
+  test (wired into the existing `go test ./...` CI step, not a
+  duplicate/parallel script) that fails on ANY of the four drifting from
+  the other three, in either direction. `scripts/install.sh` also gained:
+  a `wget` fallback (`fetch_url`/`fetch_url_to_file` dispatch on whichever
+  of `curl`/`wget` `require_downloader` actually finds, erroring with a
+  clear message if neither is present) and a `sudo` fallback when neither
+  `~/.local/bin` nor `/usr/local/bin` is writable.
+- FAZ 10: `docs/INSTALL.md`, `docs/CONFIGURATION.md` (every config key,
+  default, and `COMRADE_...` env override in one table), `docs/
+  SECURITY.md`, and `docs/TROUBLESHOOTING.md` — each bilingual (TR
+  section then EN section, matching `README.md`'s own convention).
+  `README.md` gained one-line per-OS install commands and links to all
+  four docs.
+
 - FAZ 9: full TR/EN i18n, `comrade explain`, and `comrade chat`. New
   `internal/i18n` leaf package: a `MessageID`-keyed `Catalog` (113 entries,
   English + Turkish), a `Translator` (`T(id, args...)`, DI'd per command —

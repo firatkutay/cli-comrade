@@ -24,6 +24,13 @@ jobs:
       - name: Build
         run: go build ./...
 
+      # Also runs internal/cli's TestReleaseArchiveNamingIsConsistent...
+      # (FAZ 10's release-name drift guard): a Go test, not a separate
+      # step, so a hand-maintained mirror between .goreleaser.yaml's
+      # archives[].name_template, scripts/install.sh, scripts/
+      # install.ps1, and internal/update's ArchiveName/BinaryName/
+      # ChecksumsFileName drifting in EITHER direction fails this exact
+      # step on every PR — see internal/cli/release_names_test.go.
       - name: Test
         run: go test ./...
 

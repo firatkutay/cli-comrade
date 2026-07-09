@@ -40,4 +40,107 @@ checksum:
 changelog:
   disable: true
 
-# brew tap, scoop bucket, and winget manifest are added in FAZ 10.
+# release: this repo has no git remote configured yet (a fresh clone
+# with no `origin` would otherwise leave goreleaser to guess), so the
+# GitHub repository is named explicitly rather than inferred from `git
+# remote get-url origin` — matches scripts/install.sh/install.ps1's own
+# hardcoded REPO="firatkutay/cli-comrade".
+release:
+  github:
+    owner: firatkutay
+    name: cli-comrade
+
+# --- Homebrew tap (macOS/Linux) --------------------------------------------
+# `brews:` (Homebrew Formula) is deprecated as of goreleaser v2.16 in
+# favor of `homebrew_casks:` (Homebrew Cask) — see
+# https://goreleaser.com/deprecations#brews; `goreleaser check` fails on
+# a deprecated key, so this uses the current, non-deprecated form.
+# Target repo (github.com/firatkutay/homebrew-tap) does not need to exist
+# yet for `goreleaser release --snapshot --clean` (snapshot mode never
+# publishes); it DOES need to exist, empty, before a real `goreleaser
+# release` run. A real run needs a token with push access to that repo —
+# GITHUB_TOKEN (the default) only works if homebrew-tap is owned by the
+# same account/org and GITHUB_TOKEN has cross-repo write access; otherwise
+# set a separate PAT as the HOMEBREW_TAP_GITHUB_TOKEN secret and reference
+# it via repository.token below (commented — enable once that secret
+# exists).
+homebrew_casks:
+  - name: comrade
+    repository:
+      owner: firatkutay
+      name: homebrew-tap
+      # token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/firatkutay/cli-comrade"
+    description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+
+# --- Scoop bucket (Windows) -------------------------------------------------
+# Same "repo must pre-exist for a real release" note as brews above;
+# snapshot mode does not require it. A cross-repo push needs
+# SCOOP_BUCKET_GITHUB_TOKEN if homebrew/scoop live outside the account
+# GITHUB_TOKEN already has write access to.
+scoops:
+  - name: comrade
+    repository:
+      owner: firatkutay
+      name: scoop-bucket
+      # token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
+    homepage: "https://github.com/firatkutay/cli-comrade"
+    description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+    license: MIT
+
+# --- winget manifest (Windows) ----------------------------------------------
+# winget's own community repo (microsoft/winget-pkgs) is the real publish
+# target in production; pointing repository at a dedicated
+# firatkutay/winget-pkgs staging fork here keeps this file self-contained
+# and snapshot-safe without assuming a PR-to-microsoft/winget-pkgs
+# workflow is wired yet. Same pre-existing-repo/token caveat as brews/
+# scoops.
+winget:
+  - name: comrade
+    publisher: "Fırat Kutay"
+    short_description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+    license: "MIT"
+    homepage: "https://github.com/firatkutay/cli-comrade"
+    package_identifier: FiratKutay.comrade
+    repository:
+      owner: firatkutay
+      name: winget-pkgs
+      branch: "comrade-{{ .Version }}"
+      # token: "{{ .Env.WINGET_PKGS_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+
+# --- .deb / .rpm (nfpm) ------------------------------------------------------
+nfpms:
+  - id: comrade
+    package_name: comrade
+    file_name_template: "{{ .ConventionalFileName }}"
+    homepage: "https://github.com/firatkutay/cli-comrade"
+    maintainer: "Fırat Kutay <firat.kutay@gmail.com>"
+    description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+    license: MIT
+    section: utils
+    formats:
+      - deb
+      - rpm
+
+# --- Supply-chain signing (enablement note, not wired) ----------------------
+# cosign signing of checksums.txt (which covers every other artifact
+# transitively, since checksums.txt lists their digests) is NOT enabled
+# here: it requires a cosign key pair (or keyless/Fulcio+Rekor OIDC
+# signing) provisioned in CI secrets, which this repo does not have yet.
+# Enable by uncommenting the block below once COSIGN_PASSWORD (and either
+# a committed cosign.pub + a COSIGN_PRIVATE_KEY secret, or keyless OIDC
+# signing in the release workflow) exist:
+#
+# signs:
+#   - cmd: cosign
+#     stdin: "{{ .Env.COSIGN_PASSWORD }}"
+#     args:
+#       - sign-blob
+#       - "--key=cosign.key"
+#       - "--output-signature=${signature}"
+#       - "${artifact}"
+#       - "--yes"
+#     artifacts: checksum

@@ -1,0 +1,63 @@
+name: Release
+
+# Runs goreleaser against a pushed "vX.Y.Z" tag — the second half of the
+# supply-chain-pinning "release two-gate rule": the tag push (git side)
+# and this workflow's artifact publish are independent gates, both
+# required before a release is considered done.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # goreleaser refuses to run against a shallow clone (it walks
+          # tag history for the changelog pipe even though ours is
+          # disabled, and to resolve {{.Tag}}/{{.PreviousTag}}).
+          fetch-depth: 0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      # Source SBOM, attached to the release alongside goreleaser's own
+      # archives/checksums — this repo ships no container image, so
+      # there is no separate "container SBOM" to also generate (see
+      # security-scanning's SBOM-bundle rule; a source-only SBOM is the
+      # right and complete scope for a binary-only Go CLI release).
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom-source.cdx.json
+          upload-release-assets: false
+          upload-artifact: false
+
+      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
+        with:
+          distribution: goreleaser
+          version: "~> v2.16"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Publishing brews/scoops/winget (.goreleaser.yaml) pushes to
+          # firatkutay/homebrew-tap, firatkutay/scoop-bucket, and
+          # firatkutay/winget-pkgs. GITHUB_TOKEN (above) is sufficient
+          # ONLY if those repos are owned by this same account/org and
+          # GITHUB_TOKEN's default permissions extend to them; if not
+          # (e.g. they're separate personal repos with branch
+          # protection, or this workflow's GITHUB_TOKEN is scoped to
+          # cli-comrade only), create a PAT with `repo` scope on each
+          # target repo and set it as the matching secret below, then
+          # uncomment the corresponding `repository.token:` line in
+          # .goreleaser.yaml:
+          #   HOMEBREW_TAP_GITHUB_TOKEN
+          #   SCOOP_BUCKET_GITHUB_TOKEN
+          #   WINGET_PKGS_GITHUB_TOKEN

@@ -8,13 +8,35 @@ import (
 
 	"github.com/firatkutay/cli-comrade/internal/config"
 	"github.com/firatkutay/cli-comrade/internal/i18n"
+	"github.com/firatkutay/cli-comrade/internal/update"
 )
 
 // NewRootCmd builds the "comrade" root command. version is injected at
 // build time via -ldflags; it defaults to "dev" for local, non-release
 // builds. Running "comrade" with no arguments prints the version followed
 // by the standard cobra help output.
+//
+// This is a thin wrapper around newRootCmd wiring the real
+// update.GitHubClient in as the passive version-notification's
+// ReleaseFetcher (see maybeNotifyUpdate) — production code and the vast
+// majority of tests (which never reach that code path: bare invocation,
+// dev builds, `comrade upgrade` itself, and general.update_check=false
+// are all skipped before any fetcher is consulted) both go through this.
+// The one test that exercises a SUCCESSFUL background check end-to-end
+// calls newRootCmd directly with a fake ReleaseFetcher instead — this
+// package's test files are `package cli`, so that unexported constructor
+// is directly reachable without needing to export it.
 func NewRootCmd(version string) *cobra.Command {
+	return newRootCmd(version, &update.GitHubClient{})
+}
+
+// newRootCmd is NewRootCmd's real implementation, parameterized on the
+// update.ReleaseFetcher the passive version-notification hook uses —
+// dependency injection identical in spirit to upgradeDeps/initDeps, kept
+// as a second, unexported constructor instead of widening NewRootCmd's
+// own public signature (main.go and every other test call that one
+// unchanged).
+func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Command {
 	root := &cobra.Command{
 		Use:     "comrade",
 		Short:   "comrade is a cross-platform AI CLI companion for the terminal",
@@ -77,6 +99,27 @@ func NewRootCmd(version string) *cobra.Command {
 		return runDo(cmd, newLoader, strings.Join(args, " "), rootFlags)
 	}
 
+	// The passive version-update notification (UYGULAMA_PLANI.md FAZ 10
+	// item 4) is wired as root's own PersistentPostRunE: cobra only runs
+	// it after the invoked command's RunE returns nil (see
+	// spf13/cobra's Command.execute), and — since no command in this
+	// tree sets its own PersistentPostRunE — it fires for whichever
+	// subcommand actually ran (cmd is that leaf command, not root; see
+	// maybeNotifyUpdate's own doc comment). Two cases are deliberately
+	// skipped: a true bare `comrade` invocation (cmd == root AND no
+	// args — the version banner/help path; a free-text `comrade
+	// <request>` do-dispatch is cmd == root too, but WITH args, and is
+	// NOT skipped), and `comrade upgrade` itself (no point nagging about
+	// a new version immediately after the user just checked/installed
+	// one).
+	root.PersistentPostRunE = func(cmd *cobra.Command, args []string) error {
+		if (cmd == root && len(args) == 0) || cmd.Name() == "upgrade" {
+			return nil
+		}
+		maybeNotifyUpdate(cmd, newLoader, version, updateFetcher)
+		return nil
+	}
+
 	root.AddCommand(
 		newFixCmd(newLoader),
 		newExplainCmd(newLoader),
@@ -87,6 +130,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newHookCmd(),
 		newDoCmd(newLoader),
 		newAuthCmd(newLoader),
+		newUpgradeCmd(newLoader, defaultUpgradeDeps(version)),
 	)
 
 	// Localizes every command's --help/usage output (help.go) — must run

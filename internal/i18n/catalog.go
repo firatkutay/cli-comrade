@@ -355,6 +355,7 @@ const (
 	MsgHelpShortHistory       MessageID = "help_short_history"
 	MsgHelpShortHook          MessageID = "help_short_hook"
 	MsgHelpShortHookRecord    MessageID = "help_short_hook_record"
+	MsgHelpShortUpgrade       MessageID = "help_short_upgrade"
 
 	// -- per-flag --help descriptions ------------------------------------
 	//
@@ -407,6 +408,41 @@ const (
 	MsgModelsUnknownProviderError    MessageID = "models_unknown_provider_error"
 	MsgModelsChoiceNotANumber        MessageID = "models_choice_not_a_number"
 	MsgModelsChoiceOutOfRange        MessageID = "models_choice_out_of_range"
+
+	// -- comrade upgrade (FAZ 10) -----------------------------------------
+
+	// MsgUpgradeDevBuildError refuses to run `comrade upgrade` (--check or
+	// not) against a "dev" (un-versioned local) build, which has no
+	// released tag to compare against.
+	MsgUpgradeDevBuildError MessageID = "upgrade_dev_build_error"
+
+	// MsgUpgradeUpToDate reports the running version is already the
+	// latest published release. One arg: the current version.
+	MsgUpgradeUpToDate MessageID = "upgrade_up_to_date"
+
+	// MsgUpgradeNewerAvailable reports a newer release exists. Three
+	// args: the latest version, the current version, the release URL.
+	MsgUpgradeNewerAvailable MessageID = "upgrade_newer_available"
+
+	// MsgUpgradeDownloading is printed just before downloading the
+	// matching platform archive. One arg: the target version.
+	MsgUpgradeDownloading MessageID = "upgrade_downloading"
+
+	// MsgUpgradeInstalled confirms a completed self-update. One arg: the
+	// newly installed version.
+	MsgUpgradeInstalled MessageID = "upgrade_installed"
+
+	// -- per-flag --help descriptions (comrade upgrade) -------------------
+
+	MsgFlagCheck MessageID = "flag_check"
+
+	// -- passive version-update notification (FAZ 10 item 4) -------------
+
+	// MsgUpdateAvailableNotice is the single line printed at the end of a
+	// command, at most once per week, when a background check found a
+	// newer release than the running build. Two args: the latest
+	// version, the current version.
+	MsgUpdateAvailableNotice MessageID = "update_available_notice"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -548,6 +584,17 @@ var catalogEN = Catalog{
 	MsgModelsUnknownProviderError:    "unknown provider %q",
 	MsgModelsChoiceNotANumber:        "%q is not a number (expected 1-%d)",
 	MsgModelsChoiceOutOfRange:        "%d is out of range (expected 1-%d)",
+
+	MsgUpgradeDevBuildError:  "upgrade: this is a dev build (no version was embedded at build time); install a released build to use `comrade upgrade`",
+	MsgUpgradeUpToDate:       "you're already on the latest version (%s)\n",
+	MsgUpgradeNewerAvailable: "a newer version is available: %s (you have %s) — %s\n",
+	MsgUpgradeDownloading:    "downloading comrade %s...\n",
+	MsgUpgradeInstalled:      "updated to %s. Restart any running comrade session to pick it up.\n",
+
+	MsgHelpShortUpgrade: "Check for or install a newer released version of comrade",
+	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
+
+	MsgUpdateAvailableNotice: "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -689,4 +736,15 @@ var catalogTR = Catalog{
 	MsgModelsUnknownProviderError:    "bilinmeyen sağlayıcı %q",
 	MsgModelsChoiceNotANumber:        "%q bir sayı değil (beklenen: 1-%d)",
 	MsgModelsChoiceOutOfRange:        "%d aralık dışında (beklenen: 1-%d)",
+
+	MsgUpgradeDevBuildError:  "upgrade: bu bir geliştirme (dev) derlemesi (derleme zamanında bir sürüm gömülmemiş); `comrade upgrade` kullanmak için yayımlanmış bir derleme kurun",
+	MsgUpgradeUpToDate:       "zaten en güncel sürümdesiniz (%s)\n",
+	MsgUpgradeNewerAvailable: "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s) — %s\n",
+	MsgUpgradeDownloading:    "comrade %s indiriliyor...\n",
+	MsgUpgradeInstalled:      "%s sürümüne güncellendi. Çalışan bir comrade oturumu varsa bunu yansıtması için yeniden başlatın.\n",
+
+	MsgHelpShortUpgrade: "comrade'in daha yeni bir yayımlanmış sürümünü denetler veya kurar",
+	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",
+
+	MsgUpdateAvailableNotice: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
 }

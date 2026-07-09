@@ -40,6 +40,7 @@ var keyDefs = []KeyDef{
 	{Key: "general.mode", Kind: KindString, Enum: []string{"auto", "ask", "info"}},
 	{Key: "general.language", Kind: KindString, Enum: []string{"auto", "tr", "en"}},
 	{Key: "general.color", Kind: KindBool},
+	{Key: "general.update_check", Kind: KindBool},
 
 	{Key: "llm.provider", Kind: KindString, Enum: []string{"anthropic", "openai_compat", "google", "ollama"}},
 	{Key: "llm.model", Kind: KindString},

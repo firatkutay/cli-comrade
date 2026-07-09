@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`internal/cli`'s catalog-coverage test) is also extended to scan
   `WriteString(...)` calls, closing the blind spot that let this hardcoded
   string go undetected in the first place.
+- **`general.language = "auto"` now genuinely auto-detects on Windows**:
+  `LANG`/`LC_ALL` are Unix conventions and are unset on Windows, so `auto`
+  always fell back to English there even on a Turkish-locale machine.
+  `i18n.ResolveLanguage`'s chain gained one final step before the English
+  fallback — an OS system-locale probe (`i18n.SystemLocale`), consulted
+  only once `COMRADE_LANG`/`LANG`/`LC_ALL` are all unset. On Windows this
+  calls `GetUserDefaultLocaleName` (a BCP-47 tag like `tr-TR`); on every
+  other OS it is always `""`, a guaranteed no-op — Linux/macOS behavior
+  is byte-identical to before. See `docs/CONFIGURATION.md`.
 
 ### Added
 

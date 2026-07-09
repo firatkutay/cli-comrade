@@ -149,7 +149,7 @@ func helpTranslator(newLoader loaderFactory) i18n.Translator {
 	loader, err := newLoader()
 	if err == nil {
 		if cfg, _, loadErr := loader.Load(); loadErr == nil {
-			return i18n.NewTranslator(i18n.ResolveLanguage(cfg.General.Language, os.Getenv))
+			return i18n.NewTranslator(i18n.ResolveLanguage(cfg.General.Language, os.Getenv, i18n.SystemLocale))
 		}
 	}
 	return envOnlyTranslator()

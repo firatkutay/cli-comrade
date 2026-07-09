@@ -63,15 +63,16 @@ type rawExplanation struct {
 // itself, and holding no global state (Completer/config injected, exactly
 // like Planner/Diagnoser).
 type Explainer struct {
-	llm    Completer
-	cfg    config.Config
-	getenv func(string) string
+	llm          Completer
+	cfg          config.Config
+	getenv       func(string) string
+	systemLocale func() string
 }
 
 // NewExplainer builds an Explainer around client (typically an
 // *llm.Client from llm.New(cfg), but any Completer works) and cfg.
 func NewExplainer(client Completer, cfg config.Config) *Explainer {
-	return &Explainer{llm: client, cfg: cfg, getenv: os.Getenv}
+	return &Explainer{llm: client, cfg: cfg, getenv: os.Getenv, systemLocale: i18n.SystemLocale}
 }
 
 // Explain sends one explain request for command and decodes/validates the
@@ -86,7 +87,7 @@ func NewExplainer(client Completer, cfg config.Config) *Explainer {
 // a slow/failed/hallucinated LLM response can never affect whether the
 // safety warning is shown (see docs/phases/FAZ-09.md's two-layer design).
 func (e *Explainer) Explain(ctx context.Context, command string) (Explanation, error) {
-	lang := i18n.ResolveLanguage(e.cfg.General.Language, e.getenv).String()
+	lang := i18n.ResolveLanguage(e.cfg.General.Language, e.getenv, e.systemLocale).String()
 	systemPrompt := buildExplainSystemPrompt(lang)
 
 	resp, err := e.llm.Complete(ctx, llm.CompletionRequest{

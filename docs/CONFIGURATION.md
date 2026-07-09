@@ -77,8 +77,14 @@ değişkenleri.
 ### Dil çözümleme sırası
 
 `general.language` `tr`/`en` olarak açıkça ayarlanmışsa kazanır; `auto`
-(varsayılan) ise sırayla `COMRADE_LANG` > `LANG`/`LC_ALL` > İngilizce'ye
-bakar.
+(varsayılan) ise sırayla `COMRADE_LANG` > `LANG`/`LC_ALL` > **Windows
+sistem yereli** (yalnızca Windows'ta; `GetUserDefaultLocaleName` ile
+okunur, ör. `tr-TR`) > İngilizce'ye bakar. `LANG`/`LC_ALL` Unix
+kuralları olduğundan Windows'ta genelde ayarlı değildir — bu adım
+olmadan Windows'ta `auto` her zaman İngilizce'ye düşerdi; Linux/macOS'ta
+davranış birebir aynı kalır (oradaki gerçek işletim sistemi yerel
+mekanizması zaten `LANG`/`LC_ALL`'ın kendisidir, bu adım o platformlarda
+her zaman boş döner).
 
 ---
 
@@ -158,4 +164,10 @@ Resolution order: OS keychain > 0600 file fallback > the env vars above.
 ### Language resolution order
 
 An explicit `general.language` of `tr`/`en` wins outright; `auto` (the
-default) falls through to `COMRADE_LANG` > `LANG`/`LC_ALL` > English.
+default) falls through to `COMRADE_LANG` > `LANG`/`LC_ALL` > **Windows
+system locale** (Windows only; read via `GetUserDefaultLocaleName`, e.g.
+`tr-TR`) > English. `LANG`/`LC_ALL` are Unix conventions and are
+typically unset on Windows — without this step, `auto` would always
+fall back to English there; Linux/macOS behavior is unchanged (the real
+OS locale mechanism there already IS `LANG`/`LC_ALL`, so this step
+always returns empty on those platforms).

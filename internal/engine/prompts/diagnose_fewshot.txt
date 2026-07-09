@@ -1,0 +1,260 @@
+Below are example diagnoses illustrating the expected shape, tone, and quality bar. They are grounding examples only — never copy their wording into a real response; always adapt root_cause/explanation/plan to the actual failing command and context you were given above and below this block.
+
+--- Example 1 (command not found, English) ---
+Failing command: pyton --version (exit 127)
+Stderr: sh: 1: pyton: not found
+Detected package managers: apt
+Expected response:
+{
+  "root_cause": "The command \"pyton\" does not exist — it looks like a typo for \"python3\", which is also simply not installed yet.",
+  "explanation": "Your computer doesn't recognize \"pyton\" as a program. It's probably a typo of \"python3\", the tool used to run Python code, and it isn't installed on this machine yet. Installing it should fix this.",
+  "plan": {
+    "summary": "Install python3 using apt, then check its version.",
+    "steps": [
+      {"command": "sudo apt-get install -y python3", "rationale": "Installs Python 3 using the package manager detected on this system.", "risk": "elevated", "reversible": false},
+      {"command": "python3 --version", "rationale": "Confirms Python 3 is now installed and shows its version.", "risk": "read", "reversible": true}
+    ]
+  }
+}
+
+--- Example 2 (komut bulunamadı, Türkçe) ---
+Failing command: node --version (exit 127)
+Stderr: bash: node: command not found
+Detected package managers: brew
+Expected response:
+{
+  "root_cause": "\"node\" komutu bu makinede kurulu değil.",
+  "explanation": "Bilgisayarınızda Node.js adlı program henüz kurulu olmadığı için \"node\" komutu tanınmıyor. Kurulumu yaptıktan sonra bu komut çalışacaktır.",
+  "plan": {
+    "summary": "Node.js'i brew ile kur ve sürümünü doğrula.",
+    "steps": [
+      {"command": "brew install node", "rationale": "Sistemde tespit edilen paket yöneticisiyle Node.js'i kurar.", "risk": "network", "reversible": false},
+      {"command": "node --version", "rationale": "Node.js'in kurulduğunu ve sürümünü gösterir.", "risk": "read", "reversible": true}
+    ]
+  }
+}
+
+--- Example 3 (permission denied, English) ---
+Failing command: ./deploy.sh (exit 126)
+Stderr: bash: ./deploy.sh: Permission denied
+Expected response:
+{
+  "root_cause": "The script file deploy.sh does not have execute permission set.",
+  "explanation": "The file exists, but your system isn't allowed to run it directly yet — it needs the \"executable\" flag turned on first, which is a one-time permission you can grant yourself.",
+  "plan": {
+    "summary": "Grant execute permission on deploy.sh, then run it again.",
+    "steps": [
+      {"command": "chmod +x deploy.sh", "rationale": "Marks the script as executable.", "risk": "write", "reversible": true},
+      {"command": "./deploy.sh", "rationale": "Runs the script now that it is executable.", "risk": "write", "reversible": false}
+    ]
+  }
+}
+
+--- Example 4 (izin reddedildi, Türkçe) ---
+Failing command: cat /etc/shadow (exit 1)
+Stderr: cat: /etc/shadow: Permission denied
+Expected response:
+{
+  "root_cause": "/etc/shadow dosyası sadece yönetici (root) yetkisiyle okunabilir.",
+  "explanation": "Bu dosya, sistemin şifre bilgilerini içerdiği için güvenlik amacıyla normal kullanıcılara kapalı tutulur. Okuyabilmek için yönetici yetkisi kullanmanız gerekir.",
+  "plan": {
+    "summary": "Dosyayı sudo ile yönetici yetkisiyle oku.",
+    "steps": [
+      {"command": "sudo cat /etc/shadow", "rationale": "Dosyayı yönetici yetkisiyle okur.", "risk": "elevated", "reversible": true}
+    ]
+  }
+}
+
+--- Example 5 (port already in use, English) ---
+Failing command: npm start (exit 1)
+Stderr: Error: listen EADDRINUSE: address already in use :::3000
+Expected response:
+{
+  "root_cause": "Another process is already listening on port 3000, so the new server cannot bind to it.",
+  "explanation": "Two programs can't both use the same \"door\" (port 3000) on your computer at once. Something else — maybe an earlier copy of this same app — is already using it. Stopping that process frees the port up.",
+  "plan": {
+    "summary": "Find and stop the process using port 3000, then start the app again.",
+    "steps": [
+      {"command": "lsof -i :3000", "rationale": "Lists the process currently using port 3000, so you can identify it before stopping anything.", "risk": "read", "reversible": true},
+      {"command": "kill $(lsof -t -i :3000)", "rationale": "Stops the process holding port 3000.", "risk": "write", "reversible": false},
+      {"command": "npm start", "rationale": "Starts the app again now that the port is free.", "risk": "write", "reversible": true}
+    ]
+  }
+}
+
+--- Example 6 (port zaten kullanımda, Türkçe) ---
+Failing command: python3 -m http.server 8080 (exit 1)
+Stderr: OSError: [Errno 98] Address already in use
+Expected response:
+{
+  "root_cause": "8080 portu zaten başka bir işlem tarafından kullanılıyor.",
+  "explanation": "Bilgisayarınızda aynı anda iki program aynı \"kapıyı\" (8080 portunu) kullanamaz. Muhtemelen bu sunucunun daha önce açılmış bir kopyası hâlâ çalışıyor. Onu durdurmak portu boşaltır.",
+  "plan": {
+    "summary": "8080 portunu kullanan işlemi bul ve durdur, sonra sunucuyu tekrar başlat.",
+    "steps": [
+      {"command": "lsof -i :8080", "rationale": "8080 portunu kullanan işlemi listeler.", "risk": "read", "reversible": true},
+      {"command": "kill $(lsof -t -i :8080)", "rationale": "Portu tutan işlemi durdurur.", "risk": "write", "reversible": false},
+      {"command": "python3 -m http.server 8080", "rationale": "Port boşaldıktan sonra sunucuyu tekrar başlatır.", "risk": "write", "reversible": true}
+    ]
+  }
+}
+
+--- Example 7 (ENOENT / no such file, English) ---
+Failing command: cat notes.txt (exit 1)
+Stderr: cat: notes.txt: No such file or directory
+Expected response:
+{
+  "root_cause": "There is no file named notes.txt in the current directory.",
+  "explanation": "The file you're trying to open simply doesn't exist in the folder you're currently in — either it was never created here, it has a different name, or it lives in a different folder.",
+  "plan": {
+    "summary": "List the current folder's files to find the correct name or location.",
+    "steps": [
+      {"command": "ls -la", "rationale": "Shows every file in the current folder, including hidden ones, so you can spot the correct name.", "risk": "read", "reversible": true}
+    ]
+  }
+}
+
+--- Example 8 (dosya bulunamadı, Türkçe) ---
+Failing command: rm eskidosya.txt (exit 1)
+Stderr: rm: cannot remove 'eskidosya.txt': No such file or directory
+Expected response:
+{
+  "root_cause": "Bulunduğunuz klasörde \"eskidosya.txt\" adında bir dosya yok.",
+  "explanation": "Silmeye çalıştığınız dosya, şu anda bulunduğunuz klasörde mevcut değil — adı farklı olabilir ya da başka bir klasörde bulunuyor olabilir.",
+  "plan": {
+    "summary": "Doğru dosya adını veya konumunu bulmak için klasörü listele.",
+    "steps": [
+      {"command": "ls -la", "rationale": "Bulunduğunuz klasördeki tüm dosyaları (gizli olanlar dahil) listeler.", "risk": "read", "reversible": true}
+    ]
+  }
+}
+
+--- Example 9 (Python ModuleNotFoundError, English) ---
+Failing command: python3 app.py (exit 1)
+Stderr: ModuleNotFoundError: No module named 'requests'
+Detected package managers: apt
+Expected response:
+{
+  "root_cause": "The Python package \"requests\", which app.py imports, is not installed in the Python environment being used.",
+  "explanation": "Your program needs an extra piece of code called \"requests\" that isn't installed yet. Installing it with Python's own package installer (pip) should let the program run.",
+  "plan": {
+    "summary": "Install the missing requests package with pip, then run the script again.",
+    "steps": [
+      {"command": "python3 -m pip install requests", "rationale": "Installs the missing \"requests\" package for this Python environment.", "risk": "network", "reversible": true},
+      {"command": "python3 app.py", "rationale": "Runs the script again now that the missing package is installed.", "risk": "write", "reversible": false}
+    ]
+  }
+}
+
+--- Example 10 (Python ModuleNotFoundError, Türkçe) ---
+Failing command: python3 script.py (exit 1)
+Stderr: ModuleNotFoundError: No module named 'numpy'
+Detected package managers: dnf
+Expected response:
+{
+  "root_cause": "script.py dosyasının içe aktardığı \"numpy\" paketi kurulu değil.",
+  "explanation": "Programınızın ihtiyaç duyduğu \"numpy\" adında ek bir parça kurulu değil. Python'un kendi paket kurulum aracıyla (pip) kurmak, programı çalıştırmayı mümkün kılar.",
+  "plan": {
+    "summary": "pip ile eksik numpy paketini kur, sonra betiği tekrar çalıştır.",
+    "steps": [
+      {"command": "python3 -m pip install numpy", "rationale": "Eksik olan \"numpy\" paketini bu Python ortamı için kurar.", "risk": "network", "reversible": true},
+      {"command": "python3 script.py", "rationale": "Eksik paket kurulduktan sonra betiği tekrar çalıştırır.", "risk": "write", "reversible": false}
+    ]
+  }
+}
+
+--- Example 11 (git merge conflict, English) ---
+Failing command: git merge feature-branch (exit 1)
+Stderr: CONFLICT (content): Merge conflict in src/main.go
+Automatic merge failed; fix conflicts and then commit the result.
+Expected response:
+{
+  "root_cause": "Both branches changed the same lines in src/main.go, so git could not automatically combine them.",
+  "explanation": "Two different versions of the same file were edited in conflicting ways. Git can usually merge changes on its own, but here it needs a human to pick which version (or a combination) is correct before continuing.",
+  "plan": {
+    "summary": "Show the conflicting file, then let the user resolve it manually before completing the merge.",
+    "steps": [
+      {"command": "git diff src/main.go", "rationale": "Shows exactly which lines conflict, marked between <<<<<<<, =======, and >>>>>>>.", "risk": "read", "reversible": true}
+    ]
+  }
+}
+
+--- Example 12 (git birleştirme çakışması, Türkçe) ---
+Failing command: git merge origin/main (exit 1)
+Stderr: CONFLICT (content): Merge conflict in README.md
+Automatic merge failed; fix conflicts and then commit the result.
+Expected response:
+{
+  "root_cause": "README.md dosyasında iki farklı dal aynı satırları değiştirdiği için git bunları otomatik birleştiremedi.",
+  "explanation": "Aynı dosyanın iki farklı sürümü, çakışan şekillerde düzenlenmiş. Git genelde değişiklikleri kendi başına birleştirebilir, ama burada hangi sürümün (ya da ikisinin birleşiminin) doğru olduğuna sizin karar vermeniz gerekiyor.",
+  "plan": {
+    "summary": "Çakışan dosyayı göster, kullanıcı elle çözdükten sonra birleştirmeyi tamamla.",
+    "steps": [
+      {"command": "git diff README.md", "rationale": "Hangi satırların <<<<<<<, ======= ve >>>>>>> işaretleri arasında çakıştığını gösterir.", "risk": "read", "reversible": true}
+    ]
+  }
+}
+
+--- Example 13 (DNS/proxy failure, English) ---
+Failing command: curl https://example.com (exit 6)
+Stderr: curl: (6) Could not resolve host: example.com
+Expected response:
+{
+  "root_cause": "The computer could not translate the address \"example.com\" into a network location (DNS resolution failed), likely due to no network connectivity or a misconfigured proxy/DNS setting.",
+  "explanation": "Before your computer can talk to a website, it needs to look up its address, similar to looking up a phone number in a directory. That lookup failed, which usually means there's no internet connection right now, or the network/proxy settings are misconfigured.",
+  "plan": {
+    "summary": "Check basic connectivity and DNS resolution before retrying.",
+    "steps": [
+      {"command": "ping -c 1 8.8.8.8", "rationale": "Checks whether the network itself is reachable at all, independent of DNS.", "risk": "network", "reversible": true},
+      {"command": "curl https://example.com", "rationale": "Retries the original request once connectivity is confirmed.", "risk": "network", "reversible": true}
+    ]
+  }
+}
+
+--- Example 14 (DNS/proxy hatası, Türkçe) ---
+Failing command: curl https://ornek.com (exit 6)
+Stderr: curl: (6) Could not resolve host: ornek.com
+Expected response:
+{
+  "root_cause": "Bilgisayar \"ornek.com\" adresini bir ağ konumuna çeviremedi (DNS çözümlemesi başarısız oldu); bunun nedeni genellikle internet bağlantısının olmaması ya da yanlış yapılandırılmış bir proxy/DNS ayarıdır.",
+  "explanation": "Bir web sitesiyle konuşabilmek için önce onun adresinin bulunması gerekir — telefon rehberinde bir numara aramaya benzer. Bu arama başarısız oldu; bu genelde şu an internet bağlantısı olmadığı ya da ağ/proxy ayarlarının yanlış olduğu anlamına gelir.",
+  "plan": {
+    "summary": "Yeniden denemeden önce temel bağlantıyı ve DNS çözümlemesini kontrol et.",
+    "steps": [
+      {"command": "ping -c 1 8.8.8.8", "rationale": "DNS'ten bağımsız olarak ağın kendisine ulaşılıp ulaşılamadığını kontrol eder.", "risk": "network", "reversible": true},
+      {"command": "curl https://ornek.com", "rationale": "Bağlantı doğrulandıktan sonra isteği tekrar dener.", "risk": "network", "reversible": true}
+    ]
+  }
+}
+
+--- Example 15 (PowerShell ExecutionPolicy, English) ---
+Failing command: .\deploy.ps1 (exit 1)
+Stderr: File C:\project\deploy.ps1 cannot be loaded because running scripts is disabled on this system.
+Expected response:
+{
+  "root_cause": "Windows PowerShell's execution policy is set to block running local script files by default.",
+  "explanation": "Windows blocks running script files by default as a safety measure, so a script you didn't explicitly allow can't run automatically. You can loosen this restriction for your own user account so scripts you choose to run are allowed.",
+  "plan": {
+    "summary": "Allow running local scripts for the current user, then run the script again.",
+    "steps": [
+      {"command": "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force", "rationale": "Allows locally-created scripts to run for this user account, while still requiring downloaded scripts to be signed.", "risk": "elevated", "reversible": true},
+      {"command": ".\\deploy.ps1", "rationale": "Runs the script again now that execution is permitted.", "risk": "write", "reversible": false}
+    ]
+  }
+}
+
+--- Example 16 (PowerShell ExecutionPolicy, Türkçe) ---
+Failing command: .\kur.ps1 (exit 1)
+Stderr: kur.ps1 dosyası yüklenemiyor çünkü bu sistemde komut dosyalarının çalıştırılması devre dışı bırakılmış.
+Expected response:
+{
+  "root_cause": "Windows PowerShell'in çalıştırma ilkesi (execution policy) yerel betik dosyalarının çalışmasını varsayılan olarak engelliyor.",
+  "explanation": "Windows, açıkça izin vermediğiniz bir betiğin kendiliğinden çalışmasını önlemek için güvenlik amacıyla betik dosyalarını varsayılan olarak engeller. Kendi kullanıcı hesabınız için bu kısıtlamayı gevşeterek seçtiğiniz betiklerin çalışmasına izin verebilirsiniz.",
+  "plan": {
+    "summary": "Geçerli kullanıcı için yerel betiklerin çalışmasına izin ver, sonra betiği tekrar çalıştır.",
+    "steps": [
+      {"command": "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force", "rationale": "İndirilen betiklerin yine imzalı olmasını gerektirirken, yerel olarak oluşturulan betiklerin bu kullanıcı için çalışmasına izin verir.", "risk": "elevated", "reversible": true},
+      {"command": ".\\kur.ps1", "rationale": "Çalıştırma izni verildikten sonra betiği tekrar çalıştırır.", "risk": "write", "reversible": false}
+    ]
+  }
+}

@@ -1,0 +1,294 @@
+package cli
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
+	"github.com/firatkutay/cli-comrade/internal/engine"
+	"github.com/firatkutay/cli-comrade/internal/executor"
+	"github.com/firatkutay/cli-comrade/internal/safety"
+)
+
+// lastCommandFreshness is FAZ 4/7's 10-minute freshness window: a
+// last_command.json record older than this is never silently used as
+// `comrade fix`'s error context (see acquireErrorContext) — the record
+// most likely belongs to a command the user has long since moved past,
+// so re-diagnosing it would surprise them.
+const lastCommandFreshness = 10 * time.Minute
+
+// newFixCmd builds "comrade fix": UYGULAMA_PLANI.md FAZ 7's main
+// use-case command. It gathers the failing command's context via
+// acquireErrorContext's fallback chain (fresh last_command.json →
+// `--rerun` / `-- <command>` → interactive paste mode), diagnoses it with
+// engine.Diagnoser, and — exactly like `comrade do` (see do.go's
+// newDoCmd/runDo) — resolves the active mode and hands the resulting
+// Plan to engine.Execute, reusing the identical execution/safety/audit
+// machinery; `fix` never reimplements any of it.
+func newFixCmd(newLoader loaderFactory) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "fix [-- command...]",
+		Short: "Diagnose the last failed command (or a given one) and fix it",
+		Args:  cobra.ArbitraryArgs,
+	}
+	flags := addExecutionFlags(cmd)
+	rerun := cmd.Flags().Bool("rerun", false, "re-run the last recorded command to capture fresh output before diagnosing it")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		var explicitCommand string
+		if dashAt := cmd.ArgsLenAtDash(); dashAt >= 0 {
+			explicitCommand = strings.Join(args[dashAt:], " ")
+		}
+		return runFix(cmd, newLoader, flags, *rerun, explicitCommand)
+	}
+	return cmd
+}
+
+// runFix is FAZ 7's full pipeline: load config/build the LLM client
+// (setupCLIRuntime, shared with runDo), collect system context, acquire
+// the failing command's ErrorContext via acquireErrorContext, diagnose it
+// (engine.Diagnoser), print the root cause + explanation, and then —
+// unless --dry-run short-circuits straight to renderPlan — resolve the
+// active mode and run the diagnosis's Plan through engine.Execute exactly
+// as runDo does, followed by engine.OfferVerification's post-solution
+// verification offer (FAZ 7 item 4).
+func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, rerun bool, explicitCommand string) error {
+	modeFlag, err := flags.modeFlagValue()
+	if err != nil {
+		return err
+	}
+
+	cfg, client, err := setupCLIRuntime(cmd, newLoader, flags)
+	if err != nil {
+		return fmt.Errorf("comrade fix: %w", err)
+	}
+
+	collector := contextpkg.NewCollector()
+	sysCtx := collector.Collect(cmd.Context(), contextpkg.Options{
+		SendHistory:  cfg.Context.SendHistory,
+		HistoryDepth: cfg.Context.HistoryDepth,
+		SendEnvNames: cfg.Context.SendEnvNames,
+	})
+
+	safetyEngine := safety.NewEngine(cfg)
+	ex := executor.New(cmd.OutOrStdout(), cmd.ErrOrStderr())
+
+	errCtx, err := acquireErrorContext(cmd, sysCtx, safetyEngine, ex, rerun, explicitCommand)
+	if err != nil {
+		return fmt.Errorf("comrade fix: %w", err)
+	}
+
+	diagnoser := engine.NewDiagnoser(client, cfg)
+	diagnosis, err := diagnoser.Diagnose(cmd.Context(), errCtx)
+	if err != nil {
+		return fmt.Errorf("comrade fix: %w", err)
+	}
+
+	// The explanation is printed first, in every mode, per UYGULAMA_PLANI.md
+	// FAZ 7 item 1c — so the user understands what actually went wrong
+	// before either reading the plan (info) or being asked to approve it
+	// (ask/auto).
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), diagnosis.RootCause); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), diagnosis.Explanation); err != nil {
+		return err
+	}
+
+	if flags.dryRun {
+		if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
+			return err
+		}
+		return renderPlan(cmd.OutOrStdout(), diagnosis.Plan)
+	}
+
+	mode, err := engine.ResolveMode(modeFlag, os.Getenv("COMRADE_MODE"), cfg.General.Mode)
+	if err != nil {
+		return fmt.Errorf("comrade fix: %w", err)
+	}
+
+	auditSink, err := buildAuditSink(cmd, cfg)
+	if err != nil {
+		return fmt.Errorf("comrade fix: %w", err)
+	}
+
+	// Ctrl-C: canceling ctx propagates into engine.Execute, exactly like
+	// runDo's identical wiring.
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+
+	deps := engine.RunDeps{
+		Executor:           ex,
+		Safety:             safetyEngine,
+		LLM:                client,
+		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: cfg.General.Color, llm: client},
+		Audit:              auditSink,
+		Stdout:             cmd.OutOrStdout(),
+		Stderr:             cmd.ErrOrStderr(),
+		ColorEnabled:       cfg.General.Color,
+		ConfirmDestructive: cfg.Safety.ConfirmDestructive,
+		ConfirmElevated:    cfg.Safety.ConfirmElevated,
+		Yolo:               flags.yolo,
+		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
+		Request:            "fix: " + errCtx.Command,
+	}
+
+	summary, err := engine.Execute(ctx, diagnosis.Plan, mode, deps)
+	if err != nil {
+		return fmt.Errorf("comrade fix: %w", err)
+	}
+
+	if mode != engine.ModeInfo {
+		if err := printRunSummary(cmd.OutOrStdout(), summary); err != nil {
+			return err
+		}
+	}
+
+	// Post-solution verification (FAZ 7 item 4): only offered once the
+	// run actually reached a clean end — info mode never aborts (nothing
+	// ran), ask/auto only qualify when the whole plan completed without
+	// a Block/failure/cancellation.
+	if mode == engine.ModeInfo || !summary.Aborted {
+		if verr := engine.OfferVerification(ctx, deps, mode, errCtx.Command); verr != nil {
+			return fmt.Errorf("comrade fix: %w", verr)
+		}
+	}
+
+	if summary.Aborted {
+		return fmt.Errorf("comrade fix: %s", summary.AbortReason)
+	}
+	return nil
+}
+
+// acquireErrorContext implements UYGULAMA_PLANI.md FAZ 4/7's fallback
+// chain, in order:
+//
+//  1. `comrade fix -- <command...>`: explicitCommand is non-empty — run
+//     it via captureByRunning, ignoring last_command.json entirely (the
+//     user named an exact command to diagnose).
+//  2. `comrade fix --rerun`: re-run the recorded last_command.json entry
+//     via captureByRunning. Errors if no last_command.json entry exists
+//     at all — --rerun has nothing to rerun without one.
+//  3. A FRESH (< lastCommandFreshness) last_command.json entry whose
+//     exit_code != 0: used directly, with NO re-execution — its captured
+//     stderr/stdout tails are already exactly what FAZ 4's shell hook
+//     recorded.
+//  4. Otherwise: a stale or successful (exit_code == 0) last_command.json
+//     entry is never silently reused (a one-line notice is printed
+//     explaining why), and the chain falls through to interactive paste
+//     mode (pasteMode).
+func acquireErrorContext(cmd *cobra.Command, sysCtx contextpkg.Context, safetyEngine *safety.Engine, ex engine.CommandExecutor, rerun bool, explicitCommand string) (engine.ErrorContext, error) {
+	if explicitCommand != "" {
+		return captureByRunning(cmd, safetyEngine, ex, explicitCommand, sysCtx)
+	}
+
+	if rerun {
+		if sysCtx.LastCommand == nil {
+			return engine.ErrorContext{}, fmt.Errorf("--rerun: no recorded last command found; run a command with shell integration installed first, or use `comrade fix -- <command>`")
+		}
+		return captureByRunning(cmd, safetyEngine, ex, sysCtx.LastCommand.Command, sysCtx)
+	}
+
+	if sysCtx.LastCommand != nil {
+		lc := *sysCtx.LastCommand
+		switch {
+		case lc.Age(time.Now()) >= lastCommandFreshness:
+			fmt.Fprintln(cmd.ErrOrStderr(), //nolint:errcheck // best-effort notice; falling through to paste mode either way.
+				"the last recorded command is more than 10 minutes old; ignoring it and asking you to paste the error instead.")
+		case lc.ExitCode == 0:
+			fmt.Fprintln(cmd.ErrOrStderr(), //nolint:errcheck
+				"the last recorded command exited successfully (nothing to fix); asking you to paste the error instead.")
+		default:
+			return engine.ErrorContext{
+				Command:  lc.Command,
+				ExitCode: lc.ExitCode,
+				Stderr:   lc.StderrTail,
+				Stdout:   lc.StdoutTail,
+				System:   sysCtx,
+			}, nil
+		}
+	}
+
+	return pasteMode(cmd, sysCtx)
+}
+
+// captureByRunning is the shared helper behind both `--rerun` and
+// `-- <command>`: before ever touching the executor, it classifies
+// command through safetyEngine — declaring RiskRead as the floor, so the
+// verdict comes entirely from the independent denylist/escalation
+// machinery, not from any (nonexistent, here) LLM-declared risk — and
+// refuses to execute it at all when that verdict is Block or
+// RiskDestructive (UYGULAMA_PLANI.md FAZ 7 item 2: re-running a failed
+// `rm -rf` "to capture its error" would be catastrophic). A refused
+// command falls through to pasteMode instead, exactly like a stale/exit-0
+// last_command.json entry does.
+func captureByRunning(cmd *cobra.Command, safetyEngine *safety.Engine, ex engine.CommandExecutor, command string, sysCtx contextpkg.Context) (engine.ErrorContext, error) {
+	decision := safetyEngine.Evaluate(command, safety.RiskRead)
+	if decision.Action == safety.Block || decision.EffectiveRisk == safety.RiskDestructive {
+		classification := decision.EffectiveRisk.String()
+		if decision.Action == safety.Block {
+			classification = "blocked (denylisted)"
+		}
+		fmt.Fprintf(cmd.ErrOrStderr(), //nolint:errcheck // best-effort notice; falling through to paste mode either way.
+			"refusing to re-run %q: it is classified %s; paste the command and its error output instead.\n",
+			command, classification)
+		return pasteMode(cmd, sysCtx)
+	}
+
+	res, err := ex.Run(cmd.Context(), command, executor.Options{})
+	if err != nil {
+		return engine.ErrorContext{}, fmt.Errorf("run %q: %w", command, err)
+	}
+	return engine.ErrorContext{
+		Command:  command,
+		ExitCode: res.ExitCode,
+		Stderr:   res.Stderr,
+		Stdout:   res.Stdout,
+		System:   sysCtx,
+	}, nil
+}
+
+// pasteMode is the fallback chain's last resort (UYGULAMA_PLANI.md FAZ 4
+// item 3c): prompts the user to paste the failing command on one line,
+// then its error output terminated by a blank line or EOF. ExitCode is
+// set to -1 (engine.ErrorContext's documented "unknown" sentinel) since a
+// pasted transcript never carries a real exit code.
+func pasteMode(cmd *cobra.Command, sysCtx contextpkg.Context) (engine.ErrorContext, error) {
+	out := cmd.OutOrStdout()
+	fmt.Fprintln(out, "No recent failed command available. Paste the failing command, then its error output (end with a blank line):") //nolint:errcheck
+	fmt.Fprint(out, "Command: ")                                                                                                       //nolint:errcheck
+
+	scanner := bufio.NewScanner(cmd.InOrStdin())
+	command := ""
+	if scanner.Scan() {
+		command = strings.TrimSpace(scanner.Text())
+	}
+
+	fmt.Fprintln(out, "Error output (end with a blank line):") //nolint:errcheck
+	var errLines []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+		errLines = append(errLines, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return engine.ErrorContext{}, fmt.Errorf("read pasted error output: %w", err)
+	}
+
+	return engine.ErrorContext{
+		Command:  command,
+		ExitCode: -1,
+		Stderr:   strings.Join(errLines, "\n"),
+		System:   sysCtx,
+	}, nil
+}

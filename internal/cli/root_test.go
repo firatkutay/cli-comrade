@@ -51,13 +51,14 @@ func TestSubcommandStubsPrintNotReadyMessage(t *testing.T) {
 	// and FAZ 4 replaced init's (internal/cli/init.go, tested in
 	// internal/cli/init_test.go). "history" is excluded as of FAZ 6:
 	// internal/cli/history.go replaced its stub (tested in
-	// internal/cli/history_test.go).
+	// internal/cli/history_test.go). "fix" is excluded as of FAZ 7:
+	// internal/cli/fix.go replaced its stub (tested in
+	// internal/cli/fix_test.go).
 	cases := []struct {
 		name string
 		args []string
 		want string
 	}{
-		{"fix", []string{"fix"}, "comrade fix: this feature is not ready yet.\n"},
 		{"explain", []string{"explain", "ls"}, "comrade explain: this feature is not ready yet.\n"},
 		{"chat", []string{"chat"}, "comrade chat: this feature is not ready yet.\n"},
 	}

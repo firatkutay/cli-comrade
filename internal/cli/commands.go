@@ -2,17 +2,7 @@ package cli
 
 import "github.com/spf13/cobra"
 
-// newFixCmd stubs the error-diagnosis flow. Real behavior lands in FAZ 7.
-func newFixCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "fix",
-		Short: "Diagnose and fix the last failed command",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			printNotReady(cmd.OutOrStdout(), "fix")
-			return nil
-		},
-	}
-}
+// newFixCmd lands in fix.go as of FAZ 7 (real error-diagnosis flow).
 
 // newExplainCmd stubs the command-explanation flow. Real behavior lands in
 // FAZ 9.

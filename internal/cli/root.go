@@ -40,6 +40,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 	root := &cobra.Command{
 		Use:     "comrade",
 		Short:   "comrade is a cross-platform AI CLI companion for the terminal",
+		Example: enUsageDefault(i18n.MsgHelpExamplesRoot),
 		Version: version,
 		// cmd/comrade/main.go already prints Execute()'s returned error
 		// exactly once to stderr; without these two, cobra would ALSO
@@ -120,17 +121,48 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		return nil
 	}
 
+	// Command groups (help.go's applyTranslatedHelp overrides each Title
+	// per resolved language at render time, same as every Short/flag/
+	// Example string above/below it): Core is the everyday do/fix/
+	// explain/chat loop; Setup is one-time-ish account/shell/config
+	// setup; Info is read-only status/maintenance. `hook` (and its
+	// hidden `hook record` child) and `config test-llm` are internal/
+	// diagnostic-only and stay Hidden — cobra's own template never lists
+	// a Hidden command regardless of GroupID, so they are deliberately
+	// left with no GroupID at all rather than assigned to one of these
+	// three for real.
+	root.AddGroup(
+		&cobra.Group{ID: groupCore, Title: enUsageDefault(i18n.MsgHelpGroupCore)},
+		&cobra.Group{ID: groupSetup, Title: enUsageDefault(i18n.MsgHelpGroupSetup)},
+		&cobra.Group{ID: groupInfo, Title: enUsageDefault(i18n.MsgHelpGroupInfo)},
+	)
+
+	doCmd := newDoCmd(newLoader)
+	fixCmd := newFixCmd(newLoader)
+	explainCmd := newExplainCmd(newLoader)
+	chatCmd := newChatCmd(newLoader)
+	doCmd.GroupID = groupCore
+	fixCmd.GroupID = groupCore
+	explainCmd.GroupID = groupCore
+	chatCmd.GroupID = groupCore
+
+	authCmd := newAuthCmd(newLoader)
+	initCmd := newInitCmd(defaultInitDeps(), newLoader)
+	configCmd := newConfigCmd(newLoader)
+	authCmd.GroupID = groupSetup
+	initCmd.GroupID = groupSetup
+	configCmd.GroupID = groupSetup
+
+	historyCmd := newHistoryCmd(newLoader)
+	upgradeCmd := newUpgradeCmd(newLoader, defaultUpgradeDeps(version))
+	historyCmd.GroupID = groupInfo
+	upgradeCmd.GroupID = groupInfo
+
 	root.AddCommand(
-		newFixCmd(newLoader),
-		newExplainCmd(newLoader),
-		newChatCmd(newLoader),
-		newConfigCmd(newLoader),
-		newInitCmd(defaultInitDeps(), newLoader),
-		newHistoryCmd(newLoader),
+		doCmd, fixCmd, explainCmd, chatCmd,
+		authCmd, initCmd, configCmd,
+		historyCmd, upgradeCmd,
 		newHookCmd(),
-		newDoCmd(newLoader),
-		newAuthCmd(newLoader),
-		newUpgradeCmd(newLoader, defaultUpgradeDeps(version)),
 	)
 
 	// Localizes every command's --help/usage output (help.go) — must run

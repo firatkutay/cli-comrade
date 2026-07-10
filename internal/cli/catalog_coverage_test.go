@@ -45,7 +45,8 @@ var fmtVerbPattern = regexp.MustCompile(`%[-+ #0]*[0-9]*(\.[0-9]+)?[a-zA-Z%]`)
 // listed file's last flagged literal is migrated away, forcing its entry
 // to be deleted rather than left as unjustified dead weight.
 var catalogCoverageAllowlist = map[string]string{
-	"hook.go": "recordLastCommand's COMRADE_DEBUG-gated diagnostic line, and hook record's --shell/--exit/--command flag descriptions, are developer-facing (debug-gated / internal-only, invoked by generated shell snippets, never read by an end user via --help); loading config there just to resolve a display language is a deliberate perf tradeoff against a hot path, not an oversight.",
+	"hook.go":    "recordLastCommand's COMRADE_DEBUG-gated diagnostic line, and hook record's --shell/--exit/--command flag descriptions, are developer-facing (debug-gated / internal-only, invoked by generated shell snippets, never read by an end user via --help); loading config there just to resolve a display language is a deliberate perf tradeoff against a hot path, not an oversight.",
+	"spinner.go": `startWaitSpinner's line-clear write is the literal "\r\x1b[K" — a raw ANSI cursor-return + erase-in-line control sequence, not language text; containsProseLetter's letter-detection heuristic (this file) has no way to distinguish the "K" that ends that escape code from real prose, so it flags this one non-prose literal. There is nothing here for any i18n.Translator to translate.`,
 }
 
 // catalogCoverageScanDirs are the only packages this drift guard covers —

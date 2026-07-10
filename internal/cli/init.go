@@ -177,7 +177,7 @@ func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok b
 	}
 
 	if !assumeYes {
-		confirmed, err := confirmYesNo(cmd, tr.T(i18n.MsgInitConfirmPrompt, path))
+		confirmed, err := confirmYesNo(cmd, tr.T(i18n.MsgInitConfirmPrompt, path), tr.Lang())
 		if err != nil {
 			return err
 		}
@@ -285,7 +285,7 @@ func runInitInstallPowerShell(cmd *cobra.Command, profiles []shellinit.PSProfile
 	}
 
 	if !assumeYes {
-		confirmed, err := confirmYesNo(cmd, tr.T(i18n.MsgInitConfirmPromptMulti))
+		confirmed, err := confirmYesNo(cmd, tr.T(i18n.MsgInitConfirmPromptMulti), tr.Lang())
 		if err != nil {
 			return err
 		}
@@ -344,10 +344,15 @@ func runInitRemovePowerShell(cmd *cobra.Command, profiles []shellinit.PSProfile,
 	return nil
 }
 
-// confirmYesNo prints prompt to cmd's stdout and reads a single line
-// from cmd's stdin, returning true only for a (case-insensitive) "y" or
-// "yes" response.
-func confirmYesNo(cmd *cobra.Command, prompt string) (bool, error) {
+// confirmYesNo prints prompt to cmd's stdout and reads a single line from
+// cmd's stdin, returning true only for an affirmative response in lang
+// (isAffirmative) — the rendered prompt itself already tells the user which
+// letter to type (e.g. TR's MsgInitConfirmPrompt renders "[e/H]", EN's
+// renders "[y/N]"), so acceptance must be driven by the SAME lang or a
+// TR user typing the very letter the prompt showed them would be silently
+// rejected. Anything else, including an empty line (bare Enter), stays
+// default-NO — same fail-closed default confirmYesNo always had.
+func confirmYesNo(cmd *cobra.Command, prompt string, lang i18n.Lang) (bool, error) {
 	if _, err := fmt.Fprint(cmd.OutOrStdout(), prompt); err != nil {
 		return false, err
 	}
@@ -355,8 +360,20 @@ func confirmYesNo(cmd *cobra.Command, prompt string) (bool, error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, fmt.Errorf("init: read confirmation: %w", err)
 	}
-	line = strings.TrimSpace(line)
-	return strings.EqualFold(line, "y") || strings.EqualFold(line, "yes"), nil
+	return isAffirmative(lang, strings.TrimSpace(line)), nil
+}
+
+// isAffirmative reports whether line is lang's affirmative confirmation
+// answer: TR accepts (case-insensitive) "e"/"evet", any other language
+// (including LangEN) accepts "y"/"yes" — mirrors internal/tui/confirm.go's
+// mapKey per-language key-set discipline, minus mapKey's cross-language
+// inversion hazard (there is no TR key here that collides with an EN
+// negative, so no extra guard is needed beyond the language switch itself).
+func isAffirmative(lang i18n.Lang, line string) bool {
+	if lang == i18n.LangTR {
+		return strings.EqualFold(line, "e") || strings.EqualFold(line, "evet")
+	}
+	return strings.EqualFold(line, "y") || strings.EqualFold(line, "yes")
 }
 
 // readFileOrEmpty reads path's content, treating a missing file as

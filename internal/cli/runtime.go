@@ -95,7 +95,7 @@ func setupCLIRuntime(cmd *cobra.Command, newLoader loaderFactory, flags *executi
 	// (safety.confirm_destructive/confirm_elevated=false) actually let it
 	// do anything this particular run.
 	if flags.yolo {
-		if err := tui.PrintWarning(cmd.ErrOrStderr(), tr.T(i18n.MsgYoloWarning), cfg.General.Color); err != nil {
+		if err := tui.PrintWarning(cmd.ErrOrStderr(), tr.T(i18n.MsgYoloWarning), resolveColorEnabled(cfg, os.Environ(), cmd.ErrOrStderr())); err != nil {
 			return config.Config{}, nil, err
 		}
 	}

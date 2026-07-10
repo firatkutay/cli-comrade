@@ -86,13 +86,15 @@ func runChatDo(ctx context.Context, cfg config.Config, client engine.Completer, 
 		SendEnvNames: cfg.Context.SendEnvNames,
 	})
 
+	tr := newTranslator(cfg)
 	planner := engine.NewPlanner(client, cfg)
+	stopSpinner := startWaitSpinner(resolveColorEnabled(cfg, os.Environ(), stderr), stderr, tr)
 	plan, err := planner.GeneratePlan(ctx, request, sysCtx)
+	stopSpinner()
 	if err != nil {
 		return engine.RunSummary{}, fmt.Errorf("chat /do: %w", err)
 	}
 
-	tr := newTranslator(cfg)
 	deps := engine.RunDeps{
 		Executor:           executor.New(stdout, stderr),
 		Safety:             safety.NewEngine(cfg),

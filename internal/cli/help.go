@@ -1,11 +1,18 @@
 package cli
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"os"
+	"regexp"
+	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/firatkutay/cli-comrade/internal/config"
 	"github.com/firatkutay/cli-comrade/internal/i18n"
 )
 
@@ -26,6 +33,27 @@ import (
 //
 // Long is not covered: no command in this tree sets it (every command
 // uses Short only), so there is nothing to translate there.
+// groupCore/groupSetup/groupInfo are root's three cobra command-group IDs
+// (root.go's root.AddGroup / each subcommand's GroupID) — plain string
+// constants, never user-visible themselves; only each *cobra.Group's Title
+// (groupTitleByID below) is.
+const (
+	groupCore  = "core"
+	groupSetup = "setup"
+	groupInfo  = "info"
+)
+
+// groupTitleByID maps a *cobra.Group's ID (root.go's root.AddGroup) to the
+// MessageID for its rendered Title — applyTranslatedHelp overwrites every
+// registered group's Title from this, exactly like helpShortByPath does
+// for a command's Short text, immediately before cobra renders
+// --help/usage.
+var groupTitleByID = map[string]i18n.MessageID{
+	groupCore:  i18n.MsgHelpGroupCore,
+	groupSetup: i18n.MsgHelpGroupSetup,
+	groupInfo:  i18n.MsgHelpGroupInfo,
+}
+
 var helpShortByPath = map[string]i18n.MessageID{
 	"comrade":                 i18n.MsgHelpShortRoot,
 	"comrade do":              i18n.MsgHelpShortDo,
@@ -90,10 +118,13 @@ func enUsageDefault(id i18n.MessageID) string {
 
 // registerTranslatedHelp overrides root's HelpFunc/UsageFunc so every
 // "--help"/usage render in the tree first re-translates every command's
-// Short text (applyTranslatedHelp) in the resolved language, then falls
-// through to cobra's own default rendering (captured here, BEFORE being
+// Short text (applyTranslatedHelp) in the resolved language, then renders
+// through cobra's own default rendering (captured here, BEFORE being
 // overridden, so the actual template/formatting logic is untouched — only
-// the Short strings feeding it change). Setting this once on root is
+// the Short strings feeding it change) — colorized per resolveColorEnabled
+// (internal/cli's single color-decision point; see color.go) when that
+// resolves true, completely unchanged (still cobra's own byte-for-byte
+// plain output) when it resolves false. Setting this once on root is
 // sufficient for the whole tree: cobra's Command.HelpFunc()/UsageFunc()
 // walk up to the nearest ancestor with one set when a child has none of
 // its own, and no command in this tree ever sets its own.
@@ -102,24 +133,70 @@ func registerTranslatedHelp(root *cobra.Command, newLoader loaderFactory) {
 	defaultUsage := root.UsageFunc()
 
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		applyTranslatedHelp(root, newLoader)
-		defaultHelp(cmd, args)
+		tr, cfg := applyTranslatedHelp(root, newLoader)
+		_ = renderMaybeColorized(cmd, cfg, tr, cmd.OutOrStdout(), func() { defaultHelp(cmd, args) })
 	})
 	root.SetUsageFunc(func(cmd *cobra.Command) error {
-		applyTranslatedHelp(root, newLoader)
-		return defaultUsage(cmd)
+		tr, cfg := applyTranslatedHelp(root, newLoader)
+		var usageErr error
+		writeErr := renderMaybeColorized(cmd, cfg, tr, cmd.OutOrStderr(), func() { usageErr = defaultUsage(cmd) })
+		if usageErr != nil {
+			return usageErr
+		}
+		return writeErr
 	})
 }
 
-// applyTranslatedHelp resolves the active Translator (helpTranslator) and,
-// walking every command in root's tree: overwrites Short when
+// renderMaybeColorized runs render (cobra's own captured default Help/Usage
+// func, writing to whatever cmd.OutOrStdout()/OutOrStderr() resolves to at
+// call time) and, when resolveColorEnabled(cfg, os.Environ(), target)
+// resolves true, intercepts that output into a buffer first and rewrites
+// it through colorizeHelpText before writing the colorized result to
+// target — target is cmd's REAL resolved writer, captured by the caller
+// BEFORE this call (so it is correct regardless of whether a test harness
+// or production code path set it). When color is disabled, render's
+// output goes straight to target, completely unbuffered and untouched —
+// this is what keeps every existing plain-text golden/Contains-style help
+// test byte-identical to before this function existed. render itself never
+// reports an error (cobra's own HelpFunc is void; its UsageFunc's error is
+// captured by the caller separately, into the closure render assigns to,
+// not through this return) — the only error this CAN return is target's
+// own final colorized write failing.
+func renderMaybeColorized(cmd *cobra.Command, cfg config.Config, tr i18n.Translator, target io.Writer, render func()) error {
+	if !resolveColorEnabled(cfg, os.Environ(), target) {
+		render()
+		return nil
+	}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	render()
+	cmd.SetOut(target)
+	_, err := fmt.Fprint(target, colorizeHelpText(buf.String(), tr))
+	return err
+}
+
+// applyTranslatedHelp resolves the active Translator/Config (helpConfig)
+// and, walking every command in root's tree: overwrites Short when
 // CommandPath() is a helpShortByPath key, AND overwrites every one of
 // that command's own (non-inherited) flags' Usage when the flag's name is
 // a flagUsageByName key — cobra/pflag read both fields directly off the
 // struct when rendering, so both need the same lazy, render-time
-// override.
-func applyTranslatedHelp(root *cobra.Command, newLoader loaderFactory) {
-	tr := helpTranslator(newLoader)
+// override. It also overwrites root's own Example text and every
+// registered *cobra.Group's Title (root.go's root.AddGroup) from the same
+// catalog — cobra's default usage template renders both verbatim, so they
+// need identical render-time localization to the Short/flag text above.
+// Returns the resolved Translator and Config so registerTranslatedHelp's
+// caller can reuse both for color resolution without a second config load.
+func applyTranslatedHelp(root *cobra.Command, newLoader loaderFactory) (i18n.Translator, config.Config) {
+	tr, cfg := helpTranslatorAndConfig(newLoader)
+
+	root.Example = tr.T(i18n.MsgHelpExamplesRoot)
+	for _, group := range root.Groups() {
+		if id, ok := groupTitleByID[group.ID]; ok {
+			group.Title = tr.T(id)
+		}
+	}
+
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {
 		if id, ok := helpShortByPath[cmd.CommandPath()]; ok {
@@ -135,22 +212,154 @@ func applyTranslatedHelp(root *cobra.Command, newLoader loaderFactory) {
 		}
 	}
 	walk(root)
+	return tr, cfg
 }
 
-// helpTranslator resolves the Translator help text uses: config
-// general.language when a config load succeeds (loader.Load() may create
-// a default config file as a side effect on first run, exactly like
-// every other command already does — "--help" is not special-cased away
-// from that), otherwise (a construction-time loader failure) falls back
-// to envOnlyTranslator (runtime.go) — the same env-only resolution
-// root.go's bare-invocation version banner and executionFlags.
-// modeFlagValue's pre-config error both use.
-func helpTranslator(newLoader loaderFactory) i18n.Translator {
+// helpTranslatorAndConfig resolves both the Translator help text uses AND
+// the Config resolveColorEnabled uses, from the SAME config load: config
+// general.language/general.color when a config load succeeds (loader.
+// Load() may create a default config file as a side effect on first run,
+// exactly like every other command already does — "--help" is not
+// special-cased away from that); otherwise (a construction-time loader
+// failure) falls back to envOnlyTranslator (runtime.go — the same env-only
+// resolution root.go's bare-invocation version banner and
+// executionFlags.modeFlagValue's pre-config error both use) paired with a
+// zero-value config.Config, whose General.Color is false — i.e. a broken
+// config fails closed to plain, uncolored help text, never a crash.
+func helpTranslatorAndConfig(newLoader loaderFactory) (i18n.Translator, config.Config) {
 	loader, err := newLoader()
 	if err == nil {
 		if cfg, _, loadErr := loader.Load(); loadErr == nil {
-			return i18n.NewTranslator(i18n.ResolveLanguage(cfg.General.Language, os.Getenv, i18n.SystemLocale))
+			tr := i18n.NewTranslator(i18n.ResolveLanguage(cfg.General.Language, os.Getenv, i18n.SystemLocale))
+			return tr, *cfg
 		}
 	}
-	return envOnlyTranslator()
+	return envOnlyTranslator(), config.Config{}
+}
+
+// helpHeaderStyle/helpCommandNameStyle/helpFlagNameStyle are colorizeHelpText's
+// three pastel styles (Part 2(b)): section headers/group titles in a bold
+// soft lavender, command names in a pastel cyan/teal, flag names (including
+// their one-letter shorthand, e.g. "-h, --help") in a pastel peach — chosen
+// as fixed ANSI256 codes rather than through lipgloss's AdaptiveColor/
+// compat package: charm.land/lipgloss/v2/compat's HasDarkBackground and
+// Profile package-level vars are initialized by a LIVE terminal query
+// (lipgloss.HasDarkBackground -> BackgroundColor, an OSC 11 query with up
+// to a 2-second blocking timeout per charm.land/lipgloss/v2/terminal.go)
+// that runs unconditionally at that package's import/init time — merely
+// importing charm.land/lipgloss/v2/compat anywhere in this binary would
+// pay that cost (and put the terminal in raw mode) on every interactive
+// invocation, including a bare `comrade --help`, which this codebase's own
+// cold-start-hardening history (see go.mod's atotto/clipboard replace
+// comment, FAZ 11) treats as exactly the class of regression to avoid.
+// These three codes are deliberately mid-tone/desaturated ("pastel") so
+// they stay legible on both a light and a dark 256-color terminal without
+// needing any runtime background detection at all.
+var (
+	helpHeaderStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("183"))
+	helpCommandNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("115"))
+	helpFlagNameStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("216"))
+)
+
+// helpCommandRowPattern matches a command-list row exactly as cobra's own
+// defaultUsageTemplate renders one — "  {{rpad .Name .NamePadding}}
+// {{.Short}}" — capturing the two leading spaces, the (unpadded) name
+// token, the padding+separator whitespace, and the rest of the line
+// (Short) as four groups. It requires the first non-space character to be
+// a letter specifically so it never matches a flag row (every flag row
+// starts with either six spaces or "-x, ", i.e. a dash, not a letter,
+// immediately after its own leading whitespace) — the two row shapes are
+// structurally disjoint by design, so a single, stateful, section-aware
+// pass (colorizeHelpText) can apply the right regex to the right rows
+// without the two ever needing to be told apart by content.
+var helpCommandRowPattern = regexp.MustCompile(`^(  )([A-Za-z][\w.-]*)(\s{2,})(.*)$`)
+
+// helpFlagRowPattern matches a flag-list row as pflag's FlagUsages()
+// renders one: either "      --name..." (long-only) or "  -x, --name..."
+// (with a one-letter shorthand) — capturing the leading whitespace, the
+// "-x, --name" or "--name" token itself, and the rest of the line as three
+// groups.
+var helpFlagRowPattern = regexp.MustCompile(`^(\s*)(-\w, --[\w-]+|--[\w-]+)(.*)$`)
+
+// colorizeHelpText re-colors an already-fully-rendered (plain-text,
+// correctly-aligned) cobra --help/usage block, wrapping only the specific
+// substrings the three styles above target in ANSI escape codes —
+// alignment/padding is computed ONCE by cobra/pflag against the plain
+// text, before any of this runs, and is never recomputed here: adding
+// zero-width ANSI codes around an already-correctly-padded substring
+// cannot change a real terminal's on-screen column alignment (only its
+// color), which is exactly why this operates on the fully rendered string
+// rather than trying to inject color earlier, into cmd.Name()/flag names
+// themselves, where the same escape codes would corrupt cobra's own
+// plain-byte-length padding math.
+//
+// tr is the same resolved Translator applyTranslatedHelp already used, so
+// this recognizes the CURRENT language's own group titles (Core:/Temel:
+// etc.) as headers in addition to cobra's own English-only, hardcoded
+// section labels (Usage:/Flags:/etc. — baked into cobra's own template
+// string, never run through internal/i18n, so always English regardless
+// of general.language; unrelated to and unaffected by this task).
+func colorizeHelpText(text string, tr i18n.Translator) string {
+	commandSectionHeaders := map[string]bool{
+		"Available Commands:":        true,
+		"Additional Commands:":       true,
+		"Additional help topics:":    true,
+		tr.T(i18n.MsgHelpGroupCore):  true,
+		tr.T(i18n.MsgHelpGroupSetup): true,
+		tr.T(i18n.MsgHelpGroupInfo):  true,
+	}
+	flagSectionHeaders := map[string]bool{
+		"Flags:":        true,
+		"Global Flags:": true,
+	}
+	plainHeaders := map[string]bool{
+		"Usage:":    true,
+		"Aliases:":  true,
+		"Examples:": true,
+	}
+
+	type section int
+	const (
+		sectionOther section = iota
+		sectionCommands
+		sectionFlags
+	)
+
+	lines := strings.Split(text, "\n")
+	cur := sectionOther
+	for i, line := range lines {
+		trimmed := strings.TrimRight(line, "\r")
+		switch {
+		case commandSectionHeaders[trimmed]:
+			cur = sectionCommands
+			lines[i] = helpHeaderStyle.Render(trimmed)
+			continue
+		case flagSectionHeaders[trimmed]:
+			cur = sectionFlags
+			lines[i] = helpHeaderStyle.Render(trimmed)
+			continue
+		case plainHeaders[trimmed]:
+			cur = sectionOther
+			lines[i] = helpHeaderStyle.Render(trimmed)
+			continue
+		case trimmed == "":
+			// A blank line never itself changes section — every section
+			// transition in cobra's template is via an explicit header
+			// line (handled above), never inferred from blank lines
+			// alone (e.g. flag rows are never blank-separated from each
+			// other within "Flags:").
+			continue
+		}
+		switch cur {
+		case sectionCommands:
+			if m := helpCommandRowPattern.FindStringSubmatch(line); m != nil {
+				lines[i] = m[1] + helpCommandNameStyle.Render(m[2]) + m[3] + m[4]
+			}
+		case sectionFlags:
+			if m := helpFlagRowPattern.FindStringSubmatch(line); m != nil {
+				lines[i] = m[1] + helpFlagNameStyle.Render(m[2]) + m[3]
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
 }

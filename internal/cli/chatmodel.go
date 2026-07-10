@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
@@ -86,7 +87,7 @@ func (m *chatModel) newRealChatDoRunner(cfg config.Config, client *llm.Client) c
 			_ = m.program.ReleaseTerminal()
 			defer func() { _ = m.program.RestoreTerminal() }()
 		}
-		return runChatDo(ctx, cfg, client, mode, request, m.ioIn, m.ioOut, m.ioOut, cfg.General.Color)
+		return runChatDo(ctx, cfg, client, mode, request, m.ioIn, m.ioOut, m.ioOut, resolveColorEnabled(cfg, os.Environ(), m.ioOut))
 	}
 }
 

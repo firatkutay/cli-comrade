@@ -9,9 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/shellinit"
 )
 
@@ -503,13 +505,9 @@ func TestInitPowerShellWindowsMessagesRenderInTurkish(t *testing.T) {
 		},
 	}
 
-	// NOTE (pre-existing, out of scope for this feature): confirmYesNo
-	// only accepts literal "y"/"yes" regardless of the active language,
-	// even though the TR prompt itself displays "[e/H]" — "e"/"evet" is
-	// NOT actually accepted. Using "y" here to reach the install path;
-	// this discrepancy is unrelated to the multi-profile PowerShell
-	// change and is not fixed by it.
-	out := execInitCmd(t, deps, "y\n", "powershell")
+	// confirmYesNo accepts TR's own "e"/"evet" affirmative (matching the
+	// "[e/H]" the TR prompt itself renders) — see TestConfirmYesNoIsAffirmative.
+	out := execInitCmd(t, deps, "e\n", "powershell")
 	assert.Contains(t, out, "Windows PowerShell 5.1: cli-comrade kabuk entegrasyonu "+winPSProfile+" içine kuruldu")
 	assert.Contains(t, out, "PowerShell 7: cli-comrade kabuk entegrasyonu "+pwshProfile+" içine kuruldu")
 	assert.Contains(t, out, "Yukarıdaki profil(ler)e cli-comrade kabuk entegrasyonu eklensin mi?")
@@ -528,4 +526,75 @@ func TestInitPowerShellWindowsNoneFoundErrorRendersInTurkish(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "hiçbir PowerShell kurulumu bulunamadı")
 	assert.NotContains(t, err.Error(), "no PowerShell installation found")
+}
+
+// TestIsAffirmative is the table-driven test for confirmYesNo's per-language
+// acceptance rule: TR accepts (case-insensitively) "e"/"evet", every other
+// language accepts "y"/"yes" — everything else, including an empty line,
+// must stay default-NO. This is the fix for the tracked bug where the TR
+// prompt rendered "[e/H]" but "e"/"evet" were silently rejected.
+func TestIsAffirmative(t *testing.T) {
+	tests := []struct {
+		name string
+		lang i18n.Lang
+		line string
+		want bool
+	}{
+		{"tr lowercase e is affirmative", i18n.LangTR, "e", true},
+		{"tr uppercase E is affirmative", i18n.LangTR, "E", true},
+		{"tr lowercase evet is affirmative", i18n.LangTR, "evet", true},
+		{"tr mixed-case EVET is affirmative", i18n.LangTR, "EVET", true},
+		{"tr rejects EN y", i18n.LangTR, "y", false},
+		{"tr rejects EN yes", i18n.LangTR, "yes", false},
+		{"tr empty line stays no", i18n.LangTR, "", false},
+		{"tr garbage stays no", i18n.LangTR, "maybe", false},
+		{"tr explicit h stays no", i18n.LangTR, "h", false},
+		{"en lowercase y is affirmative", i18n.LangEN, "y", true},
+		{"en uppercase Y is affirmative", i18n.LangEN, "Y", true},
+		{"en lowercase yes is affirmative", i18n.LangEN, "yes", true},
+		{"en mixed-case Yes is affirmative", i18n.LangEN, "Yes", true},
+		{"en rejects TR e", i18n.LangEN, "e", false},
+		{"en rejects TR evet", i18n.LangEN, "evet", false},
+		{"en empty line stays no", i18n.LangEN, "", false},
+		{"en garbage stays no", i18n.LangEN, "maybe", false},
+		{"en explicit n stays no", i18n.LangEN, "n", false},
+		{"unknown lang falls back to EN rule: y affirmative", i18n.Lang("xx"), "y", true},
+		{"unknown lang falls back to EN rule: e not affirmative", i18n.Lang("xx"), "e", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isAffirmative(tt.lang, tt.line))
+		})
+	}
+}
+
+// TestConfirmYesNoReadsLangSpecificAnswer drives confirmYesNo itself (not
+// just isAffirmative) through a stubbed *cobra.Command, proving the prompt
+// is written to stdout and the answer is read from stdin per lang.
+func TestConfirmYesNoReadsLangSpecificAnswer(t *testing.T) {
+	tests := []struct {
+		name  string
+		lang  i18n.Lang
+		stdin string
+		want  bool
+	}{
+		{"tr accepts e", i18n.LangTR, "e\n", true},
+		{"tr rejects EN y", i18n.LangTR, "y\n", false},
+		{"en accepts y", i18n.LangEN, "y\n", true},
+		{"en rejects TR e", i18n.LangEN, "e\n", false},
+		{"empty stdin (EOF) stays no", i18n.LangEN, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			cmd.SetIn(strings.NewReader(tt.stdin))
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+
+			got, err := confirmYesNo(cmd, "confirm? ", tt.lang)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, "confirm? ", out.String())
+		})
+	}
 }

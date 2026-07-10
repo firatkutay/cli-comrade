@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -73,7 +74,9 @@ func runExplain(cmd *cobra.Command, newLoader loaderFactory, command string) err
 	}
 
 	explainer := engine.NewExplainer(client, cfg)
+	stopSpinner := startWaitSpinner(resolveColorEnabled(cfg, os.Environ(), cmd.ErrOrStderr()), cmd.ErrOrStderr(), tr)
 	explanation, err := explainer.Explain(cmd.Context(), command)
+	stopSpinner()
 	if err != nil {
 		return fmt.Errorf("comrade explain: %w", err)
 	}
@@ -95,7 +98,7 @@ func printExplainSafetyVerdict(cmd *cobra.Command, cfg config.Config, tr i18n.Tr
 		reason = ": " + decision.Reason
 	}
 	line := tr.T(i18n.MsgExplainSafetyWarning, decision.EffectiveRisk.String(), reason)
-	return tui.PrintWarning(cmd.OutOrStdout(), line, cfg.General.Color)
+	return tui.PrintWarning(cmd.OutOrStdout(), line, resolveColorEnabled(cfg, os.Environ(), cmd.OutOrStdout()))
 }
 
 // renderExplanation prints explanation as: the LLM's summary (headed by

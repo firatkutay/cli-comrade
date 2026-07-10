@@ -86,7 +86,9 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 	}
 
 	diagnoser := engine.NewDiagnoser(client, cfg)
+	stopSpinner := startWaitSpinner(resolveColorEnabled(cfg, os.Environ(), cmd.ErrOrStderr()), cmd.ErrOrStderr(), tr)
 	diagnosis, err := diagnoser.Diagnose(cmd.Context(), errCtx)
+	stopSpinner()
 	if err != nil {
 		return fmt.Errorf("comrade fix: %w", err)
 	}
@@ -125,15 +127,16 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
+	colorEnabled := resolveColorEnabled(cfg, os.Environ(), cmd.OutOrStdout())
 	deps := engine.RunDeps{
 		Executor:           ex,
 		Safety:             safetyEngine,
 		LLM:                client,
-		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: cfg.General.Color, llm: client, tr: tr},
+		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: colorEnabled, llm: client, tr: tr},
 		Audit:              auditSink,
 		Stdout:             cmd.OutOrStdout(),
 		Stderr:             cmd.ErrOrStderr(),
-		ColorEnabled:       cfg.General.Color,
+		ColorEnabled:       colorEnabled,
 		ConfirmDestructive: cfg.Safety.ConfirmDestructive,
 		ConfirmElevated:    cfg.Safety.ConfirmElevated,
 		Yolo:               flags.yolo,

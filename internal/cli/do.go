@@ -66,7 +66,9 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 	})
 
 	planner := engine.NewPlanner(client, cfg)
+	stopSpinner := startWaitSpinner(resolveColorEnabled(cfg, os.Environ(), cmd.ErrOrStderr()), cmd.ErrOrStderr(), tr)
 	plan, err := planner.GeneratePlan(cmd.Context(), request, sysCtx)
+	stopSpinner()
 	if err != nil {
 		return fmt.Errorf("comrade do: %w", err)
 	}
@@ -91,15 +93,16 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
+	colorEnabled := resolveColorEnabled(cfg, os.Environ(), cmd.OutOrStdout())
 	deps := engine.RunDeps{
 		Executor:           executor.New(cmd.OutOrStdout(), cmd.ErrOrStderr()),
 		Safety:             safety.NewEngine(cfg),
 		LLM:                client,
-		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: cfg.General.Color, llm: client, tr: tr},
+		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: colorEnabled, llm: client, tr: tr},
 		Audit:              auditSink,
 		Stdout:             cmd.OutOrStdout(),
 		Stderr:             cmd.ErrOrStderr(),
-		ColorEnabled:       cfg.General.Color,
+		ColorEnabled:       colorEnabled,
 		ConfirmDestructive: cfg.Safety.ConfirmDestructive,
 		ConfirmElevated:    cfg.Safety.ConfirmElevated,
 		Yolo:               flags.yolo,

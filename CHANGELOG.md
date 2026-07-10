@@ -91,6 +91,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing block-marker upgrade machinery rolls this out automatically:
   re-running `comrade init powershell` on an already-hooked profile
   reports `StatusUpgraded` and replaces the old snippet in place.
+- **`comrade init`'s y/N confirmation only accepted English `y`/`yes`,
+  even in Turkish**: the TR-rendered prompt itself shows `[e/H]`, but
+  typing `e`/`evet` was silently treated as a decline. `confirmYesNo` now
+  accepts per the active `general.language`: TR → `e`/`evet`
+  (case-insensitive); every other language → `y`/`yes`. Anything else,
+  including a bare Enter, still defaults to no — same fail-closed default
+  as before, just per-language now instead of English-only.
 
 ### Added
 
@@ -114,6 +121,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commit SHA and the trailing `# vX.Y.Z` comment together, so every
   `uses:` step in both workflows stays SHA-pinned per
   `supply-chain-pinning` after an update PR merges.
+- **Restyled `--help`: command groups, pastel colors, and a waiting
+  spinner**:
+  - `--help` now organizes subcommands under three titled, i18n'd cobra
+    Groups — Core (`do`/`fix`/`explain`/`chat`), Setup
+    (`auth`/`init`/`config`), Info (`history`/`upgrade`) — plus a short
+    i18n'd "Examples:" section on the root command. Hidden commands
+    (`hook`, `config test-llm`) stay hidden regardless.
+  - Both root and every subcommand's `--help`/usage now render in pastel
+    ANSI256 colors when color is enabled: section headers in bold
+    lavender, command names in cyan/teal, flag names in peach —
+    color-wrapped around cobra/pflag's own already-aligned plain text
+    (never injected into `.Name`/flag-name fields themselves, which would
+    have corrupted their padding math) so column alignment is unaffected.
+  - Color gating goes through one single decision point,
+    `resolveColorEnabled` (new `internal/cli/color.go`): the existing
+    `general.color` config switch, refined by real TTY detection and the
+    `NO_COLOR`/`CLICOLOR_FORCE` env-var conventions
+    (`colorprofile.Detect`, promoted from an indirect to a direct, still
+    exact-pinned dependency). Every pre-existing `cfg.General.Color` read
+    (`chat`/`do`/`fix`/`explain`/`--yolo` warning) now goes through this
+    same function instead of a second, parallel decision path. On
+    Windows, when color resolves on, `lipgloss.EnableLegacyWindowsANSI`
+    opts the console into `ENABLE_VIRTUAL_TERMINAL_PROCESSING` so legacy
+    `conhost.exe` (still what Windows PowerShell 5.1 typically runs in)
+    actually renders the escape sequences instead of printing them
+    literally.
+  - During `do`/`fix`'s plan-generation/diagnosis, `explain`'s
+    breakdown, and chat's `/do`, an animated braille spinner (borrowing
+    `bubbles/v2/spinner`'s `MiniDot` frame data, driven by a plain
+    goroutine rather than a second `tea.Program`) renders to stderr with
+    an i18n'd "thinking…"/"düşünüyorum…" label — only when stderr is a
+    TTY (same `NO_COLOR`/`CLICOLOR_FORCE` handling as the rest of this
+    entry), always stopped and cleared before any real output, and always
+    stopped on error or cancellation with no orphan goroutine.
 
 ## [0.1.0-rc1] - 2026-07-09
 

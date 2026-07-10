@@ -432,6 +432,28 @@ const (
 	// MsgHelpShortUpgrade is `comrade upgrade`'s --help text.
 	MsgHelpShortUpgrade MessageID = "help_short_upgrade"
 
+	// -- root --help command-group titles and Examples section -----------
+	//
+	// Same render-time-override mechanism as the Short/flag text above:
+	// internal/cli/help.go's applyTranslatedHelp also overwrites every
+	// registered *cobra.Group's Title (groupTitleByID) and root's own
+	// Example field from these, immediately before cobra renders
+	// --help/usage — cobra's default usage template renders both verbatim
+	// once Groups are registered (see root.go), so both need the same
+	// lazy, per-invocation-language override as everything else here.
+
+	// MsgHelpGroupCore titles the "Core" command group (do/fix/explain/chat).
+	MsgHelpGroupCore MessageID = "help_group_core"
+	// MsgHelpGroupSetup titles the "Setup" command group (auth/init/config).
+	MsgHelpGroupSetup MessageID = "help_group_setup"
+	// MsgHelpGroupInfo titles the "Info" command group (history/upgrade).
+	MsgHelpGroupInfo MessageID = "help_group_info"
+	// MsgHelpExamplesRoot is root's --help "Examples:" section body — each
+	// line pre-indented by two spaces to match cobra's own template
+	// convention for that section (see cobra's defaultUsageTemplate:
+	// ".Example" is rendered verbatim, with no added indentation).
+	MsgHelpExamplesRoot MessageID = "help_examples_root"
+
 	// -- per-flag --help descriptions ------------------------------------
 	//
 	// Exactly like Short text above, a flag's description (pflag's
@@ -584,6 +606,12 @@ const (
 	// command inline ([d]üzenle in TR / [e]dit in EN), before the
 	// textinput itself.
 	MsgConfirmEditHeader MessageID = "confirm_edit_header"
+
+	// MsgSpinnerThinking is the label internal/cli's waitSpinner (Part
+	// 2(d) — animated braille spinner shown to stderr while do/fix/
+	// explain/chat's "/do" waits on a blocking LLM call) renders next to
+	// its animated frame. No args — this is the whole label, every time.
+	MsgSpinnerThinking MessageID = "spinner_thinking"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -743,10 +771,19 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpShortUpgrade: "Check for or install a newer released version of comrade",
 	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
 
+	MsgHelpGroupCore:  "Core:",
+	MsgHelpGroupSetup: "Setup:",
+	MsgHelpGroupInfo:  "Info:",
+	MsgHelpExamplesRoot: "  comrade install docker           # free-text request -> do mode\n" +
+		"  comrade fix                      # diagnose the last failed command\n" +
+		"  comrade explain \"git rebase -i HEAD~5\"\n" +
+		"  comrade chat                     # start an interactive session",
+
 	MsgUpdateAvailableNotice: "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
 
 	MsgConfirmLegend:     "[y]es [n]o [e]dit [x]plain [a]ll: ",
 	MsgConfirmEditHeader: "Edit command (enter to confirm, esc to cancel):\n",
+	MsgSpinnerThinking:   "thinking…",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -906,8 +943,17 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpShortUpgrade: "comrade'in daha yeni bir yayımlanmış sürümünü denetler veya kurar",
 	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",
 
+	MsgHelpGroupCore:  "Temel:",
+	MsgHelpGroupSetup: "Kurulum:",
+	MsgHelpGroupInfo:  "Bilgi:",
+	MsgHelpExamplesRoot: "  comrade docker kur                # serbest metin istek -> do modu\n" +
+		"  comrade fix                       # son başarısız komutu teşhis et\n" +
+		"  comrade explain \"git rebase -i HEAD~5\"\n" +
+		"  comrade chat                      # etkileşimli oturum başlat",
+
 	MsgUpdateAvailableNotice: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
 
 	MsgConfirmLegend:     "[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: ",
 	MsgConfirmEditHeader: "Komutu düzenle (onaylamak için enter, iptal için esc):\n",
+	MsgSpinnerThinking:   "düşünüyorum…",
 }

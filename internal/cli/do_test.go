@@ -120,6 +120,35 @@ func TestDoDryRunRendersPlanTableAgainstMockProvider(t *testing.T) {
 	assert.Contains(t, stdout, "denylist rule")
 }
 
+// TestDoShowsSpinnerOnStderrWhileWaitingForPlan is Part 2(d)'s wiring
+// proof for `comrade do`: with CLICOLOR_FORCE=1 (so the spinner renders
+// even though this test's stderr is a strings.Builder, not a real TTY —
+// exactly the env-var override QA/tests are meant to use per
+// resolveColorEnabled's own contract), planner.GeneratePlan's blocking
+// call against the mock server leaves the spinner's ANSI clear-line
+// sequence in stderr, and NOTHING spinner-related ever reaches stdout,
+// which stays exactly the plain rendered plan table it was before this
+// feature existed.
+func TestDoShowsSpinnerOnStderrWhileWaitingForPlan(t *testing.T) {
+	withIsolatedConfigDir(t)
+	server := newMockPlanServer(t, dockerKurPlanJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+	t.Setenv("CLICOLOR_FORCE", "1")
+
+	stdout, stderr, err := execRootSplit(t, "dev", "do", "docker", "kur", "--dry-run")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.Contains(t, stderr, "\r\x1b[K", "spinner's clear-line sequence must appear in stderr")
+	assert.Contains(t, stderr, "thinking…", "spinner's EN label must appear in stderr")
+	assert.NotContains(t, stdout, "\x1b[K", "spinner output must never reach stdout")
+	assert.NotContains(t, stdout, "thinking…", "spinner label must never reach stdout")
+	assert.Contains(t, stdout, "Docker kurulur ve başlatılır.", "the real plan table must still render on stdout, unaffected")
+}
+
 // benignAndDecoyPlanJSON is the canned model response for
 // TestDoAutoModeRunsBenignStepAndBlocksDenylistedStepAgainstRealExecutor:
 // one truly benign `echo` step, and one `rm -rf /` decoy mislabeled

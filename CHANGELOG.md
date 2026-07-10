@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-10
+
+### Fixed
+
+- **Install-channel publishing (Homebrew, Scoop, winget) failed on v0.1.1** —
+  the release workflow used `{{ envOrDefault "X" "" }}` in `.goreleaser.yaml`'s
+  channel-publish tokens, but goreleaser's restricted template evaluator accepts
+  only the literal `{{ .Env.VAR }}` form, not custom functions. This caused
+  every channel publish to fail after the GitHub Release was already created,
+  leaving Homebrew/Scoop/winget taps unpopulated. Corrected to use
+  `{{ .Env.X_TOKEN }}` and pinned goreleaser-action to `2.16.0` so CI matches
+  the verified build.
+
 ## [0.1.1] - 2026-07-10
 
 ### Added

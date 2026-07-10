@@ -17,6 +17,14 @@
 coverage.txt
 coverage.html
 
+# snapcraft local build output (snap/snapcraft.yaml drives this; these
+# are the standard snapcraft build-cache/output dirs, never sources)
+/parts/
+/prime/
+/stage/
+*.snap
+.snapcraft/
+
 # OS cruft
 .DS_Store
 Thumbs.db

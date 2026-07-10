@@ -1,19 +1,22 @@
 # cli-comrade
 
-> ⚠️ **Feature-complete release candidate, pre-release.** All planned phases
-> (FAZ 0–11) are implemented and `v0.1.0-rc1` is ready — cold start ~5ms, full
-> test/lint/vet/`-race`/`govulncheck` gate green — but **no tag has been
-> published yet**, so no binaries exist on GitHub Releases and the
-> Homebrew/winget/Scoop channels are not live. Build from source for now (see
-> [Install](#install)). Commands and behavior may still change before the
-> tag goes out. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the
-> honest list of what's unverified — mainly Windows runtime behavior not yet
+> ⚠️ **v0.1.0 is published.** Prebuilt linux/darwin/windows archives,
+> `.deb`/`.rpm` packages, and checksum-verifying `install.sh`/`install.ps1`
+> scripts are live on [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases) —
+> see [Install](#install) for the one-line `curl`/`irm` commands. The
+> Homebrew/winget/Scoop channels are **not live yet** (tracked separately,
+> see [Install](#install)). Commands and behavior may still change before
+> v1.0. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the honest
+> list of what's unverified — mainly Windows runtime behavior not yet
 > verified on a real Windows machine.
 >
-> ⚠️ **Geliştirme aşamasında sürüm adayı, henüz yayınlanmadı.** Tüm fazlar
-> (FAZ 0–11) tamamlandı ve `v0.1.0-rc1` hazır, ama henüz bir tag
-> yayınlanmadı — indirilebilir bir binary yok. Şimdilik kaynaktan derleyin
-> (aşağıdaki [Kurulum](#kurulum) bölümüne bakın). Bilinen kısıtlar için
+> ⚠️ **v0.1.0 yayınlandı.** linux/darwin/windows için hazır arşivler,
+> `.deb`/`.rpm` paketleri ve checksum doğrulamalı `install.sh`/`install.ps1`
+> script'leri [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases)
+> üzerinde canlı — tek satırlık `curl`/`irm` komutları için aşağıdaki
+> [Kurulum](#kurulum) bölümüne bakın. Homebrew/winget/Scoop kanalları
+> **henüz canlı değil** (ayrıca takip ediliyor, bkz. [Kurulum](#kurulum)).
+> v1.0 öncesi komutlar ve davranışlar değişebilir. Bilinen kısıtlar için
 > [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)'e bakın.
 
 Binary name: `comrade`.
@@ -83,7 +86,35 @@ Full model: [docs/SECURITY.md](docs/SECURITY.md).
 
 ### Install
 
-Nothing is published yet — build from source:
+**macOS / Linux:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
+```
+
+Both scripts download the matching release archive from GitHub Releases,
+verify it against that release's `checksums.txt` (`sha256sum -c` /
+`Get-FileHash`) before installing anything, and print a `comrade init
+<shell>` hint when done. Set `COMRADE_VERSION` (env var, or `-Version` on
+Windows) to pin an exact release instead of installing the latest one. Full
+details, env-var reference, and every other install channel: see
+[docs/INSTALL.md](docs/INSTALL.md).
+
+**v0.1.0 also ships:** `.deb`/`.rpm` packages and raw archives, all as
+[GitHub Release](https://github.com/firatkutay/cli-comrade/releases) assets
+from the same goreleaser pipeline (`.goreleaser.yaml`). Homebrew (cask),
+winget, and Scoop are **not live yet** — those publishers need a
+pre-existing tap/bucket/manifest repo goreleaser can push to, which don't
+exist yet; they'll be enabled in a follow-up release once those repos are
+created.
+
+**Building from source** (Go developers):
 
 ```sh
 git clone https://github.com/firatkutay/cli-comrade.git
@@ -97,15 +128,6 @@ cold-start fix, and Go's own toolchain rejects `@version` installs against a
 module whose `go.mod` contains `replace`/`exclude`. `git clone` + `make
 build` sidesteps this because the checkout itself becomes the main module.
 Details: [docs/INSTALL.md](docs/INSTALL.md).
-
-**v0.1.0 ships:** prebuilt archives for linux/darwin/windows (amd64+arm64) plus
-`.deb`/`.rpm` packages, `checksums.txt`, and the signed/checksum-verified
-`install.sh`/`install.ps1` scripts, all as [GitHub Release](https://github.com/firatkutay/cli-comrade/releases)
-assets from the same goreleaser pipeline (`.goreleaser.yaml`). Homebrew
-(cask), winget, and Scoop are **not live yet** — those publishers need a
-pre-existing tap/bucket/manifest repo goreleaser can push to, which don't
-exist yet; they'll be enabled in a follow-up release once those repos are
-created. See docs/INSTALL.md for the exact commands each live channel uses.
 
 ### Quick start
 
@@ -236,7 +258,34 @@ Tam model: [docs/SECURITY.md](docs/SECURITY.md).
 
 ### Kurulum
 
-Henüz hiçbir şey yayınlanmadı — kaynaktan derleyin:
+**macOS / Linux:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
+```
+
+Her iki script de GitHub Releases'ten eşleşen arşivi indirir, kurmadan önce
+o release'in `checksums.txt`'ine karşı doğrular (`sha256sum -c` /
+`Get-FileHash`) ve bitince bir `comrade init <shell>` ipucu basar. Belirli
+bir sürümü sabitlemek için `COMRADE_VERSION` ortam değişkenini (Windows'ta
+`-Version` parametresini) kullanın. Tüm ayrıntılar, ortam değişkeni
+referansı ve diğer tüm kurulum kanalları için: [docs/INSTALL.md](docs/INSTALL.md).
+
+**v0.1.0'da ayrıca olanlar:** `.deb`/`.rpm` paketleri ve ham arşivler —
+hepsi aynı goreleaser pipeline'ından (`.goreleaser.yaml`) üretilen
+[GitHub Release](https://github.com/firatkutay/cli-comrade/releases)
+eklentileri olarak. Homebrew (cask), winget ve Scoop **henüz canlı değil** —
+bu yayıncılar goreleaser'ın push edebileceği önceden var olan bir
+tap/bucket/manifest deposu gerektiriyor, bunlar henüz oluşturulmadı; bu
+depolar kurulduğunda sonraki bir sürümde etkinleştirilecekler.
+
+**Kaynaktan derleme** (Go geliştiricileri için):
 
 ```sh
 git clone https://github.com/firatkutay/cli-comrade.git
@@ -250,16 +299,6 @@ make build          # -> ./comrade
 `replace`/`exclude` bulunan bir modüle karşı `@sürüm` kurulumunu reddediyor.
 `git clone` + `make build` bunu aşar, çünkü checkout'un kendisi ana modül
 haline gelir. Detaylar: [docs/INSTALL.md](docs/INSTALL.md).
-
-**v0.1.0'da olanlar:** linux/darwin/windows (amd64+arm64) için hazır
-arşivler, `.deb`/`.rpm` paketleri, `checksums.txt` ve imzalı/checksum
-doğrulamalı `install.sh`/`install.ps1` script'leri — hepsi aynı goreleaser
-pipeline'ından (`.goreleaser.yaml`) üretilen [GitHub Release](https://github.com/firatkutay/cli-comrade/releases)
-eklentileri olarak. Homebrew (cask), winget ve Scoop **henüz canlı değil** —
-bu yayıncılar goreleaser'ın push edebileceği önceden var olan bir
-tap/bucket/manifest deposu gerektiriyor, bunlar henüz oluşturulmadı; bu
-depolar kurulduğunda sonraki bir sürümde etkinleştirilecekler. Her canlı
-kanalın kullanacağı tam komutlar için docs/INSTALL.md'ye bakın.
 
 ### Hızlı başlangıç
 

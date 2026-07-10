@@ -6,35 +6,51 @@ Binary name: `comrade`
 
 ## Türkçe
 
-Tüm kurulum yöntemleri her release'de aynı imzalanmış/checksum'lı
-arşivlerden ve paketlerden üretilir (bkz. `.goreleaser.yaml`). Hiçbiri
-`sudo curl | bash` gibi bir "kör" script çalıştırmaz; kurulum
-script'lerinin kendisi bile indirdiği arşivi `checksums.txt`'e karşı
-doğrular (aşağıya bakın).
+v0.1.x için **birincil kurulum yolu** aşağıdaki `install.sh`/`install.ps1`
+tek satırlık komutlarıdır. Tüm kurulum yöntemleri her release'de aynı
+imzalanmış/checksum'lı arşivlerden ve paketlerden üretilir (bkz.
+`.goreleaser.yaml`). Hiçbiri `sudo curl | bash` gibi bir "kör" script
+çalıştırmaz; kurulum script'lerinin kendisi bile indirdiği arşivi
+`checksums.txt`'e karşı doğrular (aşağıya bakın).
 
-### macOS / Linux — Homebrew
+### Kurulum script'i (macOS / Linux) — önerilen yöntem
 
 ```sh
-brew tap firatkutay/tap
-brew install --cask comrade
+curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
-`comrade` artık bir Homebrew **Cask**'tir (eski "Formula" biçimi
-goreleaser v2.16'dan itibaren kullanımdan kaldırılmıştır); kurulum ve
-güncelleme komutları kullanıcı açısından aynıdır.
+Bu script:
 
-### Windows — winget
+1. `curl` veya `wget`'ten hangisi varsa onu kullanır (ikisi de yoksa
+   anlaşılır bir hatayla durur);
+2. `COMRADE_VERSION` verilmemişse, sürümü `api.github.com`'daki
+   rate-limit'li (kimliksiz istekte saatte 60) "latest release" REST
+   uç noktasını **hiç çağırmadan** çözer: doğrudan GitHub'ın
+   `releases/latest/download/checksums.txt` yönlendirmesini indirir, o
+   dosyadan işletim sistemi/mimarinize uyan satırı bulur ve gerçek
+   arşiv dosya adını (sürüm numarası dahil) oradan okur;
+3. indirilen arşivi aynı `checksums.txt` satırına karşı `sha256sum -c`
+   ile doğrular — doğrulama başarısız olursa kurulum iptal edilir;
+4. `$HOME/.local/bin`'e (yazılamıyorsa `/usr/local/bin`'e, o da
+   yazılamıyorsa `sudo` ile) kurar;
+5. `comrade init <shell>` çalıştırmanızı önerir.
+
+Ortam değişkenleri: `COMRADE_VERSION` (belirli bir sürümü, örn. `v0.1.0`,
+sabitler — bu durumda script o tag'e özel `checksums.txt`'i kullanır),
+`COMRADE_INSTALL_DIR` (kurulum dizinini değiştirir).
+
+### Kurulum script'i (Windows PowerShell) — önerilen yöntem
 
 ```powershell
-winget install FiratKutay.comrade
+irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
 ```
 
-### Windows — Scoop
-
-```powershell
-scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
-scoop install comrade
-```
+Aynı mantığı izler: sürümü `api.github.com` yerine
+`releases/latest/download/checksums.txt`'ten çözer, `Get-FileHash` ile
+checksum doğrular, `%LOCALAPPDATA%\Programs\cli-comrade`'e kurar ve
+kullanıcı `PATH`'ine ekler. Belirli bir sürümü sabitlemek için
+`$env:COMRADE_VERSION` (veya `-Version` parametresi) kullanın. Windows
+PowerShell 5.1 ve PowerShell 7 (`pwsh`) ile test edilmiştir.
 
 ### Debian/Ubuntu — .deb
 
@@ -44,8 +60,8 @@ curl -fsSL -o comrade.deb \
 sudo dpkg -i comrade.deb
 ```
 
-`<VERSION>` yerine indirmek istediğiniz sürümü ("~" olmadan, örn.
-`0.2.0`) yazın; [Releases](https://github.com/firatkutay/cli-comrade/releases)
+`<VERSION>` yerine indirmek istediğiniz sürümü ("v" olmadan, örn.
+`0.1.0`) yazın; [Releases](https://github.com/firatkutay/cli-comrade/releases)
 sayfasından tam dosya adını kopyalayabilirsiniz.
 
 ### Fedora/RHEL — .rpm
@@ -56,36 +72,16 @@ curl -fsSL -o comrade.rpm \
 sudo rpm -i comrade.rpm
 ```
 
-### Kurulum script'i (macOS / Linux)
+### Homebrew / winget / Scoop — henüz canlı değil
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
-```
-
-Bu script:
-
-1. `curl` veya `wget`'ten hangisi varsa onu kullanır (ikisi de yoksa
-   anlaşılır bir hatayla durur);
-2. en son (veya `COMRADE_VERSION` ile sabitlenmiş) release'i indirir;
-3. indirilen arşivi aynı release'in `checksums.txt` dosyasına karşı
-   `sha256sum -c` ile doğrular — doğrulama başarısız olursa kurulum
-   iptal edilir;
-4. `$HOME/.local/bin`'e (yazılamıyorsa `/usr/local/bin`'e, o da
-   yazılamıyorsa `sudo` ile) kurar;
-5. `comrade init` çalıştırmanızı önerir.
-
-Ortam değişkenleri: `COMRADE_VERSION` (belirli bir sürümü sabitler),
-`COMRADE_INSTALL_DIR` (kurulum dizinini değiştirir).
-
-### Kurulum script'i (Windows PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
-```
-
-Aynı doğrulama adımlarını (`Get-FileHash` ile checksum kontrolü) yapar,
-`%LOCALAPPDATA%\Programs\cli-comrade`'e kurar ve kullanıcı `PATH`'ine
-ekler.
+Bu paket yöneticisi kanalları **henüz yayında değil**. goreleaser'ın
+push edebileceği `firatkutay/homebrew-tap` ve `firatkutay/scoop-bucket`
+depoları oluşturuldu ancak sonraki sürüme kadar içlerine hiçbir şey
+yayınlanmadı; winget-pkgs manifesti ise henüz hiç oluşturulmadı.
+Bu iş `.goreleaser.yaml`'da bilinçli olarak devre dışı bırakıldı (bkz.
+dosyadaki ilgili yorumlar) ve ayrı bir işte ele alınacak. Şimdilik
+yukarıdaki `install.sh`/`install.ps1` script'lerini veya `.deb`/`.rpm`
+paketlerini kullanın.
 
 ### Kaynaktan derleme (Go geliştiricileri için)
 
@@ -148,35 +144,53 @@ false` ile kapatılabilir — bkz. CONFIGURATION.md).
 
 ## English
 
-Every install method is built from the exact same signed/checksummed
-archives and packages on every release (see `.goreleaser.yaml`). None
-of them is a blind `curl | sudo bash` — even the install scripts
-themselves verify the downloaded archive against that release's own
-`checksums.txt` before installing anything (see below).
+The **primary install path for v0.1.x** is the `install.sh`/`install.ps1`
+one-liners below. Every install method is built from the exact same
+signed/checksummed archives and packages on every release (see
+`.goreleaser.yaml`). None of them is a blind `curl | sudo bash` — even
+the install scripts themselves verify the downloaded archive against
+that release's own `checksums.txt` before installing anything (see
+below).
 
-### macOS / Linux — Homebrew
+### Install script (macOS / Linux) — recommended
 
 ```sh
-brew tap firatkutay/tap
-brew install --cask comrade
+curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
-`comrade` is published as a Homebrew **Cask** (the older "Formula"
-shape was deprecated by goreleaser as of v2.16); install/upgrade
-commands are the same either way from the user's side.
+This script:
 
-### Windows — winget
+1. uses whichever of `curl`/`wget` is available (and fails with a clear
+   message if neither is present);
+2. resolves the version to install **without ever calling** the
+   rate-limited (60 req/hr unauthenticated) `api.github.com` "latest
+   release" REST endpoint, unless `COMRADE_VERSION` is set: it fetches
+   GitHub's `releases/latest/download/checksums.txt` redirect directly,
+   finds the line matching your OS/arch, and reads the real archive
+   filename (version number included) out of that;
+3. verifies the downloaded archive against that same `checksums.txt`
+   line via `sha256sum -c` — installation is aborted if verification
+   fails;
+4. installs to `$HOME/.local/bin` (falling back to `/usr/local/bin`,
+   then to `sudo` if neither is writable);
+5. suggests running `comrade init <shell>`.
+
+Env overrides: `COMRADE_VERSION` (pin an exact version, e.g. `v0.1.0` —
+this switches the script to that tag's own `checksums.txt` instead of
+`latest`), `COMRADE_INSTALL_DIR` (override the install directory).
+
+### Install script (Windows PowerShell) — recommended
 
 ```powershell
-winget install FiratKutay.comrade
+irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
 ```
 
-### Windows — Scoop
-
-```powershell
-scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
-scoop install comrade
-```
+Same approach: resolves the version from
+`releases/latest/download/checksums.txt` instead of `api.github.com`,
+verifies with `Get-FileHash`, installs to
+`%LOCALAPPDATA%\Programs\cli-comrade`, and adds it to your user `PATH`.
+Pin a version with `$env:COMRADE_VERSION` (or the `-Version` parameter).
+Tested on both Windows PowerShell 5.1 and PowerShell 7 (`pwsh`).
 
 ### Debian/Ubuntu — .deb
 
@@ -187,7 +201,7 @@ sudo dpkg -i comrade.deb
 ```
 
 Replace `<VERSION>` with the release you want (no leading "v", e.g.
-`0.2.0`) — copy the exact filename from the
+`0.1.0`) — copy the exact filename from the
 [Releases page](https://github.com/firatkutay/cli-comrade/releases).
 
 ### Fedora/RHEL — .rpm
@@ -198,36 +212,15 @@ curl -fsSL -o comrade.rpm \
 sudo rpm -i comrade.rpm
 ```
 
-### Install script (macOS / Linux)
+### Homebrew / winget / Scoop — not live yet
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
-```
-
-This script:
-
-1. uses whichever of `curl`/`wget` is available (and fails with a clear
-   message if neither is present);
-2. downloads the latest (or `COMRADE_VERSION`-pinned) release;
-3. verifies the downloaded archive against that same release's
-   `checksums.txt` via `sha256sum -c` — installation is aborted if
-   verification fails;
-4. installs to `$HOME/.local/bin` (falling back to `/usr/local/bin`,
-   then to `sudo` if neither is writable);
-5. suggests running `comrade init`.
-
-Env overrides: `COMRADE_VERSION` (pin an exact version),
-`COMRADE_INSTALL_DIR` (override the install directory).
-
-### Install script (Windows PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
-```
-
-Performs the same verification (a `Get-FileHash` checksum check),
-installs to `%LOCALAPPDATA%\Programs\cli-comrade`, and adds it to your
-user `PATH`.
+These package-manager channels are **not live yet**. The
+`firatkutay/homebrew-tap` and `firatkutay/scoop-bucket` repos goreleaser
+would push to exist, but nothing is published to them until the next
+release; a winget-pkgs manifest doesn't exist yet at all. This is
+deliberately disabled in `.goreleaser.yaml` (see the comments there) and
+is tracked as separate follow-up work. Use the `install.sh`/
+`install.ps1` scripts or the `.deb`/`.rpm` packages above for now.
 
 ### Build from source (for Go developers)
 

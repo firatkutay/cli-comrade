@@ -50,76 +50,95 @@ release:
     owner: firatkutay
     name: cli-comrade
 
-# --- Homebrew tap (macOS/Linux) — DISABLED for v0.1.0 ----------------------
-# `brews:` (Homebrew Formula) is deprecated as of goreleaser v2.16 in
-# favor of `homebrew_casks:` (Homebrew Cask) — see
-# https://goreleaser.com/deprecations#brews; `goreleaser check` fails on
-# a deprecated key, so the block below (kept commented, not deleted, so
-# it is ready to re-enable) uses the current, non-deprecated form.
+# --- Homebrew tap / Scoop bucket / winget: never-break gating --------------
 #
-# Disabled because github.com/firatkutay/homebrew-tap does not exist yet
-# (verified via `gh repo view firatkutay/homebrew-tap` during the v0.1.0
-# preflight — GraphQL: could not resolve to a Repository). A real
-# `goreleaser release` run publishing this section would fail outright
-# (push target 404s) and take the whole release down with it — every
-# publisher in a single goreleaser run is all-or-nothing for that run's
-# success. Re-enable once the target repo exists, empty, AND either (a)
-# GITHUB_TOKEN has cross-repo write access to it (only true if it's
-# owned by this same account/org with no extra branch protection), or
-# (b) a PAT with `repo` scope on it is set as the HOMEBREW_TAP_GITHUB_TOKEN
-# secret and referenced via the commented `repository.token:` line below.
+# All three blocks below are ALWAYS ACTIVE (not commented out) — each is
+# individually gated with its own `skip_upload:` template so a MISSING
+# credential degrades that one channel to "build the manifest locally,
+# don't push it" instead of failing the whole `goreleaser release` run.
+# This is the fix for the v0.1.0 all-or-nothing failure: every publisher
+# used to run unconditionally, so one missing secret took the entire
+# release down with it (https://github.com/firatkutay/cli-comrade/actions/runs/29113017395-era
+# incident). See docs/PACKAGING.md for the per-channel activation steps.
 #
-# homebrew_casks:
-#   - name: comrade
-#     repository:
-#       owner: firatkutay
-#       name: homebrew-tap
-#       # token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-#     directory: Casks
-#     homepage: "https://github.com/firatkutay/cli-comrade"
-#     description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+# Mechanism (verified against goreleaser v2.16.0's actual source, not
+# assumed): none of homebrew_casks/scoops/winget has a top-level
+# `disable:` field — only `snapcrafts` does (used below). The correct
+# lever for these three is `skip_upload`, which is templated and, per
+# internal/pipe/{cask,scoop,winget}/*.go, resolves to a `pipe.Skip(...)`
+# at the PUBLISH stage when its rendered value is the string "true" —
+# `pipe.Skip` is goreleaser's standard "not an error, just not applicable
+# this run" signal and does not fail the release. `isEnvSet` is a real
+# builtin template func (confirmed present in v2.16.0's internal/tmpl/tmpl.go)
+# that returns false for both an empty AND a wholly-unset env var, so:
+#
+#   skip_upload: "{{ not (isEnvSet \"HOMEBREW_TAP_TOKEN\") }}"
+#
+# renders to "true" (skip) whenever the token is absent or empty, and
+# "false" (publish for real) once it's set to a non-empty value in CI.
+#
+# The `repository.token:` field is DELIBERATELY templated with
+# `envOrDefault "VAR" ""`, NOT the more common `{{ .Env.VAR }}` shown in
+# goreleaser's own docs — goreleaser's template engine runs Go's
+# text/template with `Option("missingkey=error")` (internal/tmpl/tmpl.go),
+# so `.Env.VAR` map-dot-access on a name that was NEVER set in the
+# process environment at all (not just set-to-empty) throws a template
+# execution error and would abort the ENTIRE release at the Run stage —
+# before skip_upload is ever evaluated. `envOrDefault` is a Go template
+# FUNCTION (not raw map indexing), so it is immune to missingkey=error
+# and safely returns "" for a truly-absent var. Belt-and-suspenders:
+# .github/workflows/release.yml ALSO always sets these three env vars
+# (to an empty string when the GitHub secret doesn't exist — referencing
+# an undefined `secrets.X` never fails a workflow), so in CI the var is
+# always at least present-but-empty; envOrDefault covers the case of
+# someone running `goreleaser release` locally with the var not
+# exported at all.
+homebrew_casks:
+  - name: comrade
+    repository:
+      owner: firatkutay
+      name: homebrew-tap
+      token: "{{ envOrDefault \"HOMEBREW_TAP_TOKEN\" \"\" }}"
+    directory: Casks
+    homepage: "https://github.com/firatkutay/cli-comrade"
+    description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+    skip_upload: "{{ not (isEnvSet \"HOMEBREW_TAP_TOKEN\") }}"
 
-# --- Scoop bucket (Windows) — DISABLED for v0.1.0 ---------------------------
-# Disabled for the same reason as homebrew_casks above:
-# github.com/firatkutay/scoop-bucket does not exist yet (verified via
-# `gh repo view firatkutay/scoop-bucket` — same GraphQL 404). Re-enable
-# once the target repo exists, empty, AND GITHUB_TOKEN has write access
-# to it or SCOOP_BUCKET_GITHUB_TOKEN is set as a repo secret.
-#
-# scoops:
-#   - name: comrade
-#     repository:
-#       owner: firatkutay
-#       name: scoop-bucket
-#       # token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
-#     homepage: "https://github.com/firatkutay/cli-comrade"
-#     description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
-#     license: MIT
+scoops:
+  - name: comrade
+    repository:
+      owner: firatkutay
+      name: scoop-bucket
+      token: "{{ envOrDefault \"SCOOP_BUCKET_TOKEN\" \"\" }}"
+    homepage: "https://github.com/firatkutay/cli-comrade"
+    description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+    license: MIT
+    skip_upload: "{{ not (isEnvSet \"SCOOP_BUCKET_TOKEN\") }}"
 
-# --- winget manifest (Windows) — DISABLED for v0.1.0 ------------------------
-# Disabled for the same reason as homebrew_casks/scoops above:
-# github.com/firatkutay/winget-pkgs does not exist yet (verified via
-# `gh repo view firatkutay/winget-pkgs` — same GraphQL 404). winget's
-# own community repo (microsoft/winget-pkgs) is the real publish target
-# in production, which needs a whole separate PR-submission workflow
-# this repo hasn't built yet — re-enable only once that path (staging
-# fork or direct PR flow) is decided AND WINGET_PKGS_GITHUB_TOKEN (or
-# equivalent access) exists.
-#
-# winget:
-#   - name: comrade
-#     publisher: "Fırat Kutay"
-#     short_description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
-#     license: "MIT"
-#     homepage: "https://github.com/firatkutay/cli-comrade"
-#     package_identifier: FiratKutay.comrade
-#     repository:
-#       owner: firatkutay
-#       name: winget-pkgs
-#       branch: "comrade-{{ .Version }}"
-#       # token: "{{ .Env.WINGET_PKGS_GITHUB_TOKEN }}"
-#       pull_request:
-#         enabled: true
+# winget publishes by pushing a branch to a FORK of microsoft/winget-pkgs
+# (repository.owner/name below = the fork, created manually — see
+# docs/PACKAGING.md) and opening a PR from that branch to the real
+# microsoft/winget-pkgs (pull_request.base). goreleaser does not create
+# the fork itself.
+winget:
+  - name: comrade
+    publisher: "Fırat Kutay"
+    short_description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+    license: "MIT"
+    homepage: "https://github.com/firatkutay/cli-comrade"
+    package_identifier: FiratKutay.comrade
+    repository:
+      owner: firatkutay
+      name: winget-pkgs
+      branch: "comrade-{{ .Version }}"
+      token: "{{ envOrDefault \"WINGET_TOKEN\" \"\" }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+    skip_upload: "{{ not (isEnvSet \"WINGET_TOKEN\") }}"
 
 # --- .deb / .rpm (nfpm) ------------------------------------------------------
 nfpms:
@@ -134,6 +153,58 @@ nfpms:
     formats:
       - deb
       - rpm
+
+# --- Snap (Ubuntu / Snap Store) — PERMANENTLY DISABLED here, built elsewhere -
+#
+# This block documents the intended package shape (name, confinement,
+# grade, base, app) but is NEVER meant to actually run through
+# `goreleaser release`, for two independent reasons goreleaser's own
+# docs confirm:
+#   1. "GoReleaser will not install snapcraft nor any of its
+#      dependencies for you" (goreleaser.com/customization/package/snapcraft) —
+#      the release job's runner has no snapcraft binary.
+#   2. "Snapcraft packages can't be built inside a Docker container" —
+#      even if snapcraft were installed, LXD-based snap builds need a
+#      real (non-containerized) VM, which this repo's shared release
+#      job topology does not guarantee.
+# `disable: true` is hardcoded (NOT templated on a secret, unlike the
+# three publishers above) because there is no secret that would ever
+# make it safe to flip this on inside the main release job — per
+# internal/pipe/snapcraft/snapcraft.go, the `disable` check runs FIRST
+# in the pipe, before it even calls exec.LookPath("snapcraft"), so this
+# unconditionally short-circuits to a clean pipe.Skip and never touches
+# the (absent) snapcraft binary.
+#
+# The REAL snap build + publish path is the separate, native-runner
+# workflow .github/workflows/snap.yml (snapcore/action-build +
+# snapcore/action-publish), driven by the standalone snap/snapcraft.yaml
+# — NOT by this block. Known, accepted duplication: this block's
+# metadata (summary/description/license/confinement/grade/base) and
+# snap/snapcraft.yaml's are two hand-maintained copies of the same
+# facts. Normally that's an unguarded-mirror defect (see the
+# Derive-or-Guard house rule), but because this block is permanently
+# inert (disable: true, never executed), drift here has zero runtime
+# effect — it can only go stale as documentation, not break a build.
+# Flagged for the reviewer rather than silently accepted; a `task
+# lint:snap-drift` comparing the two is a reasonable follow-up if this
+# repo ever wants goreleaser to also validate the metadata matches.
+snapcrafts:
+  - name: cli-comrade
+    title: comrade
+    summary: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+    description: |
+      comrade helps users without deep terminal knowledge run and
+      troubleshoot commands: it analyzes errors, proposes commands under
+      configurable modes (auto/ask/info), and never runs destructive
+      operations without confirmation.
+    license: MIT
+    confinement: classic
+    grade: stable
+    base: core24
+    apps:
+      comrade:
+        command: comrade
+    disable: true
 
 # --- Supply-chain signing (enablement note, not wired) ----------------------
 # cosign signing of checksums.txt (which covers every other artifact

@@ -83,13 +83,31 @@ jobs:
           args: release --clean --release-notes=/tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # homebrew_casks/scoops/winget publishers are commented out in
-          # .goreleaser.yaml for v0.1.0 — the target repos
-          # (firatkutay/homebrew-tap, firatkutay/scoop-bucket,
-          # firatkutay/winget-pkgs) don't exist yet. Once created and one
-          # of those blocks is re-enabled there, add the matching PAT
-          # secret here (only needed if GITHUB_TOKEN's cross-repo write
-          # access doesn't already cover the target repo):
-          #   HOMEBREW_TAP_GITHUB_TOKEN
-          #   SCOOP_BUCKET_GITHUB_TOKEN
-          #   WINGET_PKGS_GITHUB_TOKEN
+          # homebrew_casks/scoops/winget in .goreleaser.yaml are always
+          # active and each self-gates via its own templated
+          # `skip_upload: "{{ not (isEnvSet \"...\") }}"` — a channel
+          # degrades to "build the manifest locally, don't push it"
+          # instead of failing the whole release when its PAT is absent
+          # (see the long comment in .goreleaser.yaml for the exact
+          # mechanism and why it's `skip_upload`, not `disable`).
+          #
+          # These three MUST always be set here, even to an empty string
+          # (which is exactly what `${{ secrets.X }}` renders to when the
+          # named secret doesn't exist on this repo — referencing an
+          # undefined secret never fails a workflow). Leaving one of
+          # these lines out entirely — rather than letting it resolve to
+          # "" — would make the env var wholly ABSENT from the process
+          # environment instead of present-but-empty, which matters:
+          # goreleaser's template engine runs Go's text/template with
+          # `Option("missingkey=error")`, so a raw `.Env.VAR` reference
+          # to a truly-unset key errors out (aborting the whole release).
+          # .goreleaser.yaml's `repository.token:` fields use
+          # `envOrDefault "VAR" ""` specifically to also tolerate that
+          # case, but keep both defenses: this line is the primary one
+          # CI actually exercises.
+          #
+          # Add each PAT once you've completed the matching step in
+          # docs/PACKAGING.md:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

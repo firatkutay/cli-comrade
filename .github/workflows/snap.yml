@@ -1,0 +1,68 @@
+name: Snap
+
+# Deliberately its OWN workflow, decoupled from Release (.github/workflows/
+# release.yml) and NOT invoked by it. Two independent reasons, both
+# documented by goreleaser itself:
+#   1. "GoReleaser will not install snapcraft nor any of its dependencies
+#      for you" — the main release job never has a snapcraft binary.
+#   2. "Snapcraft packages can't be built inside a Docker container" — a
+#      real snap build needs LXD on a genuine (non-containerized) VM,
+#      which is exactly what a native `ubuntu-latest` GitHub-hosted
+#      runner is (a VM, not a container), so this job runs there and
+#      installs snapcraft itself.
+#
+# This whole workflow is dormant by design until the maintainer has (a)
+# registered the `cli-comrade` name with the Snap Store and (b) passed
+# the multi-week classic-confinement review — see docs/PACKAGING.md.
+# Every step that would need a Snap Store login is gated on
+# SNAPCRAFT_STORE_CREDENTIALS actually being set, so this workflow no-ops
+# cleanly (green, does nothing) rather than failing on every release
+# until that's done.
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  snap:
+    runs-on: ubuntu-latest
+    # Job-level env, NOT a job-level `if:` — GitHub Actions does not allow
+    # the `secrets` context in a job's own `if:` condition (a job's `if:`
+    # is evaluated before its `env:` block, so `env.X` isn't available
+    # there either). Mapping the secret to env here makes it available to
+    # each STEP's `if:` below via `env.SNAPCRAFT_STORE_CREDENTIALS`, which
+    # IS a supported, documented pattern.
+    env:
+      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+    steps:
+      - name: Check out
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install snapcraft
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        run: sudo snap install snapcraft --classic
+
+      - name: Build snap
+        id: build
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1.3.0
+
+      # `release:` left as `edge` deliberately — classic-confinement snaps
+      # cannot reach `stable`/`candidate` until the Snap Store's manual
+      # review (see docs/PACKAGING.md) has passed; promote to
+      # stable/candidate by hand (`snapcraft release`) once it has.
+      - name: Publish to Snap Store (edge)
+        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+        uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: edge
+
+      - name: Skipped — no Snap Store credentials configured yet
+        if: env.SNAPCRAFT_STORE_CREDENTIALS == ''
+        run: |
+          echo "::notice::SNAPCRAFT_STORE_CREDENTIALS is not set — skipping the snap build/publish. See docs/PACKAGING.md's Snap section to activate this channel."

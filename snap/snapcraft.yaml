@@ -1,0 +1,40 @@
+name: cli-comrade
+adopt-info: comrade
+title: comrade
+summary: Cross-platform AI CLI companion for the terminal (TR/EN)
+description: |
+  comrade helps users without deep terminal knowledge run and troubleshoot
+  shell commands: it analyzes errors, proposes commands under configurable
+  behavior modes (auto/ask/info), and never runs a destructive operation
+  without explicit confirmation.
+
+  comrade needs classic confinement because its whole purpose is to run
+  arbitrary user-approved shell commands and read/write files outside its
+  own snap sandbox (e.g. ~/.config, project directories) — strict
+  confinement would defeat the tool.
+
+license: MIT
+
+base: core24
+confinement: classic
+grade: stable
+
+# This is the manifest snapcore/action-build actually reads
+# (.github/workflows/snap.yml). It is the single source of truth for the
+# real snap build — NOT the dormant, always-disabled `snapcrafts:` block
+# in .goreleaser.yaml (see the long comment there for why that block can
+# never run in this repo's CI topology).
+
+apps:
+  comrade:
+    command: bin/comrade
+
+parts:
+  comrade:
+    plugin: go
+    source: .
+    build-snaps:
+      - go/1.25/stable
+    override-pull: |
+      craftctl default
+      craftctl set version="$(git describe --tags --always --dirty | sed 's/^v//')"

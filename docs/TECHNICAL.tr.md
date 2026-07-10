@@ -328,6 +328,33 @@ yeteneği olan her çağrı noktası (help, aşağıdaki spinner, chat,
 yüzden ANSI'nin yazılıp yazılmayacağına karar veren tam olarak tek bir
 yer vardır.
 
+`chatModel` (`internal/cli/chatmodel.go`), `colorEnabled`'ı aynı
+`resolveColorEnabled` kararından taşır — `chat.go`'da bir kez
+hesaplanır ve `newChatModel`'e aktarılır. Bunu bağlamak, bu paragrafın
+anlattığı tam "tek karar noktası" mimarisindeki önceden var olan bir
+sızıntıyı kapattı: `bubbles/v2/textinput`'in kendi `New()`'i, girdi
+prompt'unun stilini koşulsuz olarak `DefaultDarkStyles()`'a ayarlıyordu
+— bu da `NO_COLOR`, TTY olma durumu, veya `general.color=false`'dan
+bağımsız olarak `\x1b[37m` yayıyordu. `setChatInputPromptStyle` artık
+prompt'un stilini açıkça ayarlıyor — etkinken pastel-sarı stile, aksi
+halde gerçekten boş bir `lipgloss.Style{}`'a — bu yüzden rengi kapalı
+bir chat oturumu bit-bit aynı düz çıktıdır, yalnızca "sarı değil ama
+hâlâ renkli" değil. Sonraki bir inceleme, aynı sızıntıyı **ikinci** bir
+yüzeyde buldu — `internal/tui/confirm.go`'nun ask-modu düzenleme-modu
+(`[e]dit`/`[d]üzenle`) textinput prompt'u — aynı şekilde kapatıldı:
+`internal/tui/styles.go`'nun yeni `editPromptStyle(colorEnabled)`'i,
+hem `Focused` hem `Blurred` `Prompt` stiline uygulanır. Pastel-sarı
+değeri, bir renk paketi üzerinden paylaşılmak yerine bilinçli olarak
+`tui.PromptYellow` olarak **tekrarlanmıştır** (`internal/tui`,
+`internal/cli`'yi import edemez — bağımlılık oku yalnızca ters yönde
+çalışır), `internal/cli/color_test.go`'nun
+`TestPromptYellowMatchesTUIPackage`'ı ile drift'e karşı korunur — bu
+test `paletteYellow == tui.PromptYellow`'u doğrular ve ikisinden biri
+bağımsız değişirse başarısız olur. **Açık kalan madde**: sanal
+imlecin kendi ters-video render'ı (`\x1b[7;37m`) bu iki textinput'ta
+da hâlâ koşulsuzdur — bu turun kapsamı bilinçli olarak dışında
+bırakıldı, `docs/PROGRESS.md`'de takip ediliyor, henüz düzeltilmedi.
+
 **Bir bekleme spinner'ı** (`internal/cli/spinner.go`), canlı bir
 bubbletea programının DIŞINDAKİ her bloklayan LLM çağrısı sırasında
 (`do`/`fix`'in planlama ve tanı adımları, `explain`) stderr üzerinde
@@ -434,6 +461,17 @@ Oturum içinde (`internal/cli/chatdispatch.go`'nun slash-tarzı komutlarına
 göre — otoriter liste için kataloğun `chat_help` girdisine bakın): mod
 değiştirme, bağlamı temizleme, transkripti kaydetme, ve oturumdan
 çıkmadan `do`-tarzı bir istek gönderme.
+
+**Renk etkinken transkript stillendirilir** (`internal/cli/color.go`'nun
+isimli palet sabitleri, `internal/cli/chatmodel.go`). Kullanıcının kendi
+yankılanan transkript satırları pastel gri render edilir (ANSI256
+`245`); `/help`'in render edilen slash-komut listesi, baştaki `/xxx`
+token'larını pastel mavi renklendirir (`111`); girdi prompt'unun `>`'ı
+pastel sarı render edilir (`222`) — hem canlı `bubbles/v2/textinput`
+prompt'u hem de transkriptin kendi yankılanan `> ` öneki, ikisi görsel
+olarak eşleşsin diye. Asistan yanıtları bilinçli olarak stilsiz
+bırakılır. Renk kapalıyken, chat çıktısı bit-bit aynı düz metindir —
+bu stillerin her biri bir no-op'tur, farklı bir renk değil.
 
 **Gönderim asenkron, hiçbir zaman `Update` içinde senkron değil.**
 Enter'a basmak (`internal/cli/chatmodel.go`) satırı hemen ekrana yansıtır,

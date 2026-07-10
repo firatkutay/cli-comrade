@@ -312,6 +312,33 @@ the spinner below, chat, `do`/`fix`/`explain`, the ask-mode prompt)
 goes through this same function, so there is exactly one place that
 ever decides whether ANSI gets written.
 
+`chatModel` (`internal/cli/chatmodel.go`) carries `colorEnabled` from
+this same `resolveColorEnabled` decision, computed once in `chat.go`
+and passed into `newChatModel`. Wiring it closed a pre-existing leak
+in exactly the "single decision point" architecture this paragraph
+describes: `bubbles/v2/textinput`'s own `New()` sets its input
+prompt's style to `DefaultDarkStyles()` unconditionally, which emits
+`\x1b[37m` regardless of `NO_COLOR`, TTY-ness, or
+`general.color=false`. `setChatInputPromptStyle` now sets the
+prompt's style explicitly, to the pastel-yellow style when enabled or
+a genuinely empty `lipgloss.Style{}` otherwise, so a disabled-color
+chat session is byte-identical plain output, not merely "not yellow
+but still colored." A follow-up review found the identical leak on a
+**second** surface — `internal/tui/confirm.go`'s ask-mode edit-mode
+(`[e]dit`/`[d]üzenle`) textinput prompt — closed the same way via
+`internal/tui/styles.go`'s new `editPromptStyle(colorEnabled)`, applied
+to both the `Focused` and `Blurred` `Prompt` style. Its pastel-yellow
+value is deliberately **duplicated** as `tui.PromptYellow` rather than
+shared through a color package (`internal/tui` cannot import
+`internal/cli` — the dependency arrow only runs the other way), guarded
+against drift by `internal/cli/color_test.go`'s
+`TestPromptYellowMatchesTUIPackage`, which asserts `paletteYellow ==
+tui.PromptYellow` and fails the moment either changes independently.
+**Open item**: the virtual cursor's own reverse-video rendering
+(`\x1b[7;37m`) on both of these textinputs is still unconditional —
+deliberately out of this round's scope, tracked in
+`docs/PROGRESS.md`, not yet fixed.
+
 **A waiting spinner** (`internal/cli/spinner.go`) animates on stderr
 during each blocking LLM call outside a live bubbletea program
 (`do`/`fix`'s planning and diagnosis, `explain`) — a braille frame set
@@ -415,6 +442,17 @@ Inside the session (per `internal/cli/chatdispatch.go`'s slash-style
 commands — see `chat_help`'s catalog entry for the authoritative list):
 mode switching, clearing context, saving the transcript, and issuing a
 `do`-style request without leaving the session.
+
+**The transcript is styled when color is enabled** (`internal/cli/
+color.go`'s named palette constants, `internal/cli/chatmodel.go`).
+The user's own echoed transcript lines render pastel gray (ANSI256
+`245`); `/help`'s rendered slash-command list colors its leading
+`/xxx` tokens pastel blue (`111`); the input prompt's `>` renders
+pastel yellow (`222`) — both the live `bubbles/v2/textinput` prompt
+and the transcript's own echoed `> ` prefix, so the two visually
+match. Assistant replies are deliberately left unstyled. With color
+disabled, chat output is byte-identical plain text — every one of
+these styles is a no-op, not merely a different color.
 
 **Dispatch is async, never inline in `Update`.** Pressing Enter
 (`internal/cli/chatmodel.go`) echoes the line immediately, then hands it

@@ -43,7 +43,7 @@ func defaultUpgradeDeps(version string) upgradeDeps {
 	}
 }
 
-// newUpgradeCmd builds the "comrade upgrade" command (UYGULAMA_PLANI.md
+// newUpgradeCmd builds the "comrade upgrade" command (docs/history/UYGULAMA_PLANI.md
 // FAZ 10 item 3): check GitHub Releases for a newer published version
 // than this binary's own build-time version and, unless --check is
 // given, download, checksum-verify, and install it in place.

@@ -19,7 +19,7 @@
 // text, exit code, shell name, and timestamp are recorded here.
 // "comrade fix --rerun" (FAZ 7) captures stderr itself, by controllably
 // re-running the command through internal/executor — see
-// docs/phases/FAZ-04.md for the full rationale.
+// docs/history/phases/FAZ-04.md for the full rationale.
 //
 // ApplyBlock/RemoveBlock operate on rc-file content as plain strings
 // (no file I/O), delimited by the exact marker lines MarkerBegin/

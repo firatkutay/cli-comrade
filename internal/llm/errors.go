@@ -18,7 +18,7 @@ var (
 	// ErrAuthRejected means the provider's API returned 401/403 for a
 	// request that did carry a credential. Non-retryable: Client stops
 	// the fallback chain immediately on this error instead of trying the
-	// next configured attempt (UYGULAMA_PLANI.md FAZ 2 item 4).
+	// next configured attempt (docs/history/UYGULAMA_PLANI.md FAZ 2 item 4).
 	ErrAuthRejected = errors.New("llm: API key rejected by provider")
 
 	// ErrOverloaded covers HTTP 429 (rate limited) and 5xx/529
@@ -35,7 +35,7 @@ var (
 	// provider's API — DNS resolution failure, connection refused, or a
 	// dial/TLS timeout — as opposed to a non-2xx HTTP response from a
 	// server that WAS reached (that is ErrOverloaded/ErrAuthRejected/a
-	// plain *StatusError instead). UYGULAMA_PLANI.md FAZ 11 item 2's "ağ
+	// plain *StatusError instead). docs/history/UYGULAMA_PLANI.md FAZ 11 item 2's "ağ
 	// yokken ... anlaşılır offline mesajı": wrapReachabilityError below
 	// is what turns Go's raw *url.Error (e.g. "dial tcp: lookup
 	// api.anthropic.com: no such host") into a message a terminal

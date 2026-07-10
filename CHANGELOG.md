@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation overhauled for the v0.1.4 channel reality: README rewritten; INSTALL.md, KNOWN_LIMITATIONS.md, SECURITY.md, and PACKAGING.md refreshed to reflect that Homebrew/Scoop are live and winget/Snap are pending third-party review. Internal development-process records (`UYGULAMA_PLANI.md`, `docs/PROGRESS.md`, `docs/phases/`) archived under `docs/history/`.
+
 ## [0.1.4] - 2026-07-11
 
 ### Changed
@@ -822,3 +826,11 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   (`build`/`test`/`lint`/`vet`/`cross`/`tools`), `.golangci.yml`, GitHub
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
+
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/firatkutay/cli-comrade/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/firatkutay/cli-comrade/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/firatkutay/cli-comrade/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/firatkutay/cli-comrade/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/firatkutay/cli-comrade/releases/tag/v0.1.0
+[0.1.0-rc1]: https://github.com/firatkutay/cli-comrade/releases/tag/v0.1.0

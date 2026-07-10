@@ -6,7 +6,7 @@ import "fmt"
 // "Komut Risk Sınıflandırması". Its integer value is an ascending severity
 // ordinal (RiskRead lowest, RiskDestructive highest) — Engine.Evaluate
 // relies on plain integer comparison/max to implement the upward-only
-// escalation rule (CLAUDE.md/UYGULAMA_PLANI.md FAZ 5: a rule may only
+// escalation rule (CLAUDE.md/docs/history/UYGULAMA_PLANI.md FAZ 5: a rule may only
 // raise a command's effective risk, never lower what the LLM declared).
 type RiskClass int
 
@@ -58,7 +58,7 @@ func (r RiskClass) String() string {
 // casing, or a class name the LLM invented — is an error: callers outside
 // this package (internal/engine's plan parser) are expected to treat that
 // error as "unknown risk label" and fail closed to RiskDestructive
-// themselves, per UYGULAMA_PLANI.md FAZ 5; ParseRiskClass itself never
+// themselves, per docs/history/UYGULAMA_PLANI.md FAZ 5; ParseRiskClass itself never
 // guesses a default.
 func ParseRiskClass(s string) (RiskClass, error) {
 	for i, name := range riskNames {

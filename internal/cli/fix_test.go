@@ -21,7 +21,7 @@ import (
 )
 
 // pytonFixDiagnosisJSON is the canned diagnose-endpoint response used by
-// this file's end-to-end tests: UYGULAMA_PLANI.md FAZ 7's own named
+// this file's end-to-end tests: docs/history/UYGULAMA_PLANI.md FAZ 7's own named
 // acceptance scenario, a typo'd "pyton --version" command-not-found
 // error, whose fix plan installs python3 via the (test-injected) detected
 // package manager.

@@ -14,7 +14,7 @@ import (
 )
 
 // updateNoticeNetworkTimeout bounds the background GitHub check
-// maybeNotifyUpdate performs when a check is due — UYGULAMA_PLANI.md FAZ
+// maybeNotifyUpdate performs when a check is due — docs/history/UYGULAMA_PLANI.md FAZ
 // 10 item 4's "never block or slow the command" requirement, applied as
 // a short, bounded worst case (at most once per CheckInterval) rather
 // than a true fire-and-forget goroutine: a goroutine that outlives
@@ -25,7 +25,7 @@ const updateNoticeNetworkTimeout = 3 * time.Second
 
 // maybeNotifyUpdate is root.PersistentPostRunE's body (see NewRootCmd):
 // after any subcommand finishes successfully, decide whether to print
-// UYGULAMA_PLANI.md FAZ 10 item 4's "a new version is available" line.
+// docs/history/UYGULAMA_PLANI.md FAZ 10 item 4's "a new version is available" line.
 // Every failure mode here — config load, state read/write, the network
 // call itself — is silent: this is a best-effort convenience notice,
 // never something that should turn a successful command into a failure
@@ -57,7 +57,7 @@ func maybeNotifyUpdate(cmd *cobra.Command, newLoader loaderFactory, version stri
 	// Windows self-update leaves a comrade.exe.old lock-file leftover
 	// behind (internal/update.ReplaceBinary's rename dance) that can
 	// only be removed once the original process holding it open has
-	// exited — "on next run" per UYGULAMA_PLANI.md FAZ 10 item 3.
+	// exited — "on next run" per docs/history/UYGULAMA_PLANI.md FAZ 10 item 3.
 	// Attempting this on every command, not only `comrade upgrade`
 	// itself, is what actually satisfies "next run" for a user who
 	// upgraded and later runs any other comrade command first.

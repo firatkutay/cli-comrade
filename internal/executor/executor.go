@@ -29,7 +29,7 @@ import (
 
 // maxCaptureBytes is the tail-truncation cap applied independently to the
 // captured (not live-streamed) copy of stdout and stderr: 8KB each, per
-// UYGULAMA_PLANI.md FAZ 6 item 1.
+// docs/history/UYGULAMA_PLANI.md FAZ 6 item 1.
 const maxCaptureBytes = 8 * 1024
 
 // Result is the outcome of one Executor.Run call.
@@ -100,7 +100,7 @@ func newForGOOS(goos string, liveStdout, liveStderr io.Writer) *Executor {
 // buildCommand returns the shell binary and argv used to run command:
 // `sh -c <command>` on Unix, `powershell -NoProfile -Command <command>` on
 // Windows. It never prepends sudo, runas, or any other elevation verb —
-// per UYGULAMA_PLANI.md FAZ 6 item 1 ("Elevated adımlar: komutu SUDO İLE
+// per docs/history/UYGULAMA_PLANI.md FAZ 6 item 1 ("Elevated adımlar: komutu SUDO İLE
 // ÇALIŞTIRMA"), an elevated step runs exactly as the plan wrote it. If that
 // plan step needs sudo, the model put `sudo` in the command text itself;
 // if it doesn't, and the underlying operation truly requires elevation, the

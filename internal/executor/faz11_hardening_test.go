@@ -11,7 +11,7 @@ import (
 )
 
 // TestFAZ11RunCapsOneMegabyteOfStdoutWithoutUnboundedGrowth is
-// UYGULAMA_PLANI.md FAZ 11 item 2's "çok uzun stderr (kuyruk kırpma)"
+// docs/history/UYGULAMA_PLANI.md FAZ 11 item 2's "çok uzun stderr (kuyruk kırpma)"
 // hardening test, at a scale (~1.28MB, well over 100x maxCaptureBytes)
 // meant to prove the cap holds under real volume, not just the smaller
 // multiple TestRunCapCapturesOnlyTailOfLongOutput already exercises: the
@@ -40,7 +40,7 @@ func TestFAZ11RunCapsOneMegabyteOfStdoutWithoutUnboundedGrowth(t *testing.T) {
 	assert.Greater(t, stdout.Len(), maxCaptureBytes*10)
 }
 
-// TestFAZ11RunNonUTF8StdoutDoesNotPanic is UYGULAMA_PLANI.md FAZ 11 item
+// TestFAZ11RunNonUTF8StdoutDoesNotPanic is docs/history/UYGULAMA_PLANI.md FAZ 11 item
 // 2's "UTF-8 dışı çıktı" hardening test: a child process that writes
 // invalid UTF-8 bytes to stdout must be captured without Run panicking
 // or erroring, and the resulting Result.Stdout — while not valid UTF-8 —

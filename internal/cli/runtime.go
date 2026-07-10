@@ -37,7 +37,7 @@ func newTranslator(cfg config.Config) i18n.Translator {
 // without ever touching the filesystem. Documented, minor, deliberate
 // inconsistency: these specific messages honor COMRADE_LANG/LANG/LC_ALL/
 // the OS locale but not a config general.language=tr with no matching
-// env var or OS locale set — see docs/phases/FAZ-09.md.
+// env var or OS locale set — see docs/history/phases/FAZ-09.md.
 func envOnlyTranslator() i18n.Translator {
 	return i18n.NewTranslator(i18n.ResolveLanguage("", os.Getenv, i18n.SystemLocale))
 }

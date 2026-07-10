@@ -52,7 +52,7 @@ type chatLLM interface {
 // struct has no `omitempty` on max_tokens, so a zero value is sent to the
 // wire as a literal 0, and the Anthropic Messages API rejects that with a
 // 400 (max_tokens is a required field, 1-200000 — see
-// docs/phases/FAZ-02.md and the Anthropic API reference) — every plain
+// docs/history/phases/FAZ-02.md and the Anthropic API reference) — every plain
 // chat turn against Anthropic failed before this fix, unconditionally.
 func chatTurn(ctx context.Context, client chatLLM, lang i18n.Lang, history []llm.Message, text string, maxTokens int) (string, error) {
 	langName := "English"
@@ -78,11 +78,11 @@ func chatTurn(ctx context.Context, client chatLLM, lang i18n.Lang, history []llm
 // runChatDo is "/do <request>"'s entire safety-gated pipeline: collect
 // system context, generate a risk-labeled plan (engine.Planner — exactly
 // like `comrade do`), and run it through engine.Execute under mode —
-// UYGULAMA_PLANI.md FAZ 9's explicit design choice for chat's "do it"
+// docs/history/UYGULAMA_PLANI.md FAZ 9's explicit design choice for chat's "do it"
 // trigger: a plain `/do <request>` command that invokes the SAME
 // plan→safety→mode-runner pipeline `comrade do` uses, rather than trying
 // to detect intent in the model's own conversational replies (see
-// docs/phases/FAZ-09.md's "chat /do routing" note for the full rationale
+// docs/history/phases/FAZ-09.md's "chat /do routing" note for the full rationale
 // — heuristic NL intent-detection on assistant prose is fragile and easy
 // to spoof/miss; an explicit command is not). stdin/stdout/stderr are
 // passed explicitly (not a *cobra.Command) so this function has no
@@ -129,9 +129,9 @@ func runChatDo(ctx context.Context, cfg config.Config, client engine.Completer, 
 	return summary, nil
 }
 
-// newChatCmd builds "comrade chat" (UYGULAMA_PLANI.md FAZ 9 item 4): a
+// newChatCmd builds "comrade chat" (docs/history/UYGULAMA_PLANI.md FAZ 9 item 4): a
 // bubbletea interactive session preserving context in memory across
-// turns. See docs/phases/FAZ-09.md for the full design (privacy: no
+// turns. See docs/history/phases/FAZ-09.md for the full design (privacy: no
 // autosave, only explicit "/save <file>"; "/do" routing decision).
 func newChatCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{

@@ -74,7 +74,7 @@ func buildComradeBinary(t *testing.T) string {
 // through a subshell (`( exit "$st" )`, whose own exit status becomes
 // $st), and only then evaluating $PROMPT_COMMAND — exactly mirroring
 // what an interactive shell does after each entered command, without
-// needing one. See docs/phases/FAZ-04.md for this rationale in full.
+// needing one. See docs/history/phases/FAZ-04.md for this rationale in full.
 func TestBashE2EHookRecordsFailedCommand(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// This test drives a real Unix bash hook end-to-end (history

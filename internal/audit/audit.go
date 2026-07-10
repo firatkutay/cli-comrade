@@ -20,7 +20,7 @@ import (
 // Entry is one executed step's audit record — CLAUDE.md security rule #4's
 // exact field list: timestamp, mode, command, risk class, exit code,
 // duration, plus Request (the free-text request that produced the plan
-// this step came from), which UYGULAMA_PLANI.md FAZ 6 item 4 also
+// this step came from), which docs/history/UYGULAMA_PLANI.md FAZ 6 item 4 also
 // requires.
 type Entry struct {
 	Timestamp  time.Time `json:"timestamp"`
@@ -120,7 +120,7 @@ func (l *Logger) ReadAll() ([]Entry, error) {
 
 // ApplyRetention drops every entry older than retentionDays (relative to
 // now) by rewriting the audit file with only the surviving entries —
-// UYGULAMA_PLANI.md FAZ 6 item 4's "retention_days temizliği açılışta lazy
+// docs/history/UYGULAMA_PLANI.md FAZ 6 item 4's "retention_days temizliği açılışta lazy
 // çalışır" requirement. A non-positive retentionDays disables cleanup
 // entirely (retention is a user-configurable opt-out, not something this
 // package forces). Called once per `comrade` invocation, at startup,
@@ -129,7 +129,7 @@ func (l *Logger) ReadAll() ([]Entry, error) {
 // on every run (no separate "have I already cleaned up today" state file)
 // since the audit log's expected size is small (rewriting it here costs
 // microseconds, not something worth its own caching layer — see
-// docs/phases/FAZ-06.md).
+// docs/history/phases/FAZ-06.md).
 func (l *Logger) ApplyRetention(retentionDays int, now time.Time) error {
 	if retentionDays <= 0 {
 		return nil

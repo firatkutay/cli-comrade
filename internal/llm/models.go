@@ -14,7 +14,7 @@ const (
 )
 
 // Docs links printed alongside the static model lists below by
-// `comrade config models` (UYGULAMA_PLANI.md FAZ 8 item 4), since neither
+// `comrade config models` (docs/history/UYGULAMA_PLANI.md FAZ 8 item 4), since neither
 // provider exposes a public, unauthenticated "list models" endpoint this
 // CLI can query the way ollamaConnector.ListModels/ListOpenAICompatModels
 // do — the lists below are a snapshot, not a live query.

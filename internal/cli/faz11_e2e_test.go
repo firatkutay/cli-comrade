@@ -10,8 +10,8 @@ import (
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
 )
 
-// This file holds UYGULAMA_PLANI.md FAZ 11 item 1's Ubuntu/Linux
-// end-to-end scenario tests (see docs/phases/FAZ-11.md's scenario+result
+// This file holds docs/history/UYGULAMA_PLANI.md FAZ 11 item 1's Ubuntu/Linux
+// end-to-end scenario tests (see docs/history/phases/FAZ-11.md's scenario+result
 // table for the full picture, including the macOS/Windows scenarios that
 // cannot run in this Linux sandbox and are documented there as manual).
 // Each test below drives the real `comrade` cobra command tree
@@ -35,7 +35,7 @@ const aptCommandNotFoundDiagnosisJSON = `{
 }`
 
 // TestFAZ11AptCommandNotFoundFixFlowInfoModeSuggestsInstallWithoutRunning
-// is the Ubuntu "apt hatası fix" scenario from UYGULAMA_PLANI.md FAZ 11
+// is the Ubuntu "apt hatası fix" scenario from docs/history/UYGULAMA_PLANI.md FAZ 11
 // item 1's own list: `comrade fix --info` against a "command not found"
 // last-command entry, mock-diagnosed as a missing apt package. Info mode
 // must surface the root cause, explanation, and the suggested `apt-get
@@ -83,7 +83,7 @@ const portConflictDiagnosisJSON = `{
 }`
 
 // TestFAZ11PortAlreadyInUseFixFlowInfoModeSuggestsFreeingThePort is the
-// Ubuntu "port çakışması fix" scenario from UYGULAMA_PLANI.md FAZ 11 item
+// Ubuntu "port çakışması fix" scenario from docs/history/UYGULAMA_PLANI.md FAZ 11 item
 // 1: `comrade fix --info` against an "address already in use" failure,
 // mock-diagnosed with a two-step plan (identify the process, then a
 // destructive `kill`). Info mode surfaces both suggested commands as
@@ -116,7 +116,7 @@ func TestFAZ11PortAlreadyInUseFixFlowInfoModeSuggestsFreeingThePort(t *testing.T
 
 // installAndStartNginxPlanJSON is the canned plan-endpoint response for
 // TestFAZ11InstallAndStartNginxAutoModeRunsBenignStepAndBlocksDenylistedStep:
-// `comrade nginx kur ve başlat`'s own UYGULAMA_PLANI.md FAZ 11 item 1
+// `comrade nginx kur ve başlat`'s own docs/history/UYGULAMA_PLANI.md FAZ 11 item 1
 // scenario, reusing FAZ 6's proven shape (one genuinely benign step, one
 // denylisted decoy the model must never have produced but safety must
 // still catch regardless of mode) with nginx-specific wording, since a
@@ -133,7 +133,7 @@ const installAndStartNginxPlanJSON = `{
 
 // TestFAZ11InstallAndStartNginxAutoModeRunsBenignStepAndBlocksDenylistedStep
 // is the Ubuntu "nginx kur ve başlat auto modda" scenario from
-// UYGULAMA_PLANI.md FAZ 11 item 1: `comrade do "nginx kur ve başlat"
+// docs/history/UYGULAMA_PLANI.md FAZ 11 item 1: `comrade do "nginx kur ve başlat"
 // --auto` against a mock plan, run through the REAL internal/executor (no
 // executor fake). The benign step actually runs (its real stdout
 // appears, and it is the only entry in the audit log); the denylisted
@@ -148,7 +148,7 @@ const installAndStartNginxPlanJSON = `{
 // internal/engine's TestExecuteAutoForcesConfirmOnElevated and
 // TestExecuteAutoBypassesElevatedConfirmOnlyWithConfigAndYolo, the
 // latter using this exact "sudo systemctl restart nginx" command; see
-// docs/phases/FAZ-11.md's scenario table.)
+// docs/history/phases/FAZ-11.md's scenario table.)
 func TestFAZ11InstallAndStartNginxAutoModeRunsBenignStepAndBlocksDenylistedStep(t *testing.T) {
 	withIsolatedConfigDir(t)
 	server := newMockPlanServer(t, installAndStartNginxPlanJSON)
@@ -175,7 +175,7 @@ func TestFAZ11InstallAndStartNginxAutoModeRunsBenignStepAndBlocksDenylistedStep(
 // TestFAZ11LLMSuggestsDenylistCommandBlockedAtFixLayerInAutoMode is this
 // file's `fix`-layer twin of
 // TestFAZ11InstallAndStartNginxAutoModeRunsBenignStepAndBlocksDenylistedStep
-// above, closing UYGULAMA_PLANI.md FAZ 11 item 2's "LLM'in denylist komut
+// above, closing docs/history/UYGULAMA_PLANI.md FAZ 11 item 2's "LLM'in denylist komut
 // önermesi (block edildiğini doğrula)" requirement for BOTH entry points
 // named in the task, not just `do`: a mock diagnosis whose fix plan mixes
 // one genuinely benign step with a denylisted `rm -rf /` decoy, run via

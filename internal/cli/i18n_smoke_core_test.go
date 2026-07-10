@@ -127,7 +127,7 @@ func TestI18nSmokeFlagDescriptionRendersTurkish(t *testing.T) {
 
 // TestI18nSmokeFullSentenceErrorsRenderTurkish proves the standalone,
 // full-sentence fmt.Errorf/errors.New user-facing error messages this
-// round migrated (docs/phases/FAZ-09.md) actually render in Turkish under
+// round migrated (docs/history/phases/FAZ-09.md) actually render in Turkish under
 // COMRADE_LANG=tr — the error text the user reads at the exact moment
 // they need help, per the coordinator's own emphasis.
 func TestI18nSmokeFullSentenceErrorsRenderTurkish(t *testing.T) {

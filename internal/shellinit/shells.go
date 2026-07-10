@@ -8,7 +8,7 @@ import "fmt"
 type Shell string
 
 // The four shells "comrade init" supports, matching CLAUDE.md's "Shell
-// Entegrasyonu" section and UYGULAMA_PLANI.md FAZ 4 exactly.
+// Entegrasyonu" section and docs/history/UYGULAMA_PLANI.md FAZ 4 exactly.
 const (
 	Bash       Shell = "bash"
 	Zsh        Shell = "zsh"

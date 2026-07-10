@@ -33,7 +33,7 @@ func (l Lang) String() string {
 //     value ("tr" or "en") wins outright.
 //  2. COMRADE_LANG: this project's own COMRADE_-prefixed override
 //     (consistent with FAZ 1's COMRADE_ env convention — see
-//     UYGULAMA_PLANI.md FAZ 9's acceptance criterion, which drives this
+//     docs/history/UYGULAMA_PLANI.md FAZ 9's acceptance criterion, which drives this
 //     from `COMRADE_LANG=tr comrade explain ...`). A value starting with
 //     "tr" (case-insensitive) resolves to Turkish; any other non-empty
 //     value resolves to English.

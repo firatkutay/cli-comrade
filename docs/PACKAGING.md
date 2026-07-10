@@ -27,10 +27,11 @@ it does not need to exist anywhere else).
 
 ---
 
-## 1. Homebrew (`brew install comrade`)
+## 1. Homebrew (`brew install comrade`) — ✅ SHIPPED (live since v0.1.2)
 
-**Target repo:** `firatkutay/homebrew-tap` (already created, empty except
-a README).
+**Target repo:** `firatkutay/homebrew-tap`. Holds a live, auto-updated
+`Casks/comrade.rb`, committed directly by `homebrew_casks` on every
+tagged release.
 
 1. Create a fine-grained-scope PAT: GitHub → Settings → Developer
    settings → **Fine-grained tokens** → New token.
@@ -42,7 +43,7 @@ a README).
 3. **Lead time:** instant on the next tagged release once the secret
    exists — no external review, it's your own repo.
 
-**End-user install command (once live):**
+**End-user install command:**
 ```sh
 brew tap firatkutay/tap
 brew install comrade
@@ -50,10 +51,11 @@ brew install comrade
 
 ---
 
-## 2. Scoop (`scoop install comrade`)
+## 2. Scoop (`scoop install comrade`) — ✅ SHIPPED (live since v0.1.3)
 
-**Target repo:** `firatkutay/scoop-bucket` (already created, empty except
-a README).
+**Target repo:** `firatkutay/scoop-bucket`. Holds a live, auto-updated
+bucket manifest, committed directly by `scoops` on every tagged
+release.
 
 1. Same PAT shape as Homebrew: fine-grained token scoped to
    **only** `firatkutay/scoop-bucket`, **Contents: Read and write**.
@@ -61,7 +63,7 @@ a README).
 3. **Lead time:** instant on the next tagged release once the secret
    exists.
 
-**End-user install command (once live):**
+**End-user install command:**
 ```powershell
 scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
 scoop install comrade
@@ -69,7 +71,7 @@ scoop install comrade
 
 ---
 
-## 3. winget (`winget install cli.comrade`)
+## 3. winget (`winget install cli.comrade`) — ⏳ PENDING (PR open, moderator review)
 
 **Target repo:** the real `microsoft/winget-pkgs` community repo, via a
 PR opened from a fork.
@@ -100,7 +102,7 @@ winget install cli.comrade
 
 ---
 
-## 4. Snap (`snap install cli-comrade --classic`)
+## 4. Snap (`snap install cli-comrade --classic`) — ⏳ PENDING (awaiting Canonical review)
 
 **This channel needs the most lead time — start it early.** Snap is
 wired as its own workflow, `.github/workflows/snap.yml`, driven by
@@ -162,12 +164,12 @@ snap install cli-comrade --classic
 
 ## Summary table
 
-| Channel | Secret name | What it needs first | Lead time once secret is set |
-|---|---|---|---|
-| Homebrew | `HOMEBREW_TAP_TOKEN` | Nothing (tap repo already exists) | Instant, next tag |
-| Scoop | `SCOOP_BUCKET_TOKEN` | Nothing (bucket repo already exists) | Instant, next tag |
-| winget | `WINGET_TOKEN` | Fork `microsoft/winget-pkgs` to your account | Hours–days (MS moderator merges the auto-opened PR) |
-| Snap | `SNAPCRAFT_STORE_CREDENTIALS` | `snapcraft register cli-comrade` + a passed classic-confinement `store-requests` forum review | Multi-week (Canonical manual review), then instant per-release after |
+| Channel | Status | Secret name | What it needs first | Lead time once secret is set |
+|---|---|---|---|---|
+| Homebrew | ✅ shipped (since v0.1.2) | `HOMEBREW_TAP_TOKEN` | Nothing (tap repo already exists) | Instant, next tag |
+| Scoop | ✅ shipped (since v0.1.3) | `SCOOP_BUCKET_TOKEN` | Nothing (bucket repo already exists) | Instant, next tag |
+| winget | ⏳ pending | `WINGET_TOKEN` | Fork `microsoft/winget-pkgs` to your account | Hours–days (MS moderator merges the auto-opened PR) |
+| Snap | ⏳ pending | `SNAPCRAFT_STORE_CREDENTIALS` | `snapcraft register cli-comrade` + a passed classic-confinement `store-requests` forum review | Multi-week (Canonical manual review), then instant per-release after |
 
 None of these are required for `firatkutay/cli-comrade`'s next tagged
 release to succeed — every one degrades to "skip this channel" when its

@@ -16,7 +16,7 @@ import (
 )
 
 // TestReleaseArchiveNamingIsConsistentAcrossGoreleaserInstallScriptsAndUpdatePackage
-// is UYGULAMA_PLANI.md FAZ 10's Derive-or-Guard requirement: the release
+// is docs/history/UYGULAMA_PLANI.md FAZ 10's Derive-or-Guard requirement: the release
 // archive naming scheme lives, unavoidably, as FOUR independent copies —
 // .goreleaser.yaml's archives[].name_template (what actually gets built
 // and uploaded), scripts/install.sh's and scripts/install.ps1's own

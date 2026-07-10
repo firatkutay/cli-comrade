@@ -14,7 +14,7 @@ import (
 
 // pytonDiagnosisJSON is the canned model response for a "command not
 // found" scenario (a typo'd "pyton" instead of "python3") — the exact
-// acceptance scenario UYGULAMA_PLANI.md FAZ 7 names ("pyton --version").
+// acceptance scenario docs/history/UYGULAMA_PLANI.md FAZ 7 names ("pyton --version").
 const pytonDiagnosisJSON = `{
   "root_cause": "The command \"pyton\" does not exist; it is a typo for python3, which is also not installed.",
   "explanation": "Your computer doesn't recognize pyton. It's probably a typo for python3, and that isn't installed yet either.",

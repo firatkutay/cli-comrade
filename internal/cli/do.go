@@ -23,7 +23,7 @@ import (
 // newDoCmd builds "comrade do <request...>": the product's real entry
 // point (FAZ 5 built the safety-annotated plan; FAZ 6 wires it to the
 // three-mode execution loop). It is no longer Hidden — see
-// docs/phases/FAZ-06.md's note on why do_test.go's earlier
+// docs/history/phases/FAZ-06.md's note on why do_test.go's earlier
 // "TestDoIsHiddenFromHelp" no longer applies. The root command's own
 // free-text fallback (see root.go) calls the exact same runDo function
 // this command's RunE calls, so `comrade do "docker kur" --auto` and
@@ -157,7 +157,7 @@ func buildAuditSink(cmd *cobra.Command, cfg config.Config, tr i18n.Translator) (
 }
 
 // renderPlan prints plan.Summary followed by a tabwriter-aligned
-// STEP/COMMAND/RISK/REVERSIBLE/RATIONALE table, per UYGULAMA_PLANI.md FAZ
+// STEP/COMMAND/RISK/REVERSIBLE/RATIONALE table, per docs/history/UYGULAMA_PLANI.md FAZ
 // 5 item 4. The RISK column always renders internal/safety's independent
 // EffectiveRisk, never the LLM's raw step.Risk label — that is the whole
 // point of this table: to surface the second check, not to redisplay
@@ -194,7 +194,7 @@ func renderPlan(w io.Writer, plan engine.Plan, tr i18n.Translator) error {
 
 // printRunSummary prints the final "N executed, M skipped, K blocked"
 // line (plus, on an aborted run, the reason) after ask/auto mode
-// finishes — UYGULAMA_PLANI.md FAZ 6's "abort remaining ... özet bas"
+// finishes — docs/history/UYGULAMA_PLANI.md FAZ 6's "abort remaining ... özet bas"
 // requirement. info mode never calls this (it never produces a
 // RunSummary worth summarizing — see runDo).
 func printRunSummary(w io.Writer, summary engine.RunSummary, tr i18n.Translator) error {

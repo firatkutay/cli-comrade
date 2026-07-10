@@ -3,7 +3,7 @@ package i18n
 import "testing"
 
 // TestCatalogsCoverIdenticalKeys is the bidirectional drift guard
-// UYGULAMA_PLANI.md FAZ 9 calls for: catalogEN and catalogTR must define
+// docs/history/UYGULAMA_PLANI.md FAZ 9 calls for: catalogEN and catalogTR must define
 // exactly the same MessageID set, checked in BOTH directions, so a
 // MessageID added to only one catalog (in either direction) fails CI
 // instead of silently falling back at runtime — see Translator.T's

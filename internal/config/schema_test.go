@@ -12,7 +12,7 @@ import (
 )
 
 // TestDefaultMatchesPlanExactly pins every default value from
-// UYGULAMA_PLANI.md's FAZ 1 schema block. If defaultConfigTOML drifts from
+// docs/history/UYGULAMA_PLANI.md's FAZ 1 schema block. If defaultConfigTOML drifts from
 // the plan, this is the test that must catch it.
 func TestDefaultMatchesPlanExactly(t *testing.T) {
 	cfg := Default()

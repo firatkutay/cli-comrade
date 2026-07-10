@@ -7,7 +7,7 @@ import "os"
 // COMRADE_<PROVIDER>_API_KEY first, then the provider's well-known vendor
 // env var(s). Ollama needs no credential and has no entry here.
 //
-// This is a plain env-var lookup for FAZ 2, per UYGULAMA_PLANI.md item 5.
+// This is a plain env-var lookup for FAZ 2, per docs/history/UYGULAMA_PLANI.md item 5.
 // FAZ 8 adds an OS keychain (zalando/go-keyring) as a higher-priority
 // source ahead of these; resolveAPIKey's (string, error) signature and
 // this table are structured so that lookup can be prepended there without
@@ -40,7 +40,7 @@ func resolveAPIKey(provider string) (string, error) {
 // variables only (COMRADE_<PROVIDER>_API_KEY, then the provider's vendor
 // env var(s)) — skipping any keychain/file lookup. It is the exported
 // form of resolveAPIKey, for internal/cli's secrets-backed KeyResolver
-// (see docs/phases/FAZ-08.md) to delegate to after checking the
+// (see docs/history/phases/FAZ-08.md) to delegate to after checking the
 // keychain/file store first, without this package importing
 // internal/secrets (that would invert the intended cli -> {llm, secrets}
 // dependency arrow).

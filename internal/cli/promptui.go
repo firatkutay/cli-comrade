@@ -15,7 +15,7 @@ import (
 // internal/tui) and a concrete LLM client are wired into
 // internal/engine.Runner's decoupled PromptUI interface — see
 // internal/engine/runner.go's PromptUI doc comment and
-// docs/phases/FAZ-06.md's layering note.
+// docs/history/phases/FAZ-06.md's layering note.
 type tuiPromptUI struct {
 	in           io.Reader
 	out          io.Writer

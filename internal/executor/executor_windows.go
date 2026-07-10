@@ -8,7 +8,7 @@ import "os/exec"
 // direct Unix-style process-group equivalent that a same-shaped
 // Setpgid+negative-PID-kill translates to, and PowerShell already runs the
 // command line as its own child process tree under cmd.Process. See
-// killProcessGroup and docs/phases/FAZ-06.md's "Windows deferred-runtime
+// killProcessGroup and docs/history/phases/FAZ-06.md's "Windows deferred-runtime
 // note" — real Windows process-tree-kill hardening (e.g.
 // CREATE_NEW_PROCESS_GROUP + a job object) is a manual/future item; the
 // Windows branch is otherwise unit-guarded (t.Skip when powershell is

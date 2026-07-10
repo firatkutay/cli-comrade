@@ -25,7 +25,7 @@ type clientAttempt struct {
 // config, and every configured fallback in order — flows through
 // Client.Complete or Client.Stream. External packages cannot construct or
 // call a connector directly: New(cfg) is the only way to obtain a
-// Provider from this package (see docs/phases/FAZ-02.md's encapsulation
+// Provider from this package (see docs/history/phases/FAZ-02.md's encapsulation
 // rationale).
 type Client struct {
 	attempts []clientAttempt
@@ -45,7 +45,7 @@ type Client struct {
 	// injectable from outside this package (there is no exported
 	// setter and the field is unexported), so an external caller cannot
 	// construct a Client with a nil/no-op redactor. See redactPayload
-	// and docs/phases/FAZ-03.md for the non-bypassable-middleware
+	// and docs/history/phases/FAZ-03.md for the non-bypassable-middleware
 	// rationale (CLAUDE.md security rule #3).
 	redactor *redact.Redactor
 }
@@ -252,7 +252,7 @@ func (c *Client) Name() string {
 // current message and — like every other non-auth-rejected failure — is
 // retried against the next attempt rather than aborting the whole chain.
 // A 401/403 (ErrAuthRejected) stops the chain immediately without trying
-// any further attempt, per UYGULAMA_PLANI.md FAZ 2 item 4.
+// any further attempt, per docs/history/UYGULAMA_PLANI.md FAZ 2 item 4.
 func (c *Client) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
 	if len(c.attempts) == 0 {
 		return CompletionResponse{}, fmt.Errorf("llm: no provider configured")
@@ -283,7 +283,7 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (Completio
 // finalChainError wraps lastErr — the last configured attempt's own
 // (already provider-prefixed) failure — as Complete/Stream's final
 // returned error once every attempt in the chain has failed, appending
-// UYGULAMA_PLANI.md FAZ 11 item 2's "Ollama varsa ona düşme önerisi" when
+// docs/history/UYGULAMA_PLANI.md FAZ 11 item 2's "Ollama varsa ona düşme önerisi" when
 // two conditions both hold: lastErr is (or wraps) ErrOffline — a
 // transport-level failure, not a rejection or malformed response the
 // suggestion wouldn't fix — and no attempt already configured is Ollama
@@ -317,7 +317,7 @@ func (c *Client) hasOllamaAttempt() bool {
 // FAZ 2), and both call this unconditionally before doing anything
 // else with req, so there is no code path from a caller to a connector
 // that skips redaction (CLAUDE.md security rule #3;
-// docs/phases/FAZ-03.md).
+// docs/history/phases/FAZ-03.md).
 //
 // c.redactor is nil only for a *Client built by struct literal instead
 // of New (this package's own tests do this to stub connectors
@@ -487,7 +487,7 @@ func releaseOnClose(ctx context.Context, ch <-chan Chunk, cancel context.CancelF
 // context) never blocks forever on an unbuffered send nobody will ever
 // read. Every connector's Stream goroutine (anthropic, google, ollama,
 // openai_compat) and releaseOnClose's forwarding goroutine route every
-// Chunk send through this helper — see docs/PROGRESS.md's FAZ 6
+// Chunk send through this helper — see docs/history/PROGRESS.md's FAZ 6
 // hardening note this closes out.
 func sendChunk(ctx context.Context, ch chan<- Chunk, chunk Chunk) bool {
 	select {

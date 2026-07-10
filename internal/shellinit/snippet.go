@@ -24,7 +24,7 @@ var fishCompletionsSnippet string
 // MarkerBegin and MarkerEnd delimit cli-comrade's installed block inside
 // a shell rc/profile file. PowerShell also accepts "#"-prefixed
 // comments, so the same two literal lines are used for every shell —
-// per UYGULAMA_PLANI.md FAZ 4, one marker pair, not four.
+// per docs/history/UYGULAMA_PLANI.md FAZ 4, one marker pair, not four.
 const (
 	MarkerBegin = "# >>> cli-comrade init >>>"
 	MarkerEnd   = "# <<< cli-comrade init <<<"

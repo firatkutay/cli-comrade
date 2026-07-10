@@ -17,7 +17,7 @@ type Message struct {
 // receives. System carries the system prompt — including, under this
 // project's JSON strategy (system-prompt instruction + parse.go
 // extraction, not native structured-output params; see
-// docs/phases/FAZ-02.md), any "respond with a single JSON object"
+// docs/history/phases/FAZ-02.md), any "respond with a single JSON object"
 // instruction the caller wants honored.
 //
 // RequiredFields names the top-level JSON keys ValidateInto must find

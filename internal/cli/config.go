@@ -58,7 +58,7 @@ func newConfigCmd(newLoader loaderFactory) *cobra.Command {
 // newConfigTestLLMCmd sends a minimal "ping" completion through the full
 // llm.Client (fallback chain included) built from the effective config,
 // and prints the responding provider, model, and latency on success.
-// Hidden per UYGULAMA_PLANI.md FAZ 2 item 6 — this is a diagnostic aid,
+// Hidden per docs/history/UYGULAMA_PLANI.md FAZ 2 item 6 — this is a diagnostic aid,
 // not a user-facing feature to advertise in --help.
 func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{

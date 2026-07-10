@@ -66,7 +66,7 @@ var ErrNoPowerShellFound = errors.New("shellinit: no PowerShell installation fou
 // so "comrade init powershell" can install/upgrade/remove its hook in
 // EVERY variant's profile on GOOS=windows — not just whichever one
 // resolvePowerShellProfile's single goos-keyed guess would have picked
-// (the "pwsh gap": see docs/PROGRESS.md's Tamamlandı note for the bug
+// (the "pwsh gap": see docs/history/PROGRESS.md's Tamamlandı note for the bug
 // this closes).
 //
 // Candidate selection:

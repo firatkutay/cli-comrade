@@ -24,7 +24,7 @@ import (
 // so re-diagnosing it would surprise them.
 const lastCommandFreshness = 10 * time.Minute
 
-// newFixCmd builds "comrade fix": UYGULAMA_PLANI.md FAZ 7's main
+// newFixCmd builds "comrade fix": docs/history/UYGULAMA_PLANI.md FAZ 7's main
 // use-case command. It gathers the failing command's context via
 // acquireErrorContext's fallback chain (fresh last_command.json →
 // `--rerun` / `-- <command>` → interactive paste mode), diagnoses it with
@@ -98,11 +98,11 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		return translateLLMError(cmd.ErrOrStderr(), "comrade fix", tr, err)
 	}
 
-	// The explanation is printed first, in every mode, per UYGULAMA_PLANI.md
+	// The explanation is printed first, in every mode, per docs/history/UYGULAMA_PLANI.md
 	// FAZ 7 item 1c — so the user understands what actually went wrong
 	// before either reading the plan (info) or being asked to approve it
 	// (ask/auto). Headings match `comrade explain`'s own Summary:/Risk
-	// note: style (docs/phases/FAZ-09.md).
+	// note: style (docs/history/phases/FAZ-09.md).
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n\n", tr.T(i18n.MsgFixRootCauseHeading), diagnosis.RootCause); err != nil {
 		return err
 	}
@@ -177,7 +177,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 	return nil
 }
 
-// acquireErrorContext implements UYGULAMA_PLANI.md FAZ 4/7's fallback
+// acquireErrorContext implements docs/history/UYGULAMA_PLANI.md FAZ 4/7's fallback
 // chain, in order:
 //
 //  1. `comrade fix -- <command...>`: explicitCommand is non-empty — run
@@ -233,7 +233,7 @@ func acquireErrorContext(cmd *cobra.Command, sysCtx contextpkg.Context, safetyEn
 // verdict comes entirely from the independent denylist/escalation
 // machinery, not from any (nonexistent, here) LLM-declared risk — and
 // refuses to execute it at all when that verdict is Block or
-// RiskDestructive (UYGULAMA_PLANI.md FAZ 7 item 2: re-running a failed
+// RiskDestructive (docs/history/UYGULAMA_PLANI.md FAZ 7 item 2: re-running a failed
 // `rm -rf` "to capture its error" would be catastrophic). A refused
 // command falls through to pasteMode instead, exactly like a stale/exit-0
 // last_command.json entry does.
@@ -261,7 +261,7 @@ func captureByRunning(cmd *cobra.Command, safetyEngine *safety.Engine, ex engine
 	}, nil
 }
 
-// pasteMode is the fallback chain's last resort (UYGULAMA_PLANI.md FAZ 4
+// pasteMode is the fallback chain's last resort (docs/history/UYGULAMA_PLANI.md FAZ 4
 // item 3c): prompts the user to paste the failing command on one line,
 // then its error output terminated by a blank line or EOF. ExitCode is
 // set to -1 (engine.ErrorContext's documented "unknown" sentinel) since a

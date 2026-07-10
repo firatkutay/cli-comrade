@@ -10,7 +10,7 @@ import (
 
 // coldStartCeiling is a deliberately generous regression ceiling for
 // TestFAZ11ColdStartStaysWellUnderOneSecond — NOT the actual FAZ 11 target
-// (see docs/phases/FAZ-11.md's measured numbers: ~4-5ms on a native
+// (see docs/history/phases/FAZ-11.md's measured numbers: ~4-5ms on a native
 // filesystem after this run's fix). A hard assertion at the real <100ms
 // target would flake on a loaded/shared CI runner or a DrvFs-backed
 // checkout; this ceiling exists only to catch a GROSS regression of
@@ -27,9 +27,9 @@ const coldStartCeiling = 500 * time.Millisecond
 
 // TestFAZ11ColdStartStaysWellUnderOneSecond builds the real comrade
 // binary once and times `--version`, `--help`, and `config path` —
-// UYGULAMA_PLANI.md FAZ 11 item 3's three named no-LLM-call commands —
+// docs/history/UYGULAMA_PLANI.md FAZ 11 item 3's three named no-LLM-call commands —
 // against it, failing if any of them regresses past coldStartCeiling.
-// See docs/phases/FAZ-11.md for the actual measured numbers (both before
+// See docs/history/phases/FAZ-11.md for the actual measured numbers (both before
 // and after this run's clipboard-init fix) against a native filesystem,
 // which is where the real <100ms target is evaluated — this test's
 // ceiling is a coarse CI-safe backstop, not a restatement of that target.

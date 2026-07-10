@@ -12,7 +12,7 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/secrets"
 )
 
-// TestSecretsKeyResolverPrecedence pins UYGULAMA_PLANI.md FAZ 8 item 3's
+// TestSecretsKeyResolverPrecedence pins docs/history/UYGULAMA_PLANI.md FAZ 8 item 3's
 // resolution order end to end: secrets.Store (keychain/file) beats
 // COMRADE_<PROVIDER>_API_KEY, which beats the provider's known vendor env
 // var, which beats a KeyMissingError when nothing resolves at all.

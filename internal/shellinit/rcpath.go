@@ -32,7 +32,7 @@ type CommandRunner func(ctx stdctx.Context, name string, args ...string) ([]byte
 //     or invoking it fails, ok is false with note explaining why —
 //     "comrade init" then falls back to printing the snippet with
 //     manual instructions rather than guessing a path, per
-//     UYGULAMA_PLANI.md FAZ 4's "keep honest" requirement.
+//     docs/history/UYGULAMA_PLANI.md FAZ 4's "keep honest" requirement.
 //
 // ok is false only for the "can't locate a path at all" case; a
 // resolution failure that has a concrete missing-environment-variable

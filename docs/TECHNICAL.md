@@ -6,7 +6,7 @@ This document explains how `comrade` actually works, package by package,
 verified against the source in this repository. For the config key
 reference see [CONFIGURATION.md](CONFIGURATION.md); for the safety/threat
 model see [SECURITY.md](SECURITY.md); for the phase-by-phase build log see
-[docs/phases/](phases/) and [CHANGELOG.md](../CHANGELOG.md).
+[docs/history/phases/](history/phases/) and [CHANGELOG.md](../CHANGELOG.md).
 
 ## 1. Overview & design philosophy
 
@@ -199,7 +199,7 @@ internal/
   tui/                    bubbletea/lipgloss confirm prompt and status rendering
   update/                  comrade upgrade: GitHub release lookup, checksum-verified download, atomic self-replace
 scripts/                 install.sh / install.ps1 (checksum-verified curl/iwr installers)
-docs/                    CONFIGURATION.md, SECURITY.md, phases/ (FAZ-00..11 build log), this file
+docs/                    CONFIGURATION.md, SECURITY.md, history/phases/ (FAZ-00..11 build log), this file
 third_party/              vendored atotto-clipboard fork (see §4)
 ```
 
@@ -233,7 +233,7 @@ observed on a WSL2 shell) this cost hundreds of milliseconds per
 invocation. The vendored fork's only change defers that same probe from
 `init()` to a `sync.Once` triggered by first *actual* clipboard use — see
 `third_party/atotto-clipboard/clipboard_unix.go`'s doc comment,
-`docs/phases/FAZ-11.md`, and `KNOWN_LIMITATIONS.md`. No newer upstream
+`docs/history/phases/FAZ-11.md`, and `KNOWN_LIMITATIONS.md`. No newer upstream
 release exists to pick up an equivalent fix instead.
 
 **Consequence:** because the module is replaced with a local filesystem
@@ -337,7 +337,7 @@ tui.PromptYellow` and fails the moment either changes independently.
 **Open item**: the virtual cursor's own reverse-video rendering
 (`\x1b[7;37m`) on both of these textinputs is still unconditional —
 deliberately out of this round's scope, tracked in
-`docs/PROGRESS.md`, not yet fixed.
+`docs/history/PROGRESS.md`, not yet fixed.
 
 **A waiting spinner** (`internal/cli/spinner.go`) animates on stderr
 during each blocking LLM call outside a live bubbletea program
@@ -516,7 +516,7 @@ wrong argument count itself — an i18n'd usage error
 comments — any exist in the file before a `config set` run are gone
 after it; the keys and values themselves are unaffected. This is a
 pre-existing, documented, deliberately deferred limitation (see
-`docs/PROGRESS.md`), not a new regression.
+`docs/history/PROGRESS.md`), not a new regression.
 
 ```
 comrade config path
@@ -720,7 +720,7 @@ structured-output parameters — every completion request instead embeds a
 "respond with a single JSON object" instruction in the system prompt,
 and `internal/llm/parse.go` extracts/validates that JSON from the
 response text uniformly across all four connectors (see
-`docs/phases/FAZ-02.md`).
+`docs/history/phases/FAZ-02.md`).
 
 **Redaction**: `internal/llm.Client` runs `redactPayload` on every
 `CompletionRequest` before any connector sees it — this is not
@@ -1069,7 +1069,7 @@ A later QA round (D4b) fixed the two genuine "usage is unreachable"
 bugs (`explain`/`config set`'s `-h`/`--help` handling, above) and
 translated cobra's own structural template labels, but at the time
 deliberately left five residual sources of untranslated English text
-out of scope — documented in `docs/PROGRESS.md`, not silently dropped.
+out of scope — documented in `docs/history/PROGRESS.md`, not silently dropped.
 A subsequent change closed one of those five in full (arg-count/
 unknown-subcommand messages, formerly item 2 below) — see "Translated
 arg-count and unknown-subcommand usage errors" below — leaving four:
@@ -1252,7 +1252,7 @@ into the `comrade` binary itself).
 
 ## 13. Performance
 
-Cold start is **measured at ~4-5ms** on a native filesystem (`docs/phases/FAZ-11.md`
+Cold start is **measured at ~4-5ms** on a native filesystem (`docs/history/phases/FAZ-11.md`
 §3's before/after numbers), roughly a 130x improvement over a ~600ms
 regression that FAZ 11 found and fixed (see §4's vendored-clipboard-fork
 explanation — the root cause was an unconditional PATH-scanning `init()`
@@ -1264,13 +1264,13 @@ if any of them exceeds a deliberately generous **500ms** ceiling
 (`coldStartCeiling`, `internal/cli/faz11_coldstart_test.go`) — loose
 enough to tolerate a loaded/shared CI runner or a DrvFs-backed checkout
 while still catching a gross regression of the same class FAZ 11 found.
-See `docs/phases/FAZ-11.md` §3 for the full before/after numbers and
+See `docs/history/phases/FAZ-11.md` §3 for the full before/after numbers and
 methodology.
 
 ## 14. Pointers
 
 - [KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) — documented gaps and tradeoffs
 - [CHANGELOG.md](../CHANGELOG.md) — release history
-- [docs/phases/](phases/) — FAZ-00 through FAZ-11 build log, one file per phase
-- [UYGULAMA_PLANI.md](../UYGULAMA_PLANI.md) — the master implementation plan every phase executes against (never modified)
-- [docs/PROGRESS.md](PROGRESS.md) — current phase/status, the single source of truth for "where the project is"
+- [docs/history/phases/](history/phases/) — FAZ-00 through FAZ-11 build log, one file per phase (archived)
+- [docs/history/UYGULAMA_PLANI.md](history/UYGULAMA_PLANI.md) — the master implementation plan every phase executed against (archived, never modified)
+- [docs/history/PROGRESS.md](history/PROGRESS.md) — final phase/status ledger from the build protocol (archived)

@@ -41,7 +41,7 @@ func newSecretsStore(stderr io.Writer, tr i18n.Translator) (secrets.Store, error
 // wrote — and, only when store has nothing for provider (or a store
 // error prevents saying either way), falls through to
 // llm.ResolveEnvKey's env-only lookup. This is the seam
-// UYGULAMA_PLANI.md FAZ 8 item 3 calls for: keychain/file > COMRADE_*
+// docs/history/UYGULAMA_PLANI.md FAZ 8 item 3 calls for: keychain/file > COMRADE_*
 // env > known vendor env vars > KeyMissingError, all without llm ever
 // importing internal/secrets (see llm.KeyResolver's doc comment).
 func secretsKeyResolver(store secrets.Store) llm.KeyResolver {

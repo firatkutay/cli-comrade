@@ -65,7 +65,7 @@ func newHookCmd(newLoader loaderFactory) *cobra.Command {
 // newHookRecordCmd builds "comrade hook record": the sole writer of
 // last_command.json, invoked by every internal/shellinit hook snippet
 // after each prompt. See internal/shellinit's doc comment and
-// docs/phases/FAZ-04.md for why shell scripts exec this instead of
+// docs/history/phases/FAZ-04.md for why shell scripts exec this instead of
 // hand-assembling the JSON themselves.
 //
 // Args is translatedNoArgs(newLoader) rather than cobra.NoArgs directly —

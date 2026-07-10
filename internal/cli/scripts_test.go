@@ -28,7 +28,7 @@ func TestInstallShIsValidPOSIXShell(t *testing.T) {
 // TestInstallPs1IsSyntacticallyValidPowerShell parses scripts/install.ps1
 // with PowerShell's own AST parser (again, no execution) when pwsh or
 // Windows PowerShell is available; skipped otherwise (neither is
-// installed in this sandbox — see docs/phases/FAZ-04.md's deferred
+// installed in this sandbox — see docs/history/phases/FAZ-04.md's deferred
 // Windows-side verification note).
 func TestInstallPs1IsSyntacticallyValidPowerShell(t *testing.T) {
 	pwshPath, err := exec.LookPath("pwsh")

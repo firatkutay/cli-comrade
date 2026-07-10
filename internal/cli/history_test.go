@@ -109,7 +109,7 @@ func TestHistoryLimitFlagCapsToMostRecentEntries(t *testing.T) {
 // TestHistoryOnEmptyLogPrintsFriendlyEmptyMessage proves an empty audit
 // log prints a friendly "nothing recorded yet" message instead of a bare
 // header row with nothing underneath it (which earlier phases printed —
-// see docs/phases/FAZ-09.md). execRootSplit (not execRoot) is used
+// see docs/history/phases/FAZ-09.md). execRootSplit (not execRoot) is used
 // because this is the isolated dir's first invocation, and the shared
 // first-run config notice (unrelated to this test) lands on stderr.
 func TestHistoryOnEmptyLogPrintsFriendlyEmptyMessage(t *testing.T) {

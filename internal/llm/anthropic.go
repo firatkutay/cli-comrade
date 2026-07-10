@@ -10,7 +10,7 @@ import (
 )
 
 // anthropicAPIVersion is the fixed Messages API version header value
-// (verified 2026-07 — see docs/phases/FAZ-02.md).
+// (verified 2026-07 — see docs/history/phases/FAZ-02.md).
 const anthropicAPIVersion = "2023-06-01"
 
 const anthropicMessagesURL = "https://api.anthropic.com/v1/messages"
@@ -146,7 +146,7 @@ func anthropicText(blocks []anthropicContentBlock) string {
 
 // anthropicStatusError builds a *StatusError for a non-200 Messages API
 // response, classifying 401/403 as ErrAuthRejected and 429/5xx/529
-// (overloaded_error) as ErrOverloaded per UYGULAMA_PLANI.md FAZ 2's
+// (overloaded_error) as ErrOverloaded per docs/history/UYGULAMA_PLANI.md FAZ 2's
 // verified API facts.
 func anthropicStatusError(status int, body []byte) error {
 	var eb anthropicErrorBody

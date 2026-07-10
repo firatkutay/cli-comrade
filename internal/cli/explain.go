@@ -15,7 +15,7 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/tui"
 )
 
-// newExplainCmd builds "comrade explain <command...>" (UYGULAMA_PLANI.md
+// newExplainCmd builds "comrade explain <command...>" (docs/history/UYGULAMA_PLANI.md
 // FAZ 9 item 3): a two-layer command explanation that NEVER executes
 // anything, ever — there is no executor.Executor anywhere in this
 // command's dependency graph, unlike do/fix.

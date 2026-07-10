@@ -99,7 +99,7 @@ istenir.
 | Mode | Behavior |
 |---|---|
 | `auto` | Runs commands itself, printing a one-line summary per step. |
-| `ask` | *(default)* Shows the rationale + command before each step, prompts `[y]es/[n]o/[e]dit/[a]sk-to-explain/[a]ll-approve`. |
+| `ask` | *(default)* Shows the rationale + command before each step, prompts `[y]es [n]o [e]dit [x]plain [a]ll`. |
 | `info` | Runs nothing; only explains. |
 
 **Non-negotiable rule:** even in `auto` mode, a command classified

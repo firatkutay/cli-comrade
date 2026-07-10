@@ -23,7 +23,7 @@ const configFileName = "config.toml"
 // every branch — including the Windows branch — without depending on the
 // OS the test binary actually runs on.
 //
-// Resolution rules (normative, see UYGULAMA_PLANI.md FAZ 1 / CLAUDE.md):
+// Resolution rules (normative, see docs/history/UYGULAMA_PLANI.md FAZ 1 / CLAUDE.md):
 //   - windows: %APPDATA%\cli-comrade
 //   - otherwise: $XDG_CONFIG_HOME/cli-comrade, falling back to
 //     ~/.config/cli-comrade when XDG_CONFIG_HOME is unset.

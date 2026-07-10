@@ -72,7 +72,7 @@ func TestApplyBlockUpgradesChangedContentInPlace(t *testing.T) {
 // reinstall needed. oldRealSnippet is the EXACT pre-fix
 // internal/shellinit/snippets/powershell.ps1 content (the one that
 // recorded a CommandNotFoundException, e.g. a typo'd command, as exit 0
-// — see docs/PROGRESS.md for the live bug report this fixes).
+// — see docs/history/PROGRESS.md for the live bug report this fixes).
 func TestApplyBlockUpgradesRealPreExitCodeFixPowerShellSnippet(t *testing.T) {
 	oldRealSnippet := `if (Get-Command comrade -ErrorAction SilentlyContinue) {
     $global:__ComradeOriginalPrompt = $function:prompt

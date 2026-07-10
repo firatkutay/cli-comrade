@@ -74,7 +74,7 @@ func lastN(entries []audit.Entry, n int) []audit.Entry {
 }
 
 // printHistoryJSON prints entries as one compact JSON object per line
-// (JSONL) — UYGULAMA_PLANI.md FAZ 6 item 4's "--json flag'i ham çıktı
+// (JSONL) — docs/history/UYGULAMA_PLANI.md FAZ 6 item 4's "--json flag'i ham çıktı
 // verir". Raw data, not prose, so it is never translated.
 func printHistoryJSON(w io.Writer, entries []audit.Entry) error {
 	enc := json.NewEncoder(w)

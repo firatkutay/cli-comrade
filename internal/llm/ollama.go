@@ -101,7 +101,7 @@ func (c *ollamaConnector) doRequest(ctx context.Context, body ollamaChatRequest)
 // shape *http.Client.Do returns as a *url.Error for exactly this class of
 // failure, as opposed to a non-2xx HTTP response (handled separately by
 // ollamaStatusError) — and replaces it with a message actionable for a
-// terminal beginner: UYGULAMA_PLANI.md FAZ 8 item 5's "Ollama çalışmıyor
+// terminal beginner: docs/history/UYGULAMA_PLANI.md FAZ 8 item 5's "Ollama çalışmıyor
 // görünüyor; `ollama serve` ..." requirement. Applied at doRequest and
 // ListModels, so every ollamaConnector entry point (Complete, Stream, and
 // `comrade config models`'s live /api/tags query) gets the same
@@ -270,7 +270,7 @@ func (c *ollamaConnector) ListModels(ctx context.Context) ([]string, error) {
 
 // ListOllamaModels queries a local (or remote, per baseURL) Ollama
 // server's GET /api/tags for its locally-pulled model names, for
-// `comrade config models`'s picker (UYGULAMA_PLANI.md FAZ 8 item 4). A
+// `comrade config models`'s picker (docs/history/UYGULAMA_PLANI.md FAZ 8 item 4). A
 // nil httpClient defaults to a plain &http.Client{}, matching every other
 // connector construction path in this package. Unlike Client, calling
 // this does not require an llm.Provider or an API key — Ollama has

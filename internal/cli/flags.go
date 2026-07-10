@@ -10,7 +10,7 @@ import (
 
 // executionFlags bundles the flags that control how a free-text request
 // is executed: --dry-run (print the plan, run nothing), the three
-// mutually exclusive --auto/--ask/--info mode overrides (UYGULAMA_PLANI.md
+// mutually exclusive --auto/--ask/--info mode overrides (docs/history/UYGULAMA_PLANI.md
 // FAZ 6 item 2's mode-precedence flag source), and --yolo (CLAUDE.md
 // security rule #6 / FAZ 6's auto-mode bypass escape hatch). Both the
 // hidden `do` subcommand and the root command's free-text fallback

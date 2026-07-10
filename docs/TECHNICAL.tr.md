@@ -6,7 +6,7 @@ Bu belge `comrade`'ın gerçekte nasıl çalıştığını, bu depodaki kaynak k
 göre doğrulanmış şekilde, paket paket anlatır. Config anahtarlarının tam
 listesi için [CONFIGURATION.md](CONFIGURATION.md)'a, güvenlik/tehdit
 modeli için [SECURITY.md](SECURITY.md)'a, faz faz geliştirme kaydı için
-[docs/phases/](phases/) ve [CHANGELOG.md](../CHANGELOG.md)'a bakın.
+[docs/history/phases/](history/phases/) ve [CHANGELOG.md](../CHANGELOG.md)'a bakın.
 
 ## 1. Genel bakış ve tasarım felsefesi
 
@@ -207,7 +207,7 @@ internal/
   tui/                    bubbletea/lipgloss onay prompt'u ve durum gösterimi
   update/                  comrade upgrade: GitHub release sorgulama, checksum-doğrulamalı indirme, atomik kendi-kendini-değiştirme
 scripts/                 install.sh / install.ps1 (checksum-doğrulamalı curl/iwr kurulum betikleri)
-docs/                    CONFIGURATION.md, SECURITY.md, phases/ (FAZ-00..11 geliştirme kaydı), bu dosya
+docs/                    CONFIGURATION.md, SECURITY.md, history/phases/ (FAZ-00..11 geliştirme kaydı), bu dosya
 third_party/              vendored atotto-clipboard fork'u (bkz. §4)
 ```
 
@@ -242,7 +242,7 @@ bu, çağrı başına yüzlerce milisaniyeye mal oluyordu. Vendored fork'un
 tek değişikliği, aynı probu `init()`'ten, ilk **gerçek** clipboard
 kullanımında tetiklenen bir `sync.Once`'a ertelemek — bkz.
 `third_party/atotto-clipboard/clipboard_unix.go`'nun doc yorumu,
-`docs/phases/FAZ-11.md`, ve `KNOWN_LIMITATIONS.md`. Bunun yerine eşdeğer
+`docs/history/phases/FAZ-11.md`, ve `KNOWN_LIMITATIONS.md`. Bunun yerine eşdeğer
 bir düzeltme alacak daha yeni bir upstream release yok (v0.1.4 en
 sonuncusu).
 
@@ -353,7 +353,7 @@ test `paletteYellow == tui.PromptYellow`'u doğrular ve ikisinden biri
 bağımsız değişirse başarısız olur. **Açık kalan madde**: sanal
 imlecin kendi ters-video render'ı (`\x1b[7;37m`) bu iki textinput'ta
 da hâlâ koşulsuzdur — bu turun kapsamı bilinçli olarak dışında
-bırakıldı, `docs/PROGRESS.md`'de takip ediliyor, henüz düzeltilmedi.
+bırakıldı, `docs/history/PROGRESS.md`'de takip ediliyor, henüz düzeltilmedi.
 
 **Bir bekleme spinner'ı** (`internal/cli/spinner.go`), canlı bir
 bubbletea programının DIŞINDAKİ her bloklayan LLM çağrısı sırasında
@@ -537,7 +537,7 @@ ham İngilizce `ExactArgs(2)` mesajı yerine i18n'li bir kullanım hatası
 yorumlarını korumaz — bir `config set` çalıştırmasından önce dosyada
 var olan yorumlar, çalıştırmadan sonra kaybolur; anahtar/değerlerin
 kendisi etkilenmez. Bu, önceden var olan, belgelenmiş, bilinçli olarak
-ertelenmiş bir kısıtlamadır (bkz. `docs/PROGRESS.md`), yeni bir
+ertelenmiş bir kısıtlamadır (bkz. `docs/history/PROGRESS.md`), yeni bir
 regresyon değil.
 
 ```
@@ -748,7 +748,7 @@ structured-output parametrelerine güvenmez — her completion isteği
 bunun yerine system prompt'a "tek bir JSON nesnesiyle yanıt ver"
 talimatını gömer, ve `internal/llm/parse.go` bu JSON'ı, dört connector
 genelinde tekdüze olarak, yanıt metninden çıkarır/doğrular (bkz.
-`docs/phases/FAZ-02.md`).
+`docs/history/phases/FAZ-02.md`).
 
 **Redaction**: `internal/llm.Client`, hiçbir connector bir
 `CompletionRequest`'i görmeden önce, her istekte `redactPayload`'ı
@@ -1111,7 +1111,7 @@ Sonraki bir QA turu (D4b), iki gerçek "usage erişilemez" hatasını
 düzeltti (`explain`/`config set`'in `-h`/`--help` ele alışı, yukarıda)
 ve cobra'nın kendi yapısal şablon etiketlerini çevirdi, ama o sırada beş
 kalıntı çevrilmemiş İngilizce metin kaynağını bilinçli olarak kapsam
-dışı bıraktı — `docs/PROGRESS.md`'de belgelendi, sessizce atlanmadı.
+dışı bıraktı — `docs/history/PROGRESS.md`'de belgelendi, sessizce atlanmadı.
 Sonraki bir değişiklik bu beşten birini (argüman-sayısı/bilinmeyen-alt-
 komut mesajları, önceki madde 2) tamamen kapattı — bkz. aşağıdaki
 "Çevrilmiş argüman-sayısı ve bilinmeyen-alt-komut kullanım hataları" —
@@ -1303,7 +1303,7 @@ binary'sinin kendisine bağlanmaz).
 ## 13. Performans
 
 Cold start, doğal bir dosya sisteminde **~4-5ms olarak ölçülmüştür**
-(`docs/phases/FAZ-11.md` §3'ün önce/sonra rakamları) — FAZ 11'in
+(`docs/history/phases/FAZ-11.md` §3'ün önce/sonra rakamları) — FAZ 11'in
 bulduğu ve düzelttiği ~600ms'lik bir regresyona göre kabaca 130 kat
 iyileşme (kök neden için §4'teki vendored-clipboard-fork açıklamasına
 bakın — bir geçişli bağımlılıktaki koşulsuz PATH-tarayan bir
@@ -1317,12 +1317,12 @@ bir tavanı (`coldStartCeiling`,
 paylaşılan bir CI runner'ını veya DrvFs-destekli bir checkout'u tolere
 edecek kadar gevşek, ama yine de FAZ 11'in bulduğu türden ciddi bir
 regresyonu yakalayacak kadar sıkı. Tam önce/sonra rakamları ve
-metodoloji için `docs/phases/FAZ-11.md` §3'e bakın.
+metodoloji için `docs/history/phases/FAZ-11.md` §3'e bakın.
 
 ## 14. İşaretçiler
 
 - [KNOWN_LIMITATIONS.md](../KNOWN_LIMITATIONS.md) — belgelenmiş eksikler ve tercihler
 - [CHANGELOG.md](../CHANGELOG.md) — release geçmişi
-- [docs/phases/](phases/) — FAZ-00'dan FAZ-11'e geliştirme kaydı, faz başına bir dosya
-- [UYGULAMA_PLANI.md](../UYGULAMA_PLANI.md) — her fazın uyguladığı ana uygulama planı (asla değiştirilmez)
-- [docs/PROGRESS.md](PROGRESS.md) — mevcut faz/durum, "proje nerede" sorusunun tek doğruluk kaynağı
+- [docs/history/phases/](history/phases/) — FAZ-00'dan FAZ-11'e geliştirme kaydı, faz başına bir dosya (arşivlendi)
+- [docs/history/UYGULAMA_PLANI.md](history/UYGULAMA_PLANI.md) — her fazın uyguladığı ana uygulama planı (arşivlendi, asla değiştirilmez)
+- [docs/history/PROGRESS.md](history/PROGRESS.md) — otonom yürütme protokolünün son faz/durum kaydı (arşivlendi)

@@ -7,7 +7,7 @@ import (
 )
 
 // debugEnabled reports whether COMRADE_DEBUG=1 is set, gating the
-// fallback-chain attempt log required by UYGULAMA_PLANI.md FAZ 2 item 4.
+// fallback-chain attempt log required by docs/history/UYGULAMA_PLANI.md FAZ 2 item 4.
 func debugEnabled() bool {
 	return os.Getenv("COMRADE_DEBUG") == "1"
 }

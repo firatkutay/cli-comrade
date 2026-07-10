@@ -10,6 +10,6 @@
 // This package deliberately has zero dependency on internal/llm: it is
 // consumed from internal/cli, which wires a Store-backed
 // llm.KeyResolver into the llm.Client it constructs (see
-// docs/phases/FAZ-08.md and llm.WithKeyResolver's doc comment) — keeping
+// docs/history/phases/FAZ-08.md and llm.WithKeyResolver's doc comment) — keeping
 // the dependency arrow cli -> {llm, secrets}, never llm -> secrets.
 package secrets

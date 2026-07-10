@@ -35,7 +35,7 @@ func TestParseModeRejectsUnknown(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestResolveModePrecedence pins UYGULAMA_PLANI.md FAZ 6 item 2's exact
+// TestResolveModePrecedence pins docs/history/UYGULAMA_PLANI.md FAZ 6 item 2's exact
 // mode precedence: an explicit flag wins over COMRADE_MODE, which wins
 // over config general.mode.
 func TestResolveModePrecedence(t *testing.T) {

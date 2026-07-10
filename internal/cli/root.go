@@ -56,7 +56,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		// that cobra's own legacyArgs check — which otherwise rejects any
 		// arg cobra.Command.Find couldn't match to a known subcommand
 		// with "unknown command %q" — never fires here. That is exactly
-		// what UYGULAMA_PLANI.md FAZ 6 item 3's root-command fallback
+		// what docs/history/UYGULAMA_PLANI.md FAZ 6 item 3's root-command fallback
 		// needs: `comrade docker kur` doesn't match any subcommand name,
 		// so Find returns the root command itself with args =
 		// ["docker","kur"] intact; RunE below is what turns that into a
@@ -64,7 +64,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		// is therefore no longer rejected with a helpful "unknown
 		// command" suggestion — it free-text-dispatches to `do` instead,
 		// which is this UX pattern's deliberate, documented tradeoff
-		// (see docs/phases/FAZ-06.md).
+		// (see docs/history/phases/FAZ-06.md).
 		Args: cobra.ArbitraryArgs,
 		// The free-text tail RunE dispatches to `do` (below) is arbitrary
 		// natural-language request text, never a file path — same
@@ -86,7 +86,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		// knows to type "comrade completion bash" — it simply never
 		// appears in --help output, decluttering the tree for this
 		// project's actual (non-technical, terminal-averse) target
-		// audience. Documented in docs/PROGRESS.md's i18n-exceptions
+		// audience. Documented in docs/history/PROGRESS.md's i18n-exceptions
 		// note alongside every other residual, judgment-based exception.
 		CompletionOptions: cobra.CompletionOptions{HiddenDefaultCmd: true},
 	}
@@ -123,7 +123,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		return runDo(cmd, newLoader, strings.Join(args, " "), rootFlags)
 	}
 
-	// The passive version-update notification (UYGULAMA_PLANI.md FAZ 10
+	// The passive version-update notification (docs/history/UYGULAMA_PLANI.md FAZ 10
 	// item 4) is wired as root's own PersistentPostRunE: cobra only runs
 	// it after the invoked command's RunE returns nil (see
 	// spf13/cobra's Command.execute), and — since no command in this

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestFAZ11ApplyInvalidUTF8BytesDoesNotPanic is UYGULAMA_PLANI.md FAZ 11
+// TestFAZ11ApplyInvalidUTF8BytesDoesNotPanic is docs/history/UYGULAMA_PLANI.md FAZ 11
 // item 2's "UTF-8 dışı çıktı" hardening test for the redaction pipeline
 // specifically (as opposed to internal/executor's own non-UTF-8 capture
 // test): a string built from genuinely invalid UTF-8 byte sequences —

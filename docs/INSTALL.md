@@ -35,7 +35,7 @@ Bu script:
    yazılamıyorsa `sudo` ile) kurar;
 5. `comrade init <shell>` çalıştırmanızı önerir.
 
-Ortam değişkenleri: `COMRADE_VERSION` (belirli bir sürümü, örn. `v0.1.0`,
+Ortam değişkenleri: `COMRADE_VERSION` (belirli bir sürümü, örn. `v0.1.4`,
 sabitler — bu durumda script o tag'e özel `checksums.txt`'i kullanır),
 `COMRADE_INSTALL_DIR` (kurulum dizinini değiştirir).
 
@@ -72,16 +72,40 @@ curl -fsSL -o comrade.rpm \
 sudo rpm -i comrade.rpm
 ```
 
-### Homebrew / winget / Scoop — henüz canlı değil
+### Homebrew — canlı
 
-Bu paket yöneticisi kanalları **henüz yayında değil**. goreleaser'ın
-push edebileceği `firatkutay/homebrew-tap` ve `firatkutay/scoop-bucket`
-depoları oluşturuldu ancak sonraki sürüme kadar içlerine hiçbir şey
-yayınlanmadı; winget-pkgs manifesti ise henüz hiç oluşturulmadı.
-Bu iş `.goreleaser.yaml`'da bilinçli olarak devre dışı bırakıldı (bkz.
-dosyadaki ilgili yorumlar) ve ayrı bir işte ele alınacak. Şimdilik
-yukarıdaki `install.sh`/`install.ps1` script'lerini veya `.deb`/`.rpm`
-paketlerini kullanın.
+```sh
+brew tap firatkutay/tap
+brew install comrade
+```
+
+### Scoop (Windows) — canlı
+
+```powershell
+scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
+scoop install comrade
+```
+
+### winget (Windows) — beklemede
+
+```powershell
+winget install cli.comrade
+```
+
+Paket, `microsoft/winget-pkgs`'e `cli.comrade` kimliğiyle gönderildi ve
+moderatör incelemesi bekliyor; onaylanana kadar yukarıdaki komut
+çalışmaz. Bu arada Scoop veya `install.ps1` script'ini kullanın.
+
+### Snap (Linux) — beklemede
+
+```sh
+sudo snap install cli-comrade --classic
+```
+
+Snap paketi hazır (`snap/snapcraft.yaml` + `.github/workflows/snap.yml`,
+`classic` confinement ile) ancak Snap Store kaydı ve classic confinement
+onayı bekleniyor; onaylanana kadar yukarıdaki komut çalışmaz. Bu arada
+`install.sh` script'ini veya `.deb`/`.rpm` paketlerini kullanın.
 
 ### Kaynaktan derleme (Go geliştiricileri için)
 
@@ -97,7 +121,7 @@ kuran `@sürüm` biçimi) bu sürümde DESTEKLENMEZ.** Sebep keyfi değil, Go
 araç zincirinin kendi, belgelenmiş kısıtlaması: `go.mod`'umuzda bir
 soğuk-başlangıç performans düzeltmesi için yerel-dosya-yolu bir
 `replace` direktifi var (`replace github.com/atotto/clipboard =>
-./third_party/atotto-clipboard` — bkz. `docs/phases/FAZ-11.md`), ve
+./third_party/atotto-clipboard` — bkz. `docs/history/phases/FAZ-11.md`), ve
 Go'nun kendi kuralı gereği "`@sürüm` argümanlarını içeren komut
 satırındaki paketleri barındıran modülün `go.mod` dosyası, ana modül
 olsaydı farklı yorumlanmasına neden olacak direktifler (`replace` ve
@@ -175,7 +199,7 @@ This script:
    then to `sudo` if neither is writable);
 5. suggests running `comrade init <shell>`.
 
-Env overrides: `COMRADE_VERSION` (pin an exact version, e.g. `v0.1.0` —
+Env overrides: `COMRADE_VERSION` (pin an exact version, e.g. `v0.1.4` —
 this switches the script to that tag's own `checksums.txt` instead of
 `latest`), `COMRADE_INSTALL_DIR` (override the install directory).
 
@@ -212,15 +236,42 @@ curl -fsSL -o comrade.rpm \
 sudo rpm -i comrade.rpm
 ```
 
-### Homebrew / winget / Scoop — not live yet
+### Homebrew — live
 
-These package-manager channels are **not live yet**. The
-`firatkutay/homebrew-tap` and `firatkutay/scoop-bucket` repos goreleaser
-would push to exist, but nothing is published to them until the next
-release; a winget-pkgs manifest doesn't exist yet at all. This is
-deliberately disabled in `.goreleaser.yaml` (see the comments there) and
-is tracked as separate follow-up work. Use the `install.sh`/
-`install.ps1` scripts or the `.deb`/`.rpm` packages above for now.
+```sh
+brew tap firatkutay/tap
+brew install comrade
+```
+
+### Scoop (Windows) — live
+
+```powershell
+scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
+scoop install comrade
+```
+
+### winget (Windows) — pending
+
+```powershell
+winget install cli.comrade
+```
+
+The package was submitted to `microsoft/winget-pkgs` under the id
+`cli.comrade` and is awaiting moderator review; the command above won't
+work until it's merged. Use Scoop or the `install.ps1` script in the
+meantime.
+
+### Snap (Linux) — pending
+
+```sh
+sudo snap install cli-comrade --classic
+```
+
+The snap package is prepared (`snap/snapcraft.yaml` +
+`.github/workflows/snap.yml`, `classic` confinement) but is awaiting
+Snap Store registration and classic-confinement approval; the command
+above won't work until that clears. Use the `install.sh` script or the
+`.deb`/`.rpm` packages in the meantime.
 
 ### Build from source (for Go developers)
 
@@ -236,7 +287,7 @@ context) is NOT supported at this release.** The reason isn't
 arbitrary — it's the Go toolchain's own, documented constraint: our
 `go.mod` carries a local-filesystem `replace` directive for a
 cold-start performance fix (`replace github.com/atotto/clipboard =>
-./third_party/atotto-clipboard` — see `docs/phases/FAZ-11.md`), and per
+./third_party/atotto-clipboard` — see `docs/history/phases/FAZ-11.md`), and per
 Go's own rule, "if the module containing packages named on the command
 line has a go.mod file, it must not contain directives (`replace` and
 `exclude`) that would cause it to be interpreted differently if it

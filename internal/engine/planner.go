@@ -72,18 +72,18 @@ type rawPlan struct {
 const (
 	// emptyStepsCorrection is the single automatic re-prompt sent when
 	// the model's first response has an empty "steps" array
-	// (UYGULAMA_PLANI.md FAZ 5 item 3: "boş plan ... yeniden istem").
+	// (docs/history/UYGULAMA_PLANI.md FAZ 5 item 3: "boş plan ... yeniden istem").
 	emptyStepsCorrection = `Your previous response had an empty "steps" array. Re-generate the plan for the same request above with at least one concrete step.`
 
 	// consolidateCorrectionFormat is the single automatic re-prompt sent
 	// when the model's response has more steps than safety.max_auto_steps
-	// allows (UYGULAMA_PLANI.md FAZ 5 item 3: "max_auto_steps aşımı ...
+	// allows (docs/history/UYGULAMA_PLANI.md FAZ 5 item 3: "max_auto_steps aşımı ...
 	// yeniden istem"). %d is safety.max_auto_steps.
 	consolidateCorrectionFormat = `Your previous plan had more than %d steps. Consolidate it into at most %d steps for the same request above, merging closely related low-risk (read/write) operations where safe, without dropping or merging away any distinct destructive/elevated operation.`
 )
 
 // GeneratePlan builds the system prompt from cfg/sysCtx, requests a plan
-// from the model, and — per UYGULAMA_PLANI.md FAZ 5 item 3 — recovers
+// from the model, and — per docs/history/UYGULAMA_PLANI.md FAZ 5 item 3 — recovers
 // from two specific malformed-response shapes with exactly one automatic
 // corrective re-prompt each:
 //
@@ -176,7 +176,7 @@ func (p *Planner) GeneratePlan(ctx context.Context, request string, sysCtx conte
 // isEmptyJSONValue), which would turn a legitimate-but-unhelpful
 // `"steps": []` response into a hard llm.ErrParseFailure before
 // GeneratePlan ever got a chance to run its own, documented empty-steps
-// re-prompt (UYGULAMA_PLANI.md FAZ 5 item 3). Requiring only "summary"
+// re-prompt (docs/history/UYGULAMA_PLANI.md FAZ 5 item 3). Requiring only "summary"
 // here lets that response through so GeneratePlan's len(raw.Steps) == 0
 // check is what handles it.
 func (p *Planner) requestRawPlan(ctx context.Context, systemPrompt string, messages []llm.Message) (rawPlan, error) {

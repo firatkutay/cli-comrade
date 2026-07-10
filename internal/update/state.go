@@ -19,7 +19,7 @@ import (
 const stateFileName = "update_check.json"
 
 // CheckState is the on-disk shape of update_check.json: the passive
-// version-notification feature's (UYGULAMA_PLANI.md FAZ 10 item 4)
+// version-notification feature's (docs/history/UYGULAMA_PLANI.md FAZ 10 item 4)
 // entire persisted state — when it last asked GitHub, and what it found.
 type CheckState struct {
 	LastCheckedAt      time.Time `json:"last_checked_at"`
@@ -136,7 +136,7 @@ func WriteState(path string, st CheckState) error {
 }
 
 // CheckInterval is the passive version-notification feature's maximum
-// check frequency — UYGULAMA_PLANI.md FAZ 10 item 4's "haftada en fazla
+// check frequency — docs/history/UYGULAMA_PLANI.md FAZ 10 item 4's "haftada en fazla
 // bir kez" (at most once per week).
 const CheckInterval = 7 * 24 * time.Hour
 

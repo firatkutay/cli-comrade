@@ -54,7 +54,7 @@ type chatController struct {
 // dispatchChatLine has no bubbletea/terminal dependency at all — every
 // branch is driven by dc's injected llm/doRun/save, which is exactly what
 // makes it unit-testable end to end (chat_test.go) without a TTY, per
-// UYGULAMA_PLANI.md FAZ 9's own "pure functions, bubbletea is the shell"
+// docs/history/UYGULAMA_PLANI.md FAZ 9's own "pure functions, bubbletea is the shell"
 // requirement.
 func (dc *chatController) dispatchChatLine(ctx context.Context, session *chatSession, line string) (output string, exit bool) {
 	cmd := parseChatInput(line)

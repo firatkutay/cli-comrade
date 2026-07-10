@@ -25,7 +25,7 @@ var fmtVerbPattern = regexp.MustCompile(`%[-+ #0]*[0-9]*(\.[0-9]+)?[a-zA-Z%]`)
 // Fprint*/Println/Printf call OR a pflag flag-registration's description
 // argument, rather than routed through an i18n.Translator's T() method
 // (Print*/Fprint*) or enUsageDefault (flag descriptions). As of FAZ 9's
-// full sweep (see docs/phases/FAZ-09.md), this is a MINIMAL,
+// full sweep (see docs/history/phases/FAZ-09.md), this is a MINIMAL,
 // explicitly-justified list. Only ONE entry remains:
 //
 //   - hook.go: recordLastCommand's COMRADE_DEBUG-gated diagnostic line
@@ -36,7 +36,7 @@ var fmtVerbPattern = regexp.MustCompile(`%[-+ #0]*[0-9]*(\.[0-9]+)?[a-zA-Z%]`)
 //     user), and loading config there just to resolve a display language
 //     would add overhead to code that fires on every single shell
 //     prompt — a deliberate performance tradeoff, not an oversight. See
-//     docs/phases/FAZ-09.md's "KEEP as-is" section.
+//     docs/history/phases/FAZ-09.md's "KEEP as-is" section.
 //
 // This allowlist is intentionally a DENYLIST-OF-EXISTING-DEBT, not a
 // blanket exemption: every file NOT listed here is fully covered by
@@ -50,10 +50,10 @@ var catalogCoverageAllowlist = map[string]string{
 }
 
 // catalogCoverageScanDirs are the only packages this drift guard covers —
-// UYGULAMA_PLANI.md FAZ 9 scopes the coverage test to "cli/tui packages"
+// docs/history/UYGULAMA_PLANI.md FAZ 9 scopes the coverage test to "cli/tui packages"
 // specifically; internal/engine's own pre-existing (FAZ 5-8) printed
 // output is a separate, larger, more heavily-tested surface this phase
-// did not attempt to fully migrate (see docs/phases/FAZ-09.md).
+// did not attempt to fully migrate (see docs/history/phases/FAZ-09.md).
 var catalogCoverageScanDirs = []string{".", "../tui"}
 
 // fmtPrintSelectors is the exact set of fmt functions this scan
@@ -65,7 +65,7 @@ var catalogCoverageScanDirs = []string{".", "../tui"}
 // error-wrapping text (CLAUDE.md's own `fmt.Errorf("...: %w", err)`
 // convention) and under-cover nothing extra Print*/Fprint* doesn't
 // already catch for what's actually shown to the user directly. See
-// docs/phases/FAZ-09.md's "full-sentence fmt.Errorf" section for the
+// docs/history/phases/FAZ-09.md's "full-sentence fmt.Errorf" section for the
 // separate, manually-applied rule that DID migrate a bounded set of
 // standalone user-facing fmt.Errorf/errors.New messages — deliberately
 // NOT automated here, because a robust wrap-vs-standalone heuristic for
@@ -97,7 +97,7 @@ var flagRegistrationSelectors = map[string]bool{
 	"StringSlice": true, "StringSliceVar": true,
 }
 
-// TestCatalogCoverageNoNewHardcodedUserFacingStrings is UYGULAMA_PLANI.md
+// TestCatalogCoverageNoNewHardcodedUserFacingStrings is docs/history/UYGULAMA_PLANI.md
 // FAZ 9's "katalog dışı string linter'ı" acceptance test: it statically
 // scans every non-test .go file directly under internal/cli and
 // internal/tui (catalogCoverageScanDirs) for:
@@ -133,7 +133,7 @@ var flagRegistrationSelectors = map[string]bool{
 //     before reaching Print*/WriteString (this scan only inspects the
 //     immediate call argument's AST shape).
 //   - The ~12 standalone, full-sentence fmt.Errorf/errors.New user-facing
-//     error messages this phase migrated (see docs/phases/FAZ-09.md) —
+//     error messages this phase migrated (see docs/history/phases/FAZ-09.md) —
 //     Errorf/errors.New are deliberately excluded from fmtPrintSelectors
 //     (see its own doc comment) because a reliable AST-level rule to
 //     distinguish "a complete sentence the user reads as the terminal
@@ -141,12 +141,12 @@ var flagRegistrationSelectors = map[string]bool{
 //     false positives on the dozens of legitimate wrap chains throughout
 //     this codebase; that migration was applied manually, one call site
 //     at a time, against the exact rule stated in
-//     docs/phases/FAZ-09.md — this test does not (and, per the
+//     docs/history/phases/FAZ-09.md — this test does not (and, per the
 //     coordinator's own instruction, deliberately does not try to)
 //     enforce that rule going forward. A future added Errorf/errors.New
 //     is NOT caught by this test either way.
 //   - Text embedded in a cobra `Use` command-token string (deliberately
-//     untranslated by design — see docs/phases/FAZ-09.md).
+//     untranslated by design — see docs/history/phases/FAZ-09.md).
 //   - A file already in catalogCoverageAllowlist growing MORE
 //     letter-containing literals — that pre-existing debt is exempted by
 //     file, not by count; see TestCatalogCoverageAllowlistHasNoStaleEntries

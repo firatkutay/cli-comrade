@@ -28,7 +28,7 @@ import (
 // catalog, by CommandPath(), immediately before cobra actually renders
 // help/usage (wired via root.SetHelpFunc/SetUsageFunc in NewRootCmd), so
 // --help output is localized exactly like every other command's output —
-// UYGULAMA_PLANI.md FAZ 9's "cobra Short/Long help text ... these render
+// docs/history/UYGULAMA_PLANI.md FAZ 9's "cobra Short/Long help text ... these render
 // in --help and are user-facing" requirement.
 //
 // Long is not covered: no command in this tree sets it (every command

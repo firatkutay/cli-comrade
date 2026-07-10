@@ -289,7 +289,7 @@ func TestDispatchChatLineDoPassesSessionModeAndRequestToRunner(t *testing.T) {
 }
 
 // TestDispatchChatLineDoBlockedCommandIsReportedAsBlockedNeverExecuted is
-// the safety-gated-runner proof UYGULAMA_PLANI.md FAZ 9 calls for: a
+// the safety-gated-runner proof docs/history/UYGULAMA_PLANI.md FAZ 9 calls for: a
 // doRunner reporting exactly what runChatDo returns for a plan whose one
 // step was Blocked (aborted, zero executed) must render that faithfully —
 // "/do" itself never bypasses or second-guesses the runner's verdict.

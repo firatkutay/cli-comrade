@@ -66,7 +66,7 @@ func TestRootDispatchKnownSubcommandRoutesNormally(t *testing.T) {
 }
 
 // TestRootDispatchUnmatchedArgsFallsBackToDo proves
-// UYGULAMA_PLANI.md FAZ 6 item 3's root fallback: `comrade docker kur`
+// docs/history/UYGULAMA_PLANI.md FAZ 6 item 3's root fallback: `comrade docker kur`
 // (an arg vector that matches no known subcommand) is treated as
 // `do("docker kur")`, not rejected with cobra's "unknown command" error.
 // No mock LLM server is set up here — with an isolated config dir and no

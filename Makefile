@@ -49,7 +49,7 @@ release-check: tools
 # release-snapshot performs a full local dry-run build of every release
 # artifact (archives, checksums, .deb/.rpm, brew/scoop/winget manifests)
 # with --clean --snapshot, so it never publishes or requires a real tag —
-# UYGULAMA_PLANI.md FAZ 10's acceptance check, runnable with no GITHUB_TOKEN.
+# docs/history/UYGULAMA_PLANI.md FAZ 10's acceptance check, runnable with no GITHUB_TOKEN.
 release-snapshot: tools
 	$(GORELEASER) release --snapshot --clean
 

@@ -144,10 +144,12 @@ docs/
 
 ## Otonom Yürütme Protokolü (kritik)
 
+*(Protokol tamamlandı — v0.1.4 itibarıyla tüm fazlar bitti; kayıtlar `docs/history/` altında arşivlendi.)*
+
 Bu proje tek bir master prompt ile başlatılır ve fazlar KULLANICIDAN YENİ PROMPT BEKLENMEDEN sırayla uygulanır. Kurallar:
 
-1. **Kaynak plan:** Tüm faz spesifikasyonları `UYGULAMA_PLANI.md`'dedir. Bu dosya asla değiştirilmez.
-2. **İlerleme durumu:** `docs/PROGRESS.md` tek doğruluk kaynağıdır. Format:
+1. **Kaynak plan:** Tüm faz spesifikasyonları `docs/history/UYGULAMA_PLANI.md`'dedir. Bu dosya asla değiştirilmez.
+2. **İlerleme durumu:** `docs/history/PROGRESS.md` tek doğruluk kaynağıdır. Format:
 
 ```markdown
 # PROGRESS
@@ -162,10 +164,10 @@ status: in_progress   # in_progress | done | blocked
 - ...
 ```
 
-3. **Faz döngüsü:** Her faz için sırayla: (a) `docs/PROGRESS.md` ve ilgili faz spesifikasyonunu oku → (b) uygula → (c) `go vet` + `golangci-lint run` + `go test ./...` yeşil olana kadar düzelt → (d) `docs/phases/FAZ-XX.md` özetini yaz → (e) CHANGELOG girdisi ekle → (f) `git commit` at (conventional commits) → (g) PROGRESS.md'yi güncelle → (h) sonraki faza geç.
+3. **Faz döngüsü:** Her faz için sırayla: (a) `docs/history/PROGRESS.md` ve ilgili faz spesifikasyonunu oku → (b) uygula → (c) `go vet` + `golangci-lint run` + `go test ./...` yeşil olana kadar düzelt → (d) `docs/history/phases/FAZ-XX.md` özetini yaz → (e) CHANGELOG girdisi ekle → (f) `git commit` at (conventional commits) → (g) PROGRESS.md'yi güncelle → (h) sonraki faza geç.
 4. **Durma koşulları (sadece bunlarda kullanıcıya sor):**
    - Bir kabul kriteri 3 denemede sağlanamıyorsa → durumu `blocked` yap, sorunu ve seçenekleri özetle, dur
    - Önceki fazın public API'sini kırmak gerekiyorsa → gerekçe yaz, onay iste
-   - Gerçek API key gerektiren manuel doğrulama adımları → adımı `docs/PROGRESS.md` "Notlar"a yaz, otomatik testlerle devam et, kullanıcıyı durdurmadan bilgilendir
-5. **Oturum kopması / context daralması:** Kod dışı hiçbir bağlam oturuma emanet edilmez. Yeni oturumda "devam" komutu geldiğinde: CLAUDE.md → docs/PROGRESS.md → son faz özeti oku, kaldığın yerden sür. Context daralıyorsa mevcut fazı bitir, commit + PROGRESS güncelle, sonra kullanıcıya `/compact` önerip bekle.
+   - Gerçek API key gerektiren manuel doğrulama adımları → adımı `docs/history/PROGRESS.md` "Notlar"a yaz, otomatik testlerle devam et, kullanıcıyı durdurmadan bilgilendir
+5. **Oturum kopması / context daralması:** Kod dışı hiçbir bağlam oturuma emanet edilmez. Yeni oturumda "devam" komutu geldiğinde: CLAUDE.md → docs/history/PROGRESS.md → son faz özeti oku, kaldığın yerden sür. Context daralıyorsa mevcut fazı bitir, commit + PROGRESS güncelle, sonra kullanıcıya `/compact` önerip bekle.
 6. Faz atlanmaz, sıra değiştirilmez, kapsam genişletilmez. "İyi olur" fikirleri koda değil PROGRESS.md notlarına yazılır.

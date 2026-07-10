@@ -72,7 +72,7 @@ var (
 // This file is a locally vendored, behavior-preserving patch of upstream
 // github.com/atotto/clipboard v0.1.4's clipboard_unix.go (see
 // cli-comrade's go.mod replace directive and
-// docs/phases/FAZ-11.md/KNOWN_LIMITATIONS for the rationale) — every line
+// docs/history/phases/FAZ-11.md/KNOWN_LIMITATIONS for the rationale) — every line
 // below this comment is upstream's own detectCommands logic, moved out of
 // func init() verbatim, not reimplemented.
 var probeOnce sync.Once

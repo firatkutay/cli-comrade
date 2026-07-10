@@ -9,12 +9,12 @@ import (
 
 // defaultConfigTOML is the single source of truth for every config key,
 // its default value, and the on-disk layout written on first run. It is
-// reproduced verbatim from UYGULAMA_PLANI.md's FAZ 1 schema block.
+// reproduced verbatim from docs/history/UYGULAMA_PLANI.md's FAZ 1 schema block.
 //
 // Default() and the runtime Loader both derive from this constant instead
 // of duplicating the same defaults as Go literals, so the schema cannot
 // drift between "what we write to disk" and "what Get() returns for a
-// missing key" — see docs/phases/FAZ-01.md.
+// missing key" — see docs/history/phases/FAZ-01.md.
 const defaultConfigTOML = `[general]
 mode = "ask"              # auto | ask | info
 language = "auto"         # auto | tr | en
@@ -87,7 +87,7 @@ type LLMConfig struct {
 	// chunks (not the whole stream's duration — see TimeoutSeconds for
 	// that). 0 (the default) disables it entirely, reproducing this
 	// package's pre-existing behavior exactly: only TimeoutSeconds ever
-	// aborts a stream. See docs/PROGRESS.md's FAZ 6 hardening note this
+	// aborts a stream. See docs/history/PROGRESS.md's FAZ 6 hardening note this
 	// closes out, and internal/llm.Client.Stream/releaseOnClose for the
 	// enforcement point.
 	IdleTimeoutSeconds int                `mapstructure:"idle_timeout_seconds"`
@@ -125,7 +125,7 @@ type AuditConfig struct {
 }
 
 // ExecutorConfig holds the [executor] section — introduced in FAZ 6 for
-// internal/executor's per-step timeout (UYGULAMA_PLANI.md FAZ 6 item 1:
+// internal/executor's per-step timeout (docs/history/UYGULAMA_PLANI.md FAZ 6 item 1:
 // "timeout (adım başına config'den)").
 type ExecutorConfig struct {
 	StepTimeoutSeconds int `mapstructure:"step_timeout_seconds"`

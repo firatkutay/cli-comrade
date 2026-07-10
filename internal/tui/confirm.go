@@ -115,7 +115,7 @@ func mapKey(lang i18n.Lang, key string) (choice PromptChoice, ok bool) {
 // PromptStep is the minimal, presentation-only view of a plan step that
 // confirmModel renders: just enough to show the command, its one-line
 // rationale, and its risk badge. It deliberately does not depend on
-// internal/engine's Step type — see docs/phases/FAZ-06.md's layering note:
+// internal/engine's Step type — see docs/history/phases/FAZ-06.md's layering note:
 // this package (internal/tui) stays independent of internal/engine, and
 // internal/cli's adapter converts an engine.Step into this shape when it
 // wires the real bubbletea implementation into engine.Runner's PromptUI
@@ -265,7 +265,7 @@ func (m confirmModel) View() tea.View {
 // When choice == Edit, editedCommand is the user's edited command text —
 // NOT yet re-evaluated by internal/safety; the caller (internal/engine's
 // Runner) is responsible for re-running it through safety.Engine.Evaluate
-// before acting on it, per UYGULAMA_PLANI.md FAZ 6's ask-mode edit rule.
+// before acting on it, per docs/history/UYGULAMA_PLANI.md FAZ 6's ask-mode edit rule.
 func Confirm(ctx context.Context, step PromptStep, colorEnabled bool, in io.Reader, out io.Writer, tr i18n.Translator) (choice PromptChoice, editedCommand string, err error) {
 	m := newConfirmModel(step, colorEnabled, tr)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(in), tea.WithOutput(out))

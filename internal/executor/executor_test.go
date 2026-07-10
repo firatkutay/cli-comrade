@@ -211,7 +211,7 @@ func TestBuildCommandUsesPowerShellOnWindows(t *testing.T) {
 
 // TestRunOnWindowsRunsPowerShellForReal is skipped on any non-Windows
 // runner (this project's actual CI matrix does include windows — see
-// UYGULAMA_PLANI.md FAZ 11 — but this WSL2/Linux development environment
+// docs/history/UYGULAMA_PLANI.md FAZ 11 — but this WSL2/Linux development environment
 // does not) or when a powershell binary genuinely is not reachable, per
 // the task's "guard tests with runtime.GOOS or LookPath(powershell)"
 // instruction.

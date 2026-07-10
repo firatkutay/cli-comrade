@@ -17,7 +17,7 @@ import (
 )
 
 // newConfigModelsCmd implements `comrade config models`
-// (UYGULAMA_PLANI.md FAZ 8 item 4): fetch the model list for the
+// (docs/history/UYGULAMA_PLANI.md FAZ 8 item 4): fetch the model list for the
 // currently active provider (llm.provider), print it as a numbered menu,
 // read a selection from stdin, and persist the choice to llm.model via
 // loader.SetAndSave — the same persistence path `comrade config set`
@@ -126,7 +126,7 @@ var errInvalidSelection = errors.New("invalid selection")
 // index into a count-item list, and validates it is in range. It reads
 // exactly one line and errors on anything invalid rather than
 // re-prompting in a loop — simpler to reason about and to test
-// (UYGULAMA_PLANI.md FAZ 8 item 4 leaves this choice open; a plain,
+// (docs/history/UYGULAMA_PLANI.md FAZ 8 item 4 leaves this choice open; a plain,
 // single-shot numbered prompt is this project's pick over a bubbletea
 // list, per the item's own "easier to test" note).
 func readModelChoice(in io.Reader, count int, tr i18n.Translator) (int, error) {

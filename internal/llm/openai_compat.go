@@ -169,7 +169,7 @@ type openAIModelsResponse struct {
 
 // ListModels queries GET {baseURL}/models for the model ids this
 // endpoint serves, for `comrade config models`'s picker
-// (UYGULAMA_PLANI.md FAZ 8 item 4). Parsing is deliberately lenient: only
+// (docs/history/UYGULAMA_PLANI.md FAZ 8 item 4). Parsing is deliberately lenient: only
 // each entry's "id" field is read, so an endpoint whose /models response
 // carries extra provider-specific fields this package doesn't know about
 // still yields a usable id list instead of a decode error.

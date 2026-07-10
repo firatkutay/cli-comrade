@@ -6,5 +6,5 @@
 // takes plain bools instead of a config.Config so this package can be
 // imported from anywhere — most importantly internal/llm, which wires
 // it as a hardwired, non-injectable middleware in front of every
-// connector (see docs/phases/FAZ-03.md).
+// connector (see docs/history/phases/FAZ-03.md).
 package redact

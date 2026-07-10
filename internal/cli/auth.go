@@ -25,7 +25,7 @@ import (
 type passwordReader func(fd int) ([]byte, error)
 
 // newAuthCmd builds the "comrade auth" command tree: login, logout,
-// status (UYGULAMA_PLANI.md FAZ 8 item 2).
+// status (docs/history/UYGULAMA_PLANI.md FAZ 8 item 2).
 //
 // RunE/Args mirror newHookCmd's own established pattern (hook.go): RunE
 // (print help) is what makes this command Runnable at all — without it,
@@ -142,7 +142,7 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			//     reported but not a command error — an offline user (or
 			//     one hitting a transient provider-side error) must not
 			//     be blocked from saving a key they believe is correct,
-			//     see docs/phases/FAZ-08.md's "login stores even if ping
+			//     see docs/history/phases/FAZ-08.md's "login stores even if ping
 			//     fails" rationale.
 			resp, latency, pingErr := pingProvider(cmd, newLoader, provider, key)
 			if pingErr != nil {

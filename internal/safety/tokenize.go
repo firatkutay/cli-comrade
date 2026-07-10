@@ -23,7 +23,7 @@ import "strings"
 // grouping, no escape handling — so a quoted argument like
 // `echo "rm -rf /"` normalizes to `echo rm -rf /`, tokenizing identically
 // to an unquoted `rm -rf /`. That is an intentional, documented
-// conservative-match choice (see docs/phases/FAZ-05.md "Decisions"): this
+// conservative-match choice (see docs/history/phases/FAZ-05.md "Decisions"): this
 // package's rules would rather flag a string that merely *contains* a
 // dangerous-looking invocation (a false positive, e.g. `echo "rm -rf /"`)
 // than miss one actually executed via `sh -c "..."` / `bash -c '...'` (a

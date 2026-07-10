@@ -12,7 +12,7 @@ import (
 // prose before the object, and locates exactly one balanced top-level
 // JSON object in what remains. A second top-level object appearing
 // anywhere after the first is rejected as ambiguous, per
-// UYGULAMA_PLANI.md FAZ 2 item 3.
+// docs/history/UYGULAMA_PLANI.md FAZ 2 item 3.
 func ExtractJSON(raw string) (json.RawMessage, error) {
 	text := stripFence(raw)
 

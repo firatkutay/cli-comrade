@@ -26,7 +26,7 @@ func unreachableURL(t *testing.T) string {
 }
 
 // TestFAZ11AnthropicUnreachableProducesFriendlyOfflineError proves
-// UYGULAMA_PLANI.md FAZ 11 item 2's "ağ yokken ... anlaşılır offline
+// docs/history/UYGULAMA_PLANI.md FAZ 11 item 2's "ağ yokken ... anlaşılır offline
 // mesajı" for the anthropic connector: a transport-level failure (not a
 // non-2xx response) is replaced with a message naming the provider and
 // classified via errors.Is(err, ErrOffline), instead of surfacing Go's
@@ -76,7 +76,7 @@ func TestFAZ11GoogleUnreachableProducesFriendlyOfflineError(t *testing.T) {
 
 // TestFAZ11ClientSuggestsOllamaFallbackWhenWholeChainIsOffline proves
 // Client.Complete's "if Ollama is available, suggest falling back to
-// it" behavior (UYGULAMA_PLANI.md FAZ 11 item 2): when every configured
+// it" behavior (docs/history/UYGULAMA_PLANI.md FAZ 11 item 2): when every configured
 // attempt fails with ErrOffline and none of them is already ollama, the
 // final aggregated error names Ollama as a local, network-free
 // alternative.

@@ -152,7 +152,7 @@ func TestDoShowsSpinnerOnStderrWhileWaitingForPlan(t *testing.T) {
 // benignAndDecoyPlanJSON is the canned model response for
 // TestDoAutoModeRunsBenignStepAndBlocksDenylistedStepAgainstRealExecutor:
 // one truly benign `echo` step, and one `rm -rf /` decoy mislabeled
-// "read" — exactly UYGULAMA_PLANI.md FAZ 6's own end-to-end acceptance
+// "read" — exactly docs/history/UYGULAMA_PLANI.md FAZ 6's own end-to-end acceptance
 // scenario.
 const benignAndDecoyPlanJSON = `{
   "summary": "Prints a marker, then a decoy the model never should have produced.",

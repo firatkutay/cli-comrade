@@ -52,7 +52,7 @@ jobs:
   # go.mod pins, so a stdlib CVE fixed in a newer patch release is
   # caught too, not just third-party module CVEs) has a known,
   # call-reachable vulnerability. Pinned to v1.4.0 (see go.mod's own
-  # comment trail / docs/phases/FAZ-11.md for the 15-day version-
+  # comment trail / docs/history/phases/FAZ-11.md for the 15-day version-
   # selection rationale) via `go install`, not a third-party Action, so
   # this step's supply-chain surface is exactly "the Go toolchain +
   # golang.org/x/vuln" — nothing else to audit or pin by SHA.

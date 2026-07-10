@@ -11,7 +11,7 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/tui"
 )
 
-// OfferVerification implements UYGULAMA_PLANI.md FAZ 7 item 4's
+// OfferVerification implements docs/history/UYGULAMA_PLANI.md FAZ 7 item 4's
 // post-solution verification: once `comrade fix`'s plan has finished
 // (successfully, in ask/auto mode — see internal/cli's runFix, the only
 // caller) it offers to re-run originalCommand — the command that

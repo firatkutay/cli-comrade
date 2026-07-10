@@ -84,7 +84,7 @@ const (
 
 	// MsgExplainRiskHeading labels the LLM's own risk note in `comrade
 	// explain`'s rendered output (secondary to the safety warning above
-	// it — see docs/phases/FAZ-09.md).
+	// it — see docs/history/phases/FAZ-09.md).
 	MsgExplainRiskHeading MessageID = "explain_risk_heading"
 
 	// MsgExplainUsageError is printed when `comrade explain` is given no
@@ -131,7 +131,7 @@ const (
 	// MsgChatSaved confirms `/save <file>` wrote the transcript to disk —
 	// chat's one, explicit, opt-in exception to "session history is never
 	// written to disk" (CLAUDE.md's privacy rule, see
-	// docs/phases/FAZ-09.md). One arg: the file path.
+	// docs/history/phases/FAZ-09.md). One arg: the file path.
 	MsgChatSaved MessageID = "chat_saved"
 
 	// MsgChatSaveFailed reports a `/save` write failure. Two args: the
@@ -234,7 +234,7 @@ const (
 	MsgAuditRetentionFailed MessageID = "audit_retention_failed"
 
 	// MsgPlanTableHeader is renderPlan's table header row — `comrade do`'s
-	// primary output (UYGULAMA_PLANI.md FAZ 5 item 4).
+	// primary output (docs/history/UYGULAMA_PLANI.md FAZ 5 item 4).
 	MsgPlanTableHeader MessageID = "plan_table_header"
 
 	// MsgPlanBlockedCell renders a Blocked step's RISK column cell. One
@@ -453,7 +453,7 @@ const (
 	// On GOOS=windows, "comrade init powershell" targets EVERY installed
 	// PowerShell variant's own profile independently (shellinit.
 	// ResolvePowerShellProfiles) rather than guessing one from goos — the
-	// "pwsh gap" fix (docs/PROGRESS.md). Every message below takes the
+	// "pwsh gap" fix (docs/history/PROGRESS.md). Every message below takes the
 	// variant's product-name Label() (shellinit.PSVariant.Label — itself
 	// deliberately untranslated, see that method's own doc comment) as
 	// its first arg, then behaves exactly like this same message's
@@ -685,7 +685,7 @@ const (
 	// project's dozens of "doing X: %w" wrap-chain errors (CLAUDE.md's
 	// own established convention, used identically throughout this
 	// codebase to add call-site context to an inner error), which are
-	// deliberately NOT migrated here — see docs/phases/FAZ-09.md's exact
+	// deliberately NOT migrated here — see docs/history/phases/FAZ-09.md's exact
 	// rule and the full accounting of what was/wasn't migrated.
 
 	// MsgAuthOllamaNoKeyError is `comrade auth login ollama`'s refusal
@@ -1091,7 +1091,7 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
 // idiomatic Turkish translation — not a literal machine translation — of
-// its catalogEN counterpart; see docs/phases/FAZ-09.md's translation
+// its catalogEN counterpart; see docs/history/phases/FAZ-09.md's translation
 // notes for terminology choices (e.g. "yürütme" for "execution", "geri
 // alınamaz" for "irreversible").
 var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog (prompts/labels that mention "password"/"key" as words), not a literal credential

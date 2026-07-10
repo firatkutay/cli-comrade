@@ -47,7 +47,7 @@ func ParseMode(s string) (Mode, error) {
 	return 0, fmt.Errorf("engine: unknown mode %q", s)
 }
 
-// ResolveMode implements UYGULAMA_PLANI.md FAZ 6 item 2's exact mode
+// ResolveMode implements docs/history/UYGULAMA_PLANI.md FAZ 6 item 2's exact mode
 // precedence: an explicit --auto/--ask/--info flag wins outright, then
 // COMRADE_MODE, then config general.mode. flagValue/envValue/configValue
 // are plain strings ("", "auto", "ask", or "info") so this function stays

@@ -12,7 +12,7 @@ import (
 // LastCommand is the shape of the last_command.json file written by the
 // FAZ 4 shell hooks and read here. FAZ 3 owns and defines this format
 // (FAZ 4 will only ever write it): {command, exit_code, stderr_tail,
-// stdout_tail, timestamp, shell}, per UYGULAMA_PLANI.md's FAZ 3 spec.
+// stdout_tail, timestamp, shell}, per docs/history/UYGULAMA_PLANI.md's FAZ 3 spec.
 type LastCommand struct {
 	Command    string    `json:"command"`
 	ExitCode   int       `json:"exit_code"`

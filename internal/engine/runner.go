@@ -80,7 +80,7 @@ type AuditSink interface {
 
 // selfCorrectionMaxAttempts caps the number of self-correction round-trips
 // Execute performs across an entire plan run (not per step) —
-// UYGULAMA_PLANI.md FAZ 6 item 2's "en fazla 3 self-correction denemesi".
+// docs/history/UYGULAMA_PLANI.md FAZ 6 item 2's "en fazla 3 self-correction denemesi".
 const selfCorrectionMaxAttempts = 3
 
 // stderrTailLimit is the maximum number of trailing bytes of a failed
@@ -162,7 +162,7 @@ type RunDeps struct {
 	// (BLOCKED/--yolo-bypass lines, RunSummary.AbortReason text) in the
 	// user's resolved language (internal/cli builds it once per
 	// invocation via i18n.ResolveLanguage/i18n.NewTranslator — see
-	// docs/phases/FAZ-09.md). A zero-value Translator (every RunDeps this
+	// docs/history/phases/FAZ-09.md). A zero-value Translator (every RunDeps this
 	// package's own tests construct as a plain struct literal, and every
 	// pre-FAZ-9 caller) defaults to English via tr() below, so this field
 	// is purely additive: no existing caller/test needs to set it, and
@@ -338,7 +338,7 @@ func executeAsk(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, error
 			// same (still-Blocked) step must still never run it — the
 			// top-of-loop Block check above only guards the PLAN's
 			// original Decision, never one produced by an in-loop edit.
-			// See docs/phases/FAZ-06.md's post-review hardening note.
+			// See docs/history/phases/FAZ-06.md's post-review hardening note.
 			if step.Decision.Action == safety.Block {
 				printBlocked(deps, i, step)
 				summary.Results = append(summary.Results, StepResult{Index: i, Command: step.Command, Outcome: OutcomeBlocked})
@@ -368,7 +368,7 @@ func executeAsk(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, error
 // elevated steps drop to the same confirm loop ask mode uses (unless the
 // config+--yolo bypass fires for that exact risk class, which prints a
 // red warning and proceeds); a Blocked step aborts the whole remaining
-// plan (auto-abort-on-block — see docs/phases/FAZ-06.md).
+// plan (auto-abort-on-block — see docs/history/phases/FAZ-06.md).
 func executeAuto(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, error) {
 	var summary RunSummary
 	correctionsUsed := 0

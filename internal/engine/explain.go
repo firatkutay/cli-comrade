@@ -36,7 +36,7 @@ type ExplanationPart struct {
 // token-by-token breakdown, and the LLM's own risk note. `comrade
 // explain` (internal/cli) renders this ALONGSIDE its own, independent
 // local safety.Engine verdict — the safety verdict is authoritative for
-// whether to warn the user at all (see docs/phases/FAZ-09.md); RiskNote
+// whether to warn the user at all (see docs/history/phases/FAZ-09.md); RiskNote
 // here is the LLM's secondary, descriptive color commentary, never the
 // only source of a destructive/blocked warning.
 type Explanation struct {
@@ -85,7 +85,7 @@ func NewExplainer(client Completer, cfg config.Config) *Explainer {
 // classification is internal/cli's job, using the same safety.Engine
 // every other command uses, kept entirely separate from this LLM call so
 // a slow/failed/hallucinated LLM response can never affect whether the
-// safety warning is shown (see docs/phases/FAZ-09.md's two-layer design).
+// safety warning is shown (see docs/history/phases/FAZ-09.md's two-layer design).
 func (e *Explainer) Explain(ctx context.Context, command string) (Explanation, error) {
 	lang := i18n.ResolveLanguage(e.cfg.General.Language, e.getenv, e.systemLocale).String()
 	systemPrompt := buildExplainSystemPrompt(lang)

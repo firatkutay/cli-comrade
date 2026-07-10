@@ -23,7 +23,7 @@ const (
 )
 
 // envAliases lists the explicit, named environment variable aliases
-// required by UYGULAMA_PLANI.md's FAZ 1 in addition to the generic
+// required by docs/history/UYGULAMA_PLANI.md's FAZ 1 in addition to the generic
 // COMRADE_<SECTION>_<KEY> mapping every key already gets from
 // viper.AutomaticEnv(). Both forms work for these three keys; see
 // bindEnvAliases and Loader.Source.
@@ -131,7 +131,7 @@ func (l *Loader) Source(key string) (Source, error) {
 // key at its current effective file-or-default value (deliberately
 // excluding any environment override, so a transient env var never gets
 // baked into the file). Comments from a hand-edited file are not
-// preserved — see docs/phases/FAZ-01.md.
+// preserved — see docs/history/phases/FAZ-01.md.
 func (l *Loader) SetAndSave(key string, value any) error {
 	if !IsValidKey(key) {
 		return unknownKeyError(key)

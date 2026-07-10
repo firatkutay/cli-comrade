@@ -1,25 +1,25 @@
+<div align="center">
+
 # cli-comrade
 
-> ⚠️ **v0.1.0 is published.** Prebuilt linux/darwin/windows archives,
-> `.deb`/`.rpm` packages, and checksum-verifying `install.sh`/`install.ps1`
-> scripts are live on [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases) —
-> see [Install](#install) for the one-line `curl`/`irm` commands. The
-> Homebrew/winget/Scoop channels are **not live yet** (tracked separately,
-> see [Install](#install)). Commands and behavior may still change before
-> v1.0. See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the honest
-> list of what's unverified — mainly Windows runtime behavior not yet
-> verified on a real Windows machine.
->
-> ⚠️ **v0.1.0 yayınlandı.** linux/darwin/windows için hazır arşivler,
-> `.deb`/`.rpm` paketleri ve checksum doğrulamalı `install.sh`/`install.ps1`
-> script'leri [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases)
-> üzerinde canlı — tek satırlık `curl`/`irm` komutları için aşağıdaki
-> [Kurulum](#kurulum) bölümüne bakın. Homebrew/winget/Scoop kanalları
-> **henüz canlı değil** (ayrıca takip ediliyor, bkz. [Kurulum](#kurulum)).
-> v1.0 öncesi komutlar ve davranışlar değişebilir. Bilinen kısıtlar için
-> [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)'e bakın.
+**A cross-platform AI CLI companion for people who don't want to fight the terminal.**
+**Terminalle uğraşmak istemeyenler için cross-platform bir yapay zeka CLI yoldaşı.**
 
-Binary name: `comrade`.
+[![Release](https://img.shields.io/github/v/release/firatkutay/cli-comrade)](https://github.com/firatkutay/cli-comrade/releases)
+[![CI](https://github.com/firatkutay/cli-comrade/actions/workflows/ci.yml/badge.svg)](https://github.com/firatkutay/cli-comrade/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/firatkutay/cli-comrade)](LICENSE)
+[![Go version](https://img.shields.io/github/go-mod/go-version/firatkutay/cli-comrade)](go.mod)
+![Platforms](https://img.shields.io/badge/platform-linux%20%7C%20macOS%20%7C%20windows-informational)
+
+Binary: `comrade`
+
+**English** · [Türkçe](#türkçe)
+
+</div>
+
+> v0.1.x is pre-1.0 — commands and behavior may still evolve before v1.0.
+> See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the honest list of
+> what's unverified.
 
 ---
 
@@ -40,6 +40,27 @@ and the language comrade instructs the LLM to answer in, resolved from
 config `general.language` → `COMRADE_LANG` → `LANG`/`LC_ALL` → (Windows
 only) the system locale → English fallback (`internal/i18n/lang.go`).
 
+### See it in action
+
+```text
+$ comrade "free up disk space in /var/log"
+
+  comrade: I'll compress log files older than 7 days, then remove ones
+  older than 30 days that are already compressed.
+
+  → find /var/log -name "*.log" -mtime +7 -exec gzip {} \;
+  [write]  [y]es [n]o [e]dit [x]plain [a]ll: y
+  ✓ compressed 14 files
+
+  → find /var/log -name "*.log.gz" -mtime +30 -delete
+  [destructive]  [y]es [n]o [e]dit [x]plain [a]ll: y
+  ✓ removed 6 files, freed 212 MB
+```
+
+Note the `[destructive]` step still stopped for confirmation — that never
+changes in `ask` mode, and even in `auto` mode it's the one thing that
+always asks (see [Safety](#how-it-stays-safe) below).
+
 ### Core scenarios
 
 | Command | What it does |
@@ -48,6 +69,10 @@ only) the system locale → English fallback (`internal/i18n/lang.go`).
 | `comrade "install docker"` (or `comrade do "..."`) | Turns a free-text request into a multi-step plan and runs it per the active mode. |
 | `comrade explain "git rebase -i HEAD~5"` | Explains a command flag-by-flag without running it. |
 | `comrade chat` | Interactive, context-preserving chat session. |
+
+Plus setup/utility commands: `comrade auth` (login/logout/status),
+`comrade config` (get/set), `comrade init` (shell integration),
+`comrade history`, `comrade upgrade`.
 
 ### Behavior modes
 
@@ -78,41 +103,45 @@ together — and doing so prints a loud warning on every use.
   etc. before it leaves the machine.
 - **Audit log** (`internal/audit`) — every executed command is recorded:
   timestamp, mode, command, risk class, exit code.
-- **Keychain-backed secrets** (`internal/secrets`) — API keys go through
-  the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret
-  Service) with an explicit, opt-in file fallback; never plaintext in config.
+- **Keychain-backed secrets** — API keys go through the OS keychain
+  (macOS Keychain, Windows Credential Manager, Linux Secret Service) with
+  an explicit, opt-in 0600 file fallback; never plaintext in config.
 
 Full model: [docs/SECURITY.md](docs/SECURITY.md).
 
+### LLM providers
+
+| Provider | Connector | Notes |
+|---|---|---|
+| Anthropic | `anthropic` | Native Messages API |
+| OpenAI-compatible | `openai_compat` | One connector, `base_url`-driven — covers OpenAI, OpenRouter, Groq, Mistral, and other OpenAI-compatible endpoints |
+| Google | `google` | Gemini API |
+| Ollama | `ollama` | Local, `http://localhost:11434`, live model discovery |
+
+A config-driven fallback chain tries providers in order if one errors or
+times out.
+
 ### Install
 
-**macOS / Linux:**
+| Channel | Command | Status |
+|---|---|---|
+| Install script (macOS/Linux) | `curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh \| sh` | ✅ live |
+| Install script (Windows) | `irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 \| iex` | ✅ live |
+| Homebrew | `brew install firatkutay/tap/comrade` | ✅ live |
+| Scoop | `scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket`<br>`scoop install comrade` | ✅ live |
+| .deb / .rpm / raw archives | [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases) | ✅ live |
+| winget | `winget install cli.comrade` | ⏳ pending — PR open against `microsoft/winget-pkgs`, awaiting moderator review |
+| Snap | `sudo snap install cli-comrade --classic` | ⏳ pending — awaiting Snap Store registration + classic-confinement approval |
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
-```
-
-**Windows (PowerShell):**
-
-```powershell
-irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
-```
-
-Both scripts download the matching release archive from GitHub Releases,
-verify it against that release's `checksums.txt` (`sha256sum -c` /
-`Get-FileHash`) before installing anything, and print a `comrade init
+The install scripts download the matching release archive via GitHub's
+no-API `releases/latest/download` redirect (or a tag-scoped URL when
+pinned), verify it against that release's `checksums.txt` (`sha256sum -c` /
+`Get-FileHash`) **before** installing anything, and print a `comrade init
 <shell>` hint when done. Set `COMRADE_VERSION` (env var, or `-Version` on
-Windows) to pin an exact release instead of installing the latest one. Full
-details, env-var reference, and every other install channel: see
-[docs/INSTALL.md](docs/INSTALL.md).
+Windows) to pin an exact release instead of installing the latest one.
 
-**v0.1.0 also ships:** `.deb`/`.rpm` packages and raw archives, all as
-[GitHub Release](https://github.com/firatkutay/cli-comrade/releases) assets
-from the same goreleaser pipeline (`.goreleaser.yaml`). Homebrew (cask),
-winget, and Scoop are **not live yet** — those publishers need a
-pre-existing tap/bucket/manifest repo goreleaser can push to, which don't
-exist yet; they'll be enabled in a follow-up release once those repos are
-created.
+Full details, env-var reference, and per-channel maintainer notes:
+[docs/INSTALL.md](docs/INSTALL.md) and [docs/PACKAGING.md](docs/PACKAGING.md).
 
 **Building from source** (Go developers):
 
@@ -124,18 +153,19 @@ make build          # -> ./comrade
 
 `go install github.com/firatkutay/cli-comrade/cmd/comrade@<version>` is
 **not supported** — `go.mod` has a local-path `replace` directive for a
-cold-start fix, and Go's own toolchain rejects `@version` installs against a
-module whose `go.mod` contains `replace`/`exclude`. `git clone` + `make
-build` sidesteps this because the checkout itself becomes the main module.
-Details: [docs/INSTALL.md](docs/INSTALL.md).
+vendored cold-start fix, and Go's own toolchain rejects `@version` installs
+against a module whose `go.mod` contains `replace`/`exclude`. `git clone` +
+`make build` sidesteps this because the checkout itself becomes the main
+module — and it's exactly how every binary package above is built, so none
+of them are affected. Details: [docs/INSTALL.md](docs/INSTALL.md).
 
 ### Quick start
 
 ```sh
 comrade auth login anthropic  # store an API key for a provider (keychain, or file fallback)
-comrade init                # install the shell hook (bash/zsh/fish/PowerShell)
-comrade "install docker"    # or: comrade do "install docker"
-comrade fix                 # after a failed command
+comrade init                  # install the shell hook + Tab-completion (bash/zsh/fish/PowerShell)
+comrade "install docker"      # or: comrade do "install docker"
+comrade fix                   # after a failed command
 comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
@@ -171,7 +201,9 @@ completions are simply added alongside it). Details:
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common issues.
 - [docs/TECHNICAL.md](docs/TECHNICAL.md) — technical documentation (EN).
 - [docs/TECHNICAL.tr.md](docs/TECHNICAL.tr.md) — teknik dokümantasyon (TR).
-- [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) — honest known-issues list for `v0.1.0-rc1`.
+- [docs/PACKAGING.md](docs/PACKAGING.md) — maintainer-facing package-channel activation.
+- [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) — honest known-issues list.
+- [docs/history/](docs/history/) — development-history records (implementation plan, phase logs, progress notes).
 
 ### Build & develop
 
@@ -179,10 +211,10 @@ completions are simply added alongside it). Details:
 make build             # -> ./comrade
 make test              # go test ./...
 make lint              # golangci-lint (auto-installs the pinned version)
-make vet                # go vet ./...
-make cross              # -> dist/comrade-<os>-<arch>[.exe], all platforms
-make release-check      # validate .goreleaser.yaml, no build
-make release-snapshot   # full local dry-run of every release artifact
+make vet               # go vet ./...
+make cross             # -> dist/comrade-<os>-<arch>[.exe], all platforms
+make release-check     # validate .goreleaser.yaml, no build
+make release-snapshot  # full local dry-run of every release artifact
 ```
 
 ### License
@@ -210,6 +242,27 @@ hangi dilde yanıt vermesini söylediği — bu da config'teki
 Windows'ta) sistem yerel ayarı → İngilizce varsayılanı sırasıyla
 belirlenir (`internal/i18n/lang.go`).
 
+### Aksiyonda görün
+
+```text
+$ comrade "/var/log altında disk alanı boşalt"
+
+  comrade: 7 günden eski log dosyalarını sıkıştıracağım, ardından
+  30 günden eski ve zaten sıkıştırılmış olanları sileceğim.
+
+  → find /var/log -name "*.log" -mtime +7 -exec gzip {} \;
+  [write]  [e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: e
+  ✓ 14 dosya sıkıştırıldı
+
+  → find /var/log -name "*.log.gz" -mtime +30 -delete
+  [destructive]  [e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: e
+  ✓ 6 dosya silindi, 212 MB boşaldı
+```
+
+`[destructive]` adımının yine de onay için durduğuna dikkat edin — bu
+`ask` modunda hiç değişmez, `auto` modda bile her zaman onay isteyen tek
+şey budur (aşağıdaki [Güvenlik](#güvenliği-nasıl-sağlıyor) bölümüne bakın).
+
 ### Temel senaryolar
 
 | Komut | Ne yapar |
@@ -218,6 +271,10 @@ belirlenir (`internal/i18n/lang.go`).
 | `comrade "docker kur"` (ya da `comrade do "..."`) | Serbest metin isteği çok adımlı bir plana çevirir ve etkin moda göre çalıştırır. |
 | `comrade explain "git rebase -i HEAD~5"` | Bir komutu çalıştırmadan, bayrak bayrak açıklar. |
 | `comrade chat` | Bağlamı koruyan interaktif sohbet oturumu. |
+
+Ayrıca kurulum/yardımcı komutlar: `comrade auth` (login/logout/status),
+`comrade config` (get/set), `comrade init` (shell entegrasyonu),
+`comrade history`, `comrade upgrade`.
 
 ### Davranış modları
 
@@ -249,41 +306,47 @@ basılır.
   başlıkları vb. için temizlenir.
 - **Audit log** (`internal/audit`) — çalıştırılan her komut kaydedilir:
   zaman damgası, mod, komut, risk sınıfı, exit code.
-- **Keychain destekli sırlar** (`internal/secrets`) — API anahtarları
-  işletim sistemi keychain'inden (macOS Keychain, Windows Credential
-  Manager, Linux Secret Service) geçer; açık, opt-in bir dosya fallback'i
-  vardır, config dosyasına asla düz metin yazılmaz.
+- **Keychain destekli sırlar** — API anahtarları işletim sistemi
+  keychain'inden (macOS Keychain, Windows Credential Manager, Linux Secret
+  Service) geçer; açık, opt-in bir 0600 dosya fallback'i vardır, config
+  dosyasına asla düz metin yazılmaz.
 
 Tam model: [docs/SECURITY.md](docs/SECURITY.md).
 
+### LLM sağlayıcıları
+
+| Sağlayıcı | Connector | Not |
+|---|---|---|
+| Anthropic | `anthropic` | Native Messages API |
+| OpenAI uyumlu | `openai_compat` | `base_url` ile tek connector — OpenAI, OpenRouter, Groq, Mistral ve diğer OpenAI-uyumlu uç noktaları kapsar |
+| Google | `google` | Gemini API |
+| Ollama | `ollama` | Yerel, `http://localhost:11434`, canlı model keşfi |
+
+Config'te tanımlı sıralı bir fallback zinciri, bir sağlayıcı hata verir
+veya zaman aşımına uğrarsa sıradakine geçer.
+
 ### Kurulum
 
-**macOS / Linux:**
+| Kanal | Komut | Durum |
+|---|---|---|
+| Kurulum script'i (macOS/Linux) | `curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh \| sh` | ✅ canlı |
+| Kurulum script'i (Windows) | `irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 \| iex` | ✅ canlı |
+| Homebrew | `brew install firatkutay/tap/comrade` | ✅ canlı |
+| Scoop | `scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket`<br>`scoop install comrade` | ✅ canlı |
+| .deb / .rpm / ham arşivler | [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases) | ✅ canlı |
+| winget | `winget install cli.comrade` | ⏳ beklemede — `microsoft/winget-pkgs`'e açılan PR, moderatör incelemesi bekliyor |
+| Snap | `sudo snap install cli-comrade --classic` | ⏳ beklemede — Snap Store kaydı + classic-confinement onayı bekliyor |
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
-```
+Kurulum script'leri, eşleşen release arşivini GitHub'ın API gerektirmeyen
+`releases/latest/download` yönlendirmesi (ya da sabitlenmişse tag'e özel
+bir URL) üzerinden indirir, herhangi bir şey kurmadan **önce** o release'in
+`checksums.txt`'ine karşı doğrular (`sha256sum -c` / `Get-FileHash`) ve
+bitince bir `comrade init <shell>` ipucu basar. Belirli bir sürümü
+sabitlemek için `COMRADE_VERSION` ortam değişkenini (Windows'ta `-Version`
+parametresini) kullanın.
 
-**Windows (PowerShell):**
-
-```powershell
-irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
-```
-
-Her iki script de GitHub Releases'ten eşleşen arşivi indirir, kurmadan önce
-o release'in `checksums.txt`'ine karşı doğrular (`sha256sum -c` /
-`Get-FileHash`) ve bitince bir `comrade init <shell>` ipucu basar. Belirli
-bir sürümü sabitlemek için `COMRADE_VERSION` ortam değişkenini (Windows'ta
-`-Version` parametresini) kullanın. Tüm ayrıntılar, ortam değişkeni
-referansı ve diğer tüm kurulum kanalları için: [docs/INSTALL.md](docs/INSTALL.md).
-
-**v0.1.0'da ayrıca olanlar:** `.deb`/`.rpm` paketleri ve ham arşivler —
-hepsi aynı goreleaser pipeline'ından (`.goreleaser.yaml`) üretilen
-[GitHub Release](https://github.com/firatkutay/cli-comrade/releases)
-eklentileri olarak. Homebrew (cask), winget ve Scoop **henüz canlı değil** —
-bu yayıncılar goreleaser'ın push edebileceği önceden var olan bir
-tap/bucket/manifest deposu gerektiriyor, bunlar henüz oluşturulmadı; bu
-depolar kurulduğunda sonraki bir sürümde etkinleştirilecekler.
+Tüm ayrıntılar, ortam değişkeni referansı ve kanal başına bakım notları:
+[docs/INSTALL.md](docs/INSTALL.md) ve [docs/PACKAGING.md](docs/PACKAGING.md).
 
 **Kaynaktan derleme** (Go geliştiricileri için):
 
@@ -294,19 +357,21 @@ make build          # -> ./comrade
 ```
 
 `go install github.com/firatkutay/cli-comrade/cmd/comrade@<sürüm>` biçimi
-**desteklenmez** — `go.mod`'da soğuk-başlangıç düzeltmesi için yerel bir
-`replace` direktifi var ve Go'nun kendi araç zinciri, `go.mod`'unda
-`replace`/`exclude` bulunan bir modüle karşı `@sürüm` kurulumunu reddediyor.
-`git clone` + `make build` bunu aşar, çünkü checkout'un kendisi ana modül
-haline gelir. Detaylar: [docs/INSTALL.md](docs/INSTALL.md).
+**desteklenmez** — `go.mod`'da vendorlanmış bir soğuk-başlangıç düzeltmesi
+için yerel bir `replace` direktifi var ve Go'nun kendi araç zinciri,
+`go.mod`'unda `replace`/`exclude` bulunan bir modüle karşı `@sürüm`
+kurulumunu reddediyor. `git clone` + `make build` bunu aşar, çünkü
+checkout'un kendisi ana modül haline gelir — yukarıdaki her ikili paket de
+tam olarak bu şekilde derlendiği için hiçbiri bundan etkilenmez. Detaylar:
+[docs/INSTALL.md](docs/INSTALL.md).
 
 ### Hızlı başlangıç
 
 ```sh
 comrade auth login anthropic  # bir sağlayıcı için API anahtarı sakla (keychain, ya da dosya fallback'i)
-comrade init                # shell kancasını kur (bash/zsh/fish/PowerShell)
-comrade "docker kur"        # ya da: comrade do "docker kur"
-comrade fix                 # başarısız bir komuttan sonra
+comrade init                  # shell kancasını + Tab-tamamlamayı kur (bash/zsh/fish/PowerShell)
+comrade "docker kur"          # ya da: comrade do "docker kur"
+comrade fix                   # başarısız bir komuttan sonra
 comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
@@ -326,8 +391,7 @@ otomatik olarak kurar — ayrı bir adım yok. Kurulduktan sonra:
 `comrade <Tab>` görünür her komutu listeler; `comrade auth <Tab>`
 `login`/`logout`/`status`'u listeler; `comrade auth login <Tab>` bilinen
 sağlayıcıları listeler; `comrade config get <Tab>` her gerçek config
-anahtarını listeler; `comrade init <Tab>` desteklenen shell'leri
-listeler.
+anahtarını listeler; `comrade init <Tab>` desteklenen shell'leri listeler.
 
 **`comrade init` zaten kurulu mu?** Tamamlamalar, mevcut hook'un üzerine
 eklenen yeni içeriktir — bunları almak için `comrade init <shell>`'i bir
@@ -343,7 +407,9 @@ tamamlamalar yalnızca onun yanına eklenir). Ayrıntılar:
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — yaygın sorunlar.
 - [docs/TECHNICAL.md](docs/TECHNICAL.md) — technical documentation (EN).
 - [docs/TECHNICAL.tr.md](docs/TECHNICAL.tr.md) — teknik dokümantasyon (TR).
-- [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) — `v0.1.0-rc1` için dürüst bilinen sorunlar listesi.
+- [docs/PACKAGING.md](docs/PACKAGING.md) — bakımcıya yönelik paket kanalı etkinleştirme.
+- [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) — dürüst bilinen sorunlar listesi.
+- [docs/history/](docs/history/) — geliştirme geçmişi kayıtları (uygulama planı, faz günlükleri, ilerleme notları).
 
 ### Derleme & geliştirme
 
@@ -351,10 +417,10 @@ tamamlamalar yalnızca onun yanına eklenir). Ayrıntılar:
 make build             # -> ./comrade
 make test              # go test ./...
 make lint              # golangci-lint (pinlenmiş sürümü otomatik kurar)
-make vet                # go vet ./...
-make cross              # -> dist/comrade-<os>-<arch>[.exe], tüm platformlar
-make release-check      # .goreleaser.yaml'ı doğrula, derleme yapmadan
-make release-snapshot   # her release artifact'inin tam yerel deneme derlemesi
+make vet               # go vet ./...
+make cross             # -> dist/comrade-<os>-<arch>[.exe], tüm platformlar
+make release-check     # .goreleaser.yaml'ı doğrula, derleme yapmadan
+make release-snapshot  # her release artifact'inin tam yerel deneme derlemesi
 ```
 
 ### Lisans

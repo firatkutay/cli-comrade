@@ -1,7 +1,7 @@
 // Package i18n holds cli-comrade's Turkish and English message catalogs
 // and the Translator every command resolves its user-facing output
 // through — CLAUDE.md's "Kullanıcıya görünen TÜM metinler internal/i18n
-// kataloglarından" rule, and UYGULAMA_PLANI.md FAZ 9.
+// kataloglarından" rule, and docs/history/UYGULAMA_PLANI.md FAZ 9.
 //
 // This package is a leaf: it imports only the standard library, so any
 // package may depend on it (internal/engine and internal/cli both do)

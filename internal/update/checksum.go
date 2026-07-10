@@ -15,7 +15,7 @@ import (
 // "<hex-digest>  <filename>" line per artifact.
 //
 // This is the security-critical step CLAUDE.md's supply-chain posture
-// and UYGULAMA_PLANI.md FAZ 10 both require before ever replacing the
+// and docs/history/UYGULAMA_PLANI.md FAZ 10 both require before ever replacing the
 // running binary: a downloaded archive is NEVER installed without first
 // being checksum-verified against the release's own published manifest.
 func VerifyChecksum(data, checksumsTxt []byte, fileName string) error {

@@ -31,6 +31,14 @@ type chatController struct {
 	llm   chatLLM
 	doRun chatDoRunner
 	save  chatSaveFunc
+
+	// maxTokens is forwarded to every plain-text chatTurn call (see
+	// chatTurn's doc comment in chat.go for why this must never be left
+	// at its zero value against a real Anthropic-backed client). Set from
+	// cfg.LLM.MaxTokens by newChatModel — the same config field
+	// engine.Planner/Explainer/Diagnoser already use for every other
+	// Complete call in this codebase.
+	maxTokens int
 }
 
 // dispatchChatLine parses one line of chat input (parseChatInput) and
@@ -102,7 +110,7 @@ func (dc *chatController) dispatchChatLine(ctx context.Context, session *chatSes
 // attempt, so the user can simply retry without a phantom half-turn
 // polluting subsequent requests.
 func (dc *chatController) handleText(ctx context.Context, session *chatSession, text string) string {
-	reply, err := chatTurn(ctx, dc.llm, dc.tr.Lang(), session.history, text)
+	reply, err := chatTurn(ctx, dc.llm, dc.tr.Lang(), session.history, text, dc.maxTokens)
 	if err != nil {
 		return dc.tr.T(i18n.MsgChatLLMError, err)
 	}

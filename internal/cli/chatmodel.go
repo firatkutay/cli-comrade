@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -32,6 +33,14 @@ type chatModel struct {
 
 	viewport viewport.Model
 	input    textinput.Model
+	spinner  spinner.Model
+
+	// waiting is true from the moment Enter dispatches a line (chat
+	// turn or "/do") until its chatTurnDoneMsg comes back. It gates
+	// spinner animation/rendering and blocks a second line from being
+	// dispatched concurrently — see the "enter" case in Update and
+	// runChatTurnCmd's doc comment for why this call is async at all.
+	waiting bool
 
 	// ioIn/ioOut are the real streams runChatProgram wired this session's
 	// *tea.Program to; "/do"'s real doRunner (newRealChatDoRunner) reads/
@@ -62,11 +71,19 @@ func newChatModel(cfg config.Config, tr i18n.Translator, client *llm.Client, ses
 	ti.Prompt = "> "
 	ti.Focus()
 
-	m := &chatModel{session: session, viewport: vp, input: ti}
+	// waitSpinnerStyle/waitSpinnerFrames' frame set (spinner.go) is reused
+	// here verbatim — same braille frames, same pastel-183 color as every
+	// other "waiting on the LLM" indicator in this codebase — so the
+	// in-bubbletea spinner reads as the same visual language, not a
+	// second, independently-drifting one.
+	sp := spinner.New(spinner.WithSpinner(waitSpinnerFrames), spinner.WithStyle(waitSpinnerStyle))
+
+	m := &chatModel{session: session, viewport: vp, input: ti, spinner: sp}
 	m.controller = &chatController{
-		tr:   tr,
-		llm:  client,
-		save: saveTranscript,
+		tr:        tr,
+		llm:       client,
+		save:      saveTranscript,
+		maxTokens: cfg.LLM.MaxTokens,
 	}
 	m.controller.doRun = m.newRealChatDoRunner(cfg, client)
 	return m
@@ -93,15 +110,44 @@ func (m *chatModel) newRealChatDoRunner(cfg config.Config, client *llm.Client) c
 
 func (m chatModel) Init() tea.Cmd { return nil }
 
-// Update implements tea.Model. Exactly one key ever does anything beyond
-// passthrough to the textinput: Enter, which reads the current input
-// line, clears it, echoes it into the viewport, and hands it to
-// chatController.dispatchChatLine — the pure dispatch logic — appending
-// its reply and quitting when dispatchChatLine says to ("/exit"/"/quit").
-// This blocks the bubbletea event loop for the duration of an LLM call or
-// a "/do" run; see docs/phases/FAZ-09.md for why that tradeoff was made
-// (a real terminal is released to the do-pipeline during "/do" anyway, so
-// nothing else could animate concurrently in that case regardless).
+// chatTurnDoneMsg carries dispatchChatLine's result back into Update once
+// runChatTurnCmd's goroutine finishes — see its doc comment for why this
+// round-trip through bubbletea's own Msg/Cmd machinery exists at all
+// instead of calling dispatchChatLine inline.
+type chatTurnDoneMsg struct {
+	output string
+	exit   bool
+}
+
+// runChatTurnCmd returns the tea.Cmd Update dispatches on Enter: it runs
+// controller.dispatchChatLine(ctx, session, line) — the LLM call for a
+// plain-text turn, or the entire safety-gated plan+execute pipeline for
+// "/do" — on bubbletea's own command goroutine, never inside Update
+// itself. Previously this call was made synchronously inline in Update,
+// which blocks bubbletea's whole event loop (no render, no spinner, no
+// key handling at all — including Ctrl-C) for the call's entire duration:
+// up to llm.timeout_seconds (60s by default) with zero visual feedback,
+// which is indistinguishable from "the tool hung" to a user watching a
+// frozen terminal. Routing the same call through a Cmd instead lets the
+// render loop keep animating m.spinner (started alongside this Cmd, see
+// Update's "enter" case) while the call is in flight, and keeps Ctrl-C
+// responsive throughout.
+func runChatTurnCmd(ctx context.Context, controller *chatController, session *chatSession, line string) tea.Cmd {
+	return func() tea.Msg {
+		output, exit := controller.dispatchChatLine(ctx, session, line)
+		return chatTurnDoneMsg{output: output, exit: exit}
+	}
+}
+
+// Update implements tea.Model. Enter is the one key that does anything
+// beyond passthrough to the textinput: while a previous turn is still
+// in flight (m.waiting) it is ignored outright — one line dispatched at a
+// time, never overlapping requests against the same session.history.
+// Otherwise it reads the current input line, clears it, echoes it into
+// the viewport, and hands it to runChatTurnCmd, which the render loop
+// keeps servicing (including the spinner's own tick messages) until
+// chatTurnDoneMsg arrives with the reply/error and, for "/exit"/"/quit",
+// the signal to quit.
 func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -118,22 +164,43 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		case "enter":
+			if m.waiting {
+				return m, nil
+			}
 			line := m.input.Value()
 			m.input.SetValue("")
 			if line == "" {
 				return m, nil
 			}
 			m.appendViewportLine("> " + line)
-			output, exit := m.controller.dispatchChatLine(m.ctx, m.session, line)
-			if output != "" {
-				m.appendViewportLine(output)
-			}
-			if exit {
-				m.quitting = true
-				return m, tea.Quit
-			}
+			m.waiting = true
+			m.input.Blur()
+			return m, tea.Batch(m.spinner.Tick, runChatTurnCmd(m.ctx, m.controller, m.session, line))
+		}
+
+	case chatTurnDoneMsg:
+		m.waiting = false
+		m.input.Focus()
+		if msg.output != "" {
+			m.appendViewportLine(msg.output)
+		}
+		if msg.exit {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		return m, nil
+
+	case spinner.TickMsg:
+		if !m.waiting {
 			return m, nil
 		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	}
+
+	if m.waiting {
+		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -155,8 +222,18 @@ func (m *chatModel) appendViewportLine(line string) {
 	m.viewport.GotoBottom()
 }
 
+// View renders the scrollback, an in-flight "thinking…" spinner line
+// while m.waiting (see runChatTurnCmd), and the input line — always in
+// that order, so the spinner never displaces the scrollback's own last
+// line and always sits directly above the input the user is about to
+// reuse for their next line.
 func (m chatModel) View() tea.View {
-	return tea.NewView(m.viewport.View() + "\n" + m.input.View())
+	view := m.viewport.View() + "\n"
+	if m.waiting {
+		view += m.spinner.View() + " " + m.controller.tr.T(i18n.MsgSpinnerThinking) + "\n"
+	}
+	view += m.input.View()
+	return tea.NewView(view)
 }
 
 // runChatProgram wires m's ctx and I/O streams, builds the *tea.Program

@@ -43,7 +43,17 @@ type chatLLM interface {
 // after a successful call — see chatRuntime.handle). It is a pure
 // function of its arguments plus one Complete call: no session/bubbletea
 // coupling at all, so it is fully unit-testable with a fake chatLLM.
-func chatTurn(ctx context.Context, client chatLLM, lang i18n.Lang, history []llm.Message, text string) (string, error) {
+//
+// maxTokens is forwarded to llm.CompletionRequest.MaxTokens exactly like
+// every other Complete call site in this package (runChatDo's planner,
+// engine/explain.go, engine/diagnose.go — all read cfg.LLM.MaxTokens).
+// Omitting it here was chat's own bug: the anthropicConnector request
+// struct has no `omitempty` on max_tokens, so a zero value is sent to the
+// wire as a literal 0, and the Anthropic Messages API rejects that with a
+// 400 (max_tokens is a required field, 1-200000 — see
+// docs/phases/FAZ-02.md and the Anthropic API reference) — every plain
+// chat turn against Anthropic failed before this fix, unconditionally.
+func chatTurn(ctx context.Context, client chatLLM, lang i18n.Lang, history []llm.Message, text string, maxTokens int) (string, error) {
 	langName := "English"
 	if lang == i18n.LangTR {
 		langName = "Turkish"
@@ -54,8 +64,9 @@ func chatTurn(ctx context.Context, client chatLLM, lang i18n.Lang, history []llm
 	messages = append(messages, llm.Message{Role: "user", Content: text})
 
 	resp, err := client.Complete(ctx, llm.CompletionRequest{
-		System:   fmt.Sprintf(chatSystemPromptFormat, langName),
-		Messages: messages,
+		System:    fmt.Sprintf(chatSystemPromptFormat, langName),
+		Messages:  messages,
+		MaxTokens: maxTokens,
 	})
 	if err != nil {
 		return "", err

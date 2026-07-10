@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`comrade chat` gave no visible reply against Anthropic, ever**: every
+  plain-text chat turn's `llm.CompletionRequest` (`chatTurn`,
+  `internal/cli/chat.go`) never set `MaxTokens`, so it went out at its Go
+  zero value. `max_tokens` is a required Messages API field (range
+  1-200000); the Anthropic connector's request struct has no `omitempty`
+  on it, so a literal `"max_tokens": 0` was sent on the wire and rejected
+  with a 400 — unconditionally, on every single message, for anyone on
+  `llm.provider = anthropic`. `chatTurn` now takes and forwards
+  `cfg.LLM.MaxTokens`, exactly like every other `Complete` call site in
+  this codebase (`engine.Planner`/`Explainer`/`Diagnoser`) already does.
+  Pinned by `TestDispatchChatLinePlainTextRequestUsesConfiguredMaxTokens`.
+- **`comrade chat` froze with zero feedback for the length of every LLM
+  call**: `chatModel.Update` ran a chat turn's `Complete` call (and
+  `/do`'s whole plan+execute pipeline) synchronously inline, blocking
+  bubbletea's entire render loop — no spinner, no re-render, not even
+  Ctrl-C — for up to `llm.timeout_seconds` (60s by default) with the
+  terminal looking completely frozen. The dispatch now runs on an async
+  `tea.Cmd` (`runChatTurnCmd`) with an in-model spinner
+  (`charm.land/bubbles/v2/spinner`, reusing the same pastel style as the
+  `/do`/`explain`/`fix` waiting spinner) shown for the turn's duration and
+  cleared on reply or error; Ctrl-C now always quits immediately, even
+  mid-turn. Covered by `internal/cli/chatmodel_test.go` — previously
+  `chatModel.Update`/`View` had no test coverage at all.
 - **Stream goroutine leak on an abandoned channel** (FAZ 6 hardening item
   deferred at review time): every connector's `Stream` goroutine
   (`anthropic`, `google`, `ollama`, `openai_compat`) and `Client.Stream`'s

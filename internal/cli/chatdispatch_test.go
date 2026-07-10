@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,25 +19,53 @@ import (
 
 // fakeChatLLM is chatLLM's test double: it echoes back a fixed reply (or
 // a fixed error) and records every CompletionRequest it saw, exactly like
-// internal/engine's fakeCompleter.
+// internal/engine's fakeCompleter. mu guards calls: since chatModel.Update
+// now dispatches a turn via an async tea.Cmd (chatmodel.go's
+// runChatTurnCmd) rather than calling it inline, Complete runs on
+// bubbletea's own command goroutine while a headless-program test
+// (chatmodel_test.go) may concurrently poll callCount() from the test
+// goroutine — an unguarded slice append/read there is a genuine data race
+// (caught by `go test -race`), not merely a hypothetical one.
 type fakeChatLLM struct {
 	reply string
 	err   error
+
+	mu    sync.Mutex
 	calls []llm.CompletionRequest
 }
 
 func (f *fakeChatLLM) Complete(_ context.Context, req llm.CompletionRequest) (llm.CompletionResponse, error) {
+	f.mu.Lock()
 	f.calls = append(f.calls, req)
+	f.mu.Unlock()
 	if f.err != nil {
 		return llm.CompletionResponse{}, f.err
 	}
 	return llm.CompletionResponse{Text: f.reply}, nil
 }
 
+// callCount returns len(f.calls) under f.mu — the race-safe way to poll
+// call count from a goroutine other than whichever one is calling
+// Complete (see f.mu's doc comment above). Every single-goroutine test in
+// this file reads f.calls directly, which remains safe; only
+// chatmodel_test.go's cross-goroutine polling needs this.
+func (f *fakeChatLLM) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+// testChatMaxTokens is newTestController's fixed chatController.maxTokens
+// value — matching config.Default()'s llm.max_tokens (2048) purely so it
+// reads as a realistic config value, not a magic number — used to prove
+// (TestDispatchChatLinePlainTextRequestUsesConfiguredMaxTokens) that a
+// plain-text turn's CompletionRequest actually carries it through.
+const testChatMaxTokens = 2048
+
 func newTestController(t *testing.T, llmClient chatLLM, doRun chatDoRunner) (*chatController, *chatSession) {
 	t.Helper()
 	tr := i18n.NewTranslator(i18n.LangEN)
-	dc := &chatController{tr: tr, llm: llmClient, doRun: doRun, save: saveTranscript}
+	dc := &chatController{tr: tr, llm: llmClient, doRun: doRun, save: saveTranscript, maxTokens: testChatMaxTokens}
 	session := newChatSession(engine.ModeAsk)
 	return dc, session
 }
@@ -54,6 +83,33 @@ func TestDispatchChatLinePlainTextAppendsBothTurnsOnSuccess(t *testing.T) {
 	assert.Equal(t, "what does ls do", session.history[0].Content)
 	assert.Equal(t, "assistant", session.history[1].Role)
 	assert.Equal(t, "it lists files", session.history[1].Content)
+}
+
+// TestDispatchChatLinePlainTextRequestUsesConfiguredMaxTokens is the
+// regression pin for the "comrade chat gives no response at all against
+// Anthropic" bug: chatTurn (chat.go) used to build every plain-text
+// turn's llm.CompletionRequest without ever setting MaxTokens, so it went
+// out at its Go zero value (0). Every other Complete call site in this
+// codebase (engine.Planner/Explainer/Diagnoser) reads cfg.LLM.MaxTokens;
+// chat's plain-text path alone never did — see chatTurn's doc comment.
+// The Anthropic Messages API rejects max_tokens=0 with a 400 (it is a
+// required field, range 1-200000: github.com/charmbracelet/
+// anthropic-sdk-go's MessageNewParams reference, confirmed 2026-07),
+// which anthropicConnector's JSON struct sends as a literal `"max_tokens":
+// 0` because that field has no `omitempty` — so on the real provider,
+// EVERY plain-text chat turn against Anthropic failed, unconditionally,
+// before this fix. This test fails on the unfixed code (fake.calls[0].
+// MaxTokens == 0) and passes once chatController.maxTokens is threaded
+// through to chatTurn's request.
+func TestDispatchChatLinePlainTextRequestUsesConfiguredMaxTokens(t *testing.T) {
+	fake := &fakeChatLLM{reply: "ok"}
+	dc, session := newTestController(t, fake, nil)
+
+	_, exit := dc.dispatchChatLine(context.Background(), session, "hello")
+
+	assert.False(t, exit)
+	require.Len(t, fake.calls, 1)
+	assert.Equal(t, testChatMaxTokens, fake.calls[0].MaxTokens)
 }
 
 func TestDispatchChatLinePlainTextLeavesHistoryUntouchedOnLLMError(t *testing.T) {

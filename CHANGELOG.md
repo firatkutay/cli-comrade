@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-10
+
+### Added
+
+- **Homebrew, Scoop, winget, and Snap install channels** — `comrade` can now be
+  installed via `brew install comrade`, `scoop install comrade`, `winget install
+  FiratKutay.comrade`, and (once approved) `snap install cli-comrade --classic`,
+  in addition to the `curl … | sh` / `irm … | iex` scripts. See `docs/PACKAGING.md`.
+
+### Fixed
+
+- **Install scripts now resolve release assets via GitHub's no-API
+  `releases/latest/download` redirect** (not the rate-limited `api.github.com`
+  endpoint) and verify SHA-256 before installing.
+
 ## [0.1.0] - 2026-07-10
 
 ### Added

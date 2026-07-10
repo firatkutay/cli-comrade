@@ -434,6 +434,13 @@ comrade explain "git rebase -i HEAD~5"
 Interactive, context-preserving chat session (bubbletea TUI). No flags
 of its own beyond `-h`.
 
+**Requires an interactive TTY.** bubbletea itself requires a real
+terminal and otherwise hangs on non-TTY stdin; `comrade chat` now
+checks this up front (`requireInteractiveTTY`, `internal/cli/
+runtime.go`) and returns a friendly i18n'd error
+(`MsgChatRequiresTTY`) instead of hanging when stdin is piped or
+redirected.
+
 ```
 comrade chat
 ```
@@ -490,7 +497,13 @@ can itself look like a flag, e.g. `comrade config set safety.
 denylist_extra --foo`) and so likewise handles `-h`/`--help` and a
 wrong argument count itself — an i18n'd usage error
 (`MsgConfigSetUsageError`) rather than cobra's raw English
-`ExactArgs(2)` message.
+`ExactArgs(2)` message. **Known limitation**: `config set` rewrites
+`config.toml` via `viper.WriteConfigAs` (`SetAndSave`,
+`internal/config/loader.go`), which does not preserve hand-written `#`
+comments — any exist in the file before a `config set` run are gone
+after it; the keys and values themselves are unaffected. This is a
+pre-existing, documented, deliberately deferred limitation (see
+`docs/PROGRESS.md`), not a new regression.
 
 ```
 comrade config path
@@ -515,6 +528,23 @@ Manages stored provider API keys (keychain-first, file fallback — §7).
 comrade auth login anthropic
 comrade auth status
 ```
+
+**`login` requires an interactive TTY** (the same `requireInteractiveTTY`
+check `chat` uses, `MsgAuthLoginRequiresTTY`) — a piped/redirected/
+scripted invocation gets a friendly i18n'd error up front instead of
+`x/term.ReadPassword`'s own raw platform errno ("inappropriate ioctl
+for device" on Unix), which named no actionable cause. The entered key
+is **pinged before anything is ever written**: `pingProvider` verifies
+the key directly, in memory, never through the store, so there is
+nothing to undo on rejection. If the provider itself rejects the key
+(`llm.ErrAuthRejected`, a 401/403), `login` returns a genuine command
+error and **the store is never touched at all** — no write, no delete,
+no window where a known-bad key sits saved. Every other outcome —
+success, or a ping failure that isn't a rejection (network, timeout, a
+transient 5xx) — calls `store.Set` exactly once, after the ping,
+preserving the original "store even if the key is merely unverifiable"
+behavior: an offline user, or one hitting a transient provider-side
+error, isn't blocked from saving a key they believe is correct.
 
 ### `comrade history`
 
@@ -634,7 +664,11 @@ so earlier successful attempts are unaffected and later attempts still
 get a chance. An HTTP 401/403 (`ErrAuthRejected`) stops the whole chain
 immediately (retrying a rejected credential against another provider
 makes no sense); any other error (timeout, transport failure, malformed
-response) moves to the next attempt.
+response) moves to the next attempt. The same sentinel also drives
+`comrade auth login`'s pre-write verification (§5): the entered key is
+pinged before it is ever stored, and `ErrAuthRejected` on that ping
+means `login` never writes the key at all, rather than writing then
+undoing.
 
 **Timeout**: `llm.timeout_seconds` (default 60s if unset/non-positive)
 wraps every single attempt via `context.WithTimeout`, independently —
@@ -750,7 +784,10 @@ never-written account name. When no keychain backend is available, falls
 back to a single file (`<config dir>/credentials`) created with `0600`
 permissions, containing each key **base64-obfuscated — explicitly NOT
 encrypted** (the file's own header comment says so), with permissions
-repaired to `0600` on every read if they've drifted.
+repaired to `0600` on every read if they've drifted. The one-time
+stderr notice printed when this fallback is used is i18n'd and
+softened (§10) — `internal/secrets` itself supplies no wording of its
+own.
 
 ### Audit log (`internal/audit`)
 
@@ -946,6 +983,33 @@ translation decision lives in `internal/cli` where a `Translator` is
 actually available — the same "engine/config packages stay
 presentation-agnostic, `internal/cli` renders" split this whole
 architecture already follows elsewhere (§2).
+
+**A third application of the same boundary-translation pattern**
+covers `internal/llm`'s own structured errors: `classifyLLMError`/
+`translateLLMError` (`internal/cli/runtime.go`) re-render a
+`*llm.KeyMissingError` — currently the one case this classifies — as
+a friendly i18n'd "no API key found — run `comrade auth login
+<provider>`" message, again via `errors.As` rather than parsing
+`internal/llm`'s own English error text. `do`/`fix`/`explain` all
+call `translateLLMError` directly; chat's equivalent,
+`renderChatLLMError` (`internal/cli/chatdispatch.go`), calls the same
+underlying `classifyLLMError` since chat's dispatch runs inside a
+bubbletea model rather than through a `*cobra.Command`. In every case,
+the original, untranslated wrap-chain detail is only written
+(alongside the friendly message) when `COMRADE_DEBUG` is set — the
+same debug-detail convention `hook.go` and `comrade upgrade`'s
+fetch-failure message (§5) already established.
+
+**Credential-storage warning, softened + i18n'd**: the file-fallback
+notice (§8) now follows the identical `internal/config`-error pattern
+— `internal/secrets.NewStoreWithWarning` takes the already-rendered
+warning text as a parameter rather than owning any wording itself, so
+`internal/secrets` stays completely i18n-free; `internal/cli/
+secretsstore.go` supplies it by resolving `i18n.
+MsgSecretsFileFallbackWarning` before calling in. The wording itself
+was also softened while being translated ("no system keychain found,
+so API keys are being saved to a local file instead" rather than the
+previous, blunter "no OS keychain available on this machine").
 
 ## 11. Packaging, distribution & self-update
 

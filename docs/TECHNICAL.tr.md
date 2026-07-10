@@ -453,6 +453,13 @@ comrade explain "git rebase -i HEAD~5"
 Etkileşimli, bağlamı koruyan chat oturumu (bubbletea TUI). `-h` dışında
 kendi flag'i yok.
 
+**Etkileşimli bir TTY gerektirir.** bubbletea'nın kendisi gerçek bir
+terminal gerektirir ve aksi halde TTY olmayan stdin'de asılı kalır;
+`comrade chat` artık bunu önceden kontrol eder (`requireInteractiveTTY`,
+`internal/cli/runtime.go`) ve stdin pipe'landığında veya yönlendiril-
+diğinde asılı kalmak yerine dostane, i18n'li bir hata döner
+(`MsgChatRequiresTTY`).
+
 ```
 comrade chat
 ```
@@ -509,7 +516,14 @@ kullanır (bir değer kendisi bir flag gibi görünebilir, ör. `comrade
 config set safety.denylist_extra --foo`) ve bu yüzden benzer şekilde
 `-h`/`--help`'i ve yanlış argüman sayısını kendisi ele alır — cobra'nın
 ham İngilizce `ExactArgs(2)` mesajı yerine i18n'li bir kullanım hatası
-(`MsgConfigSetUsageError`).
+(`MsgConfigSetUsageError`). **Bilinen kısıtlama**: `config set`,
+`config.toml`'ı `viper.WriteConfigAs` üzerinden yeniden yazar
+(`SetAndSave`, `internal/config/loader.go`), ki bu elle yazılmış `#`
+yorumlarını korumaz — bir `config set` çalıştırmasından önce dosyada
+var olan yorumlar, çalıştırmadan sonra kaybolur; anahtar/değerlerin
+kendisi etkilenmez. Bu, önceden var olan, belgelenmiş, bilinçli olarak
+ertelenmiş bir kısıtlamadır (bkz. `docs/PROGRESS.md`), yeni bir
+regresyon değil.
 
 ```
 comrade config path
@@ -535,6 +549,25 @@ fallback'i — §7).
 comrade auth login anthropic
 comrade auth status
 ```
+
+**`login`, etkileşimli bir TTY gerektirir** (`chat`'in kullandığı aynı
+`requireInteractiveTTY` kontrolü, `MsgAuthLoginRequiresTTY`) —
+pipe'lanmış/yönlendirilmiş/betiklenmiş bir çağrı, `x/term.ReadPassword`'ın
+kendi ham platform errno'su ("inappropriate ioctl for device", Unix'te)
+— hiçbir eyleme geçirilebilir neden adlandırmayan — yerine önceden
+dostane, i18n'li bir hata alır. Girilen key, **hiçbir şey yazılmadan
+önce ping'lenir**: `pingProvider`, key'i doğrudan, bellekte doğrular,
+asla store üzerinden değil — bu yüzden reddedilirse geri alınacak
+hiçbir şey yoktur. Provider key'i kendisi reddederse
+(`llm.ErrAuthRejected`, bir 401/403), `login` gerçek bir komut hatası
+döner ve **store'a hiç dokunulmaz** — ne yazma, ne silme, bozuk olduğu
+bilinen bir key'in saklı kaldığı bir pencere yok. Diğer her sonuç —
+başarı, veya bir ret olmayan ping başarısızlığı (ağ, timeout, geçici
+bir 5xx) — ping'den sonra tam olarak bir kez `store.Set`'i çağırır, bu
+da orijinal "key yalnızca doğrulanamıyorsa bile sakla" davranışını
+korur: çevrimdışı bir kullanıcı, veya geçici bir provider-taraflı hata
+yaşayan biri, doğru olduğuna inandığı bir key'i kaydetmekten
+engellenmez.
 
 ### `comrade history`
 
@@ -655,7 +688,11 @@ haline gelir, böylece önceki başarılı denemeler etkilenmez ve sonraki
 denemeler hâlâ bir şans elde eder. Bir HTTP 401/403 (`ErrAuthRejected`)
 tüm zinciri hemen durdurur (reddedilen bir kimlik bilgisini başka bir
 provider'a karşı yeniden denemek anlamsızdır); diğer her hata (timeout,
-transport hatası, bozuk yanıt) bir sonraki denemeye geçer.
+transport hatası, bozuk yanıt) bir sonraki denemeye geçer. Aynı
+sentinel, `comrade auth login`'in yazmadan-önce-doğrulama davranışını
+da yönetir (§5): girilen key hiç saklanmadan önce ping'lenir, ve bu
+ping'te bir `ErrAuthRejected`, `login`'in key'i hiç yazmaması anlamına
+gelir — yazıp sonra geri almak yerine.
 
 **Timeout**: `llm.timeout_seconds` (ayarlanmamışsa/pozitif değilse
 varsayılan 60sn), `context.WithTimeout` ile her tek denemeyi bağımsız
@@ -776,6 +813,9 @@ backend'i mevcut değilse, tek bir dosyaya (`<config dizini>/credentials`)
 `0600` izinleriyle oluşturularak fallback yapılır; içindeki her key
 **base64-obfuscated — açıkça ŞİFRELİ DEĞİL** (dosyanın kendi header
 yorumu bunu söylüyor), her okumada izinler `0600`'e sapmışsa onarılarak.
+Bu fallback kullanıldığında basılan tek seferlik stderr bildirimi
+i18n'li ve yumuşatılmıştır (§10) — `internal/secrets`'ın kendisi
+hiçbir kelime sağlamaz.
 
 ### Audit log (`internal/audit`)
 
@@ -985,6 +1025,34 @@ yok), ve her çeviri kararı, bir `Translator`'ın gerçekten mevcut olduğu
 `internal/cli`'de yaşar — bu mimarinin başka yerlerde de zaten
 izlediği "engine/config paketleri sunumdan bağımsız kalır,
 `internal/cli` render eder" ayrımının aynısı (§2).
+
+**Aynı sınır-çevirme deseninin üçüncü bir uygulaması**,
+`internal/llm`'in kendi yapılandırılmış hatalarını kapsar:
+`classifyLLMError`/`translateLLMError` (`internal/cli/runtime.go`), bir
+`*llm.KeyMissingError`'ı — bu sınıflandırmanın şu an tek durumu —
+dostane, i18n'li bir "API key bulunamadı — `comrade auth login
+<provider>` çalıştırın" mesajı olarak yeniden render eder, yine
+`internal/llm`'in kendi İngilizce hata metnini ayrıştırmak yerine
+`errors.As` kullanarak. `do`/`fix`/`explain`, `translateLLMError`'ı
+doğrudan çağırır; chat'in eşdeğeri, `renderChatLLMError`
+(`internal/cli/chatdispatch.go`), aynı temel `classifyLLMError`'ı
+çağırır — çünkü chat'in dispatch'i bir `*cobra.Command` üzerinden
+değil, bir bubbletea modeli içinde çalışır. Her iki durumda da,
+orijinal, çevrilmemiş wrap-zinciri detayı yalnızca (dostane mesajın
+yanında) `COMRADE_DEBUG` ayarlıyken yazılır — `hook.go` ve `comrade
+upgrade`'in fetch-başarısızlığı mesajının (§5) zaten kurduğu aynı
+debug-detay kuralı.
+
+**Kimlik-bilgisi-depolama uyarısı, yumuşatılmış + i18n'li**: dosya-
+fallback bildirimi (§8) artık aynı `internal/config`-hatası desenini
+izliyor — `internal/secrets.NewStoreWithWarning`, kendi kelimesini
+sahiplenmek yerine önceden render edilmiş uyarı metnini bir parametre
+olarak alır, bu yüzden `internal/secrets` tamamen i18n'siz kalır;
+`internal/cli/secretsstore.go`, `i18n.MsgSecretsFileFallbackWarning`'i
+çözerek bunu çağırmadan önce sağlar. Metnin kendisi de çevrilirken
+yumuşatıldı ("bu makinede hiçbir OS keychain mevcut değil" tarzı önceki,
+daha sert ifade yerine, "sistem anahtarlığı bulunamadı, bu yüzden API
+anahtarları yerel bir dosyaya kaydediliyor").
 
 ## 11. Paketleme, dağıtım ve kendi kendini güncelleme
 

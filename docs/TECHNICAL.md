@@ -184,7 +184,7 @@ flowchart TD
 ```
 cmd/comrade/            main() — builds internal/cli.NewRootCmd and calls Execute
 internal/
-  cli/                  cobra subcommands, flag wiring, config/runtime glue, i18n-help wiring
+  cli/                  cobra subcommands, flag wiring, config/runtime glue, i18n-help wiring, color decision (color.go), wait spinner (spinner.go)
   config/                viper loading, schema, OS-specific path resolution, validation
   context/               environment/last-command/history/package-manager collection
   redact/                secret-masking Regexp pipeline, applied to every outbound LLM payload
@@ -205,11 +205,7 @@ third_party/              vendored atotto-clipboard fork (see §4)
 
 Every non-trivial package under `internal/` starts with a `doc.go`
 carrying its package-level design comment — read that file first when
-orienting in a package. Note: `internal/executor/doc.go` and
-`internal/audit/doc.go`'s package comments still read "empty placeholder
-in FAZ 0" even though both packages are fully implemented — a stale doc
-comment from early phases (see "Discrepancies" in this task's report;
-not fixed here per this task's scope boundary).
+orienting in a package.
 
 ## 4. Technology stack
 
@@ -266,6 +262,58 @@ by `internal/cli/flags.go`'s `addExecutionFlags`; not on `explain`,
 
 `--auto`/`--ask`/`--info` are mutually exclusive; passing more than one
 is a usage error (`modeFlagValue`, `flags.go`).
+
+**Help output is grouped, has a root Examples section, and is
+colorized** (`internal/cli/help.go`). `--help` at any level lists
+commands under three i18n'd group titles — Core (`do`/`fix`/`explain`/
+`chat`), Setup (`auth`/`init`/`config`), Info (`history`/`upgrade`) —
+plus cobra's default "Additional Commands:" bucket for the few left
+ungrouped (`hook`, `completion`, `help`). Root's own `--help` also
+prints a translated Examples block (`root.Example`,
+`MsgHelpExamplesRoot`). When color is enabled (see below), section/
+group headers render in a bold pastel lavender, command names in
+pastel cyan/teal, and flag names (including one-letter shorthand) in
+pastel peach — fixed ANSI256 codes rather than lipgloss's
+live-terminal-query-based adaptive color, to avoid paying a blocking
+terminal query on every `--help`/`--version` (the same cold-start
+concern §13 covers for the vendored clipboard fork).
+
+**Color is decided in exactly one place**: `internal/cli.
+resolveColorEnabled` (`internal/cli/color.go`). `general.color=false`
+is always the final word — an explicit opt-out. Otherwise,
+`colorprofile.Detect` on the target writer decides per-invocation:
+plain output by default for a non-TTY/piped run, honoring
+[NO_COLOR](https://no-color.org) (unconditionally disables) and
+[CLICOLOR_FORCE=1](https://bixense.com/clicolors/) (forces color on
+even when not a TTY — what non-interactive `--help` output checks
+use). On Windows, when color resolves on, `lipgloss.
+EnableLegacyWindowsANSI` opts the console into
+`ENABLE_VIRTUAL_TERMINAL_PROCESSING` so legacy `conhost.exe` (still
+what Windows PowerShell 5.1 typically runs in) actually interprets the
+ANSI it's given — a no-op elsewhere, including when already inside
+Windows Terminal/PowerShell 7. Every color-capable call site (help,
+the spinner below, chat, `do`/`fix`/`explain`, the ask-mode prompt)
+goes through this same function, so there is exactly one place that
+ever decides whether ANSI gets written.
+
+**A waiting spinner** (`internal/cli/spinner.go`) animates on stderr
+during each blocking LLM call (`do`/`fix`'s planning and diagnosis,
+`explain`, chat's `/do`) — a braille frame set borrowed from
+`bubbles/v2/spinner`'s frame data (not its full `tea.Model`, since none
+of these call sites run inside an active bubbletea program at that
+point), labeled with the i18n'd "thinking…" text
+(`i18n.MsgSpinnerThinking`). It is driven by the same
+`resolveColorEnabled` decision (evaluated against stderr), so it is a
+complete no-op — no goroutine started, nothing written — whenever
+color is off (non-TTY, `general.color=false`, `NO_COLOR`, or
+`CLICOLOR_FORCE` needed but absent). Its stop function always blocks
+until the spinner line is fully cleared (an ANSI erase-in-line, not a
+fixed-width overwrite) before returning, guaranteeing nothing the
+caller prints next ever lands on the same line. Chat's ordinary
+plain-text turn is deliberately excluded from this spinner — it runs
+while a live bubbletea program owns the terminal, which renders its
+own UI state instead; only chat's `/do` (which releases the terminal
+back to a plain synchronous call first) uses it.
 
 ### `comrade` (bare, no subcommand)
 
@@ -416,6 +464,12 @@ snippet text, independent of how many profiles exist). On non-Windows,
 | `--print` | Print the snippet only; make no file changes |
 | `--remove` | Remove the cli-comrade block from the rc/profile file(s) |
 | `-y`, `--yes` | Skip the confirmation prompt |
+
+The y/N confirmation itself (`confirmYesNo`, `internal/cli/init.go`)
+accepts language-appropriate answers: `e`/`evet` when the resolved
+interface language is Turkish, `y`/`yes` otherwise — mirroring
+`internal/tui/confirm.go`'s per-language, never-merged key discipline
+(§1).
 
 ```
 comrade init bash
@@ -724,14 +778,26 @@ merged (§1) — and the coverage scan's `WriteString` recognition is what
 keeps `confirm.go` (and any future `WriteString`-based prompt) enforced
 going forward instead of merely fixed once.
 
-**Documented exception**: `internal/cli/hook.go` is the sole allowlisted
-file — `recordLastCommand`'s `COMRADE_DEBUG`-gated diagnostic line (fires
-on every shell prompt, a hot path) and `hook record`'s three flag
-descriptions are deliberately left untranslated: both are
-developer-/internal-facing (an explicit debug env var; a hidden command
-only ever invoked by generated shell snippets), and loading config there
-just to resolve a display language would add overhead to code that runs
-on every single prompt.
+**Documented exceptions**: `internal/cli/catalog_coverage_test.go`'s
+`catalogCoverageAllowlist` currently has exactly two entries, each with
+its own justification comment in the source, not a blanket exemption —
+`TestCatalogCoverageAllowlistHasNoStaleEntries` fails the moment either
+one's last flagged literal is migrated away, forcing that entry to be
+deleted:
+
+- `hook.go` — `recordLastCommand`'s `COMRADE_DEBUG`-gated diagnostic
+  line (fires on every shell prompt, a hot path) and `hook record`'s
+  three flag descriptions are deliberately left untranslated: both are
+  developer-/internal-facing (an explicit debug env var; a hidden
+  command only ever invoked by generated shell snippets), and loading
+  config there just to resolve a display language would add overhead to
+  code that runs on every single prompt.
+- `spinner.go` — the wait spinner's line-clear write is the literal
+  `"\r\x1b[K"`, a raw ANSI cursor-return + erase-in-line control
+  sequence, not language text; the coverage scan's letter-detection
+  heuristic has no way to distinguish the trailing `"K"` of that escape
+  code from real prose, so it flags this one non-prose literal — there
+  is nothing here for any `i18n.Translator` to translate.
 
 ## 11. Packaging, distribution & self-update
 

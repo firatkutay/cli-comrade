@@ -192,7 +192,7 @@ flowchart TD
 ```
 cmd/comrade/            main() — internal/cli.NewRootCmd'i kurar ve Execute'u çağırır
 internal/
-  cli/                  cobra alt komutları, flag bağlama, config/runtime bağlama, i18n-help bağlama
+  cli/                  cobra alt komutları, flag bağlama, config/runtime bağlama, i18n-help bağlama, renk kararı (color.go), bekleme spinner'ı (spinner.go)
   config/                viper yükleme, şema, OS'e özel yol çözümleme, doğrulama
   context/               ortam/son-komut/geçmiş/paket-yöneticisi toplama
   redact/                sır maskeleme regex boru hattı, her giden LLM payload'ına uygulanır
@@ -213,12 +213,7 @@ third_party/              vendored atotto-clipboard fork'u (bkz. §4)
 
 `internal/` altındaki her önemsiz olmayan paket, paket-seviyesi tasarım
 yorumunu taşıyan bir `doc.go` ile başlar — bir pakette yön bulmaya bu
-dosyayı okuyarak başlayın. Not: `internal/executor/doc.go` ve
-`internal/audit/doc.go`'nun paket yorumları, her iki paket de tamamen
-uygulanmış olmasına rağmen hâlâ "FAZ 0'da boş bir yer tutucu" yazıyor —
-erken fazlardan kalma güncel olmayan bir yorum (bu görevin raporundaki
-"Discrepancies" bölümüne bakın; bu görevin kapsamı gereği burada
-düzeltilmedi).
+dosyayı okuyarak başlayın.
 
 ## 4. Teknoloji yığını
 
@@ -279,6 +274,62 @@ yoktur):
 
 `--auto`/`--ask`/`--info` birbirini dışlar; birden fazlasının verilmesi
 bir kullanım hatasıdır (`modeFlagValue`, `flags.go`).
+
+**Help çıktısı gruplanmıştır, bir root Examples bölümü vardır, ve
+renklidir** (`internal/cli/help.go`). Herhangi bir seviyede `--help`,
+komutları üç i18n'li grup başlığı altında listeler — Core
+(`do`/`fix`/`explain`/`chat`), Setup (`auth`/`init`/`config`), Info
+(`history`/`upgrade`) — artı cobra'nın gruplanmamış birkaç komut için
+(`hook`, `completion`, `help`) varsayılan "Additional Commands:"
+kovası. Root'un kendi `--help`'i ayrıca çevrilmiş bir Examples bloğu
+yazdırır (`root.Example`, `MsgHelpExamplesRoot`). Renk etkinken
+(aşağıya bakın), bölüm/grup başlıkları kalın pastel lavantada, komut
+adları pastel cyan/tealde, ve flag adları (tek harfli kısaltmalar
+dahil) pastel şeftalide render edilir — lipgloss'un canlı-terminal-
+sorgusu tabanlı adaptive renk yerine, her `--help`/`--version`'da
+bloklayıcı bir terminal sorgusu ödememek için sabit ANSI256 kodları
+(§13'ün vendored clipboard fork'u için ele aldığı aynı cold-start
+kaygısı).
+
+**Renk tam olarak tek bir yerde kararlaştırılır**: `internal/cli.
+resolveColorEnabled` (`internal/cli/color.go`). `general.color=false`
+her zaman son sözdür — açık bir opt-out. Aksi halde, hedef writer
+üzerinde `colorprofile.Detect` çağrı-başına karar verir: TTY olmayan/
+pipe'lanmış bir çalıştırma için varsayılan düz çıktı,
+[NO_COLOR](https://no-color.org)'ı (koşulsuz kapatır) ve
+[CLICOLOR_FORCE=1](https://bixense.com/clicolors/)'i (TTY olmasa bile
+rengi zorlar — etkileşimli olmayan `--help` çıktı kontrollerinin
+kullandığı) onurlandırarak. Windows'ta, renk açık çözüldüğünde,
+`lipgloss.EnableLegacyWindowsANSI`, konsolu
+`ENABLE_VIRTUAL_TERMINAL_PROCESSING`'e sokar, böylece eski
+`conhost.exe` (hâlâ Windows PowerShell 5.1'in tipik olarak çalıştığı
+yer) kendisine verilen ANSI'yi gerçekten yorumlar — başka yerlerde
+(Windows Terminal/PowerShell 7 içindeyken dahil) bir no-op'tur. Renk
+yeteneği olan her çağrı noktası (help, aşağıdaki spinner, chat,
+`do`/`fix`/`explain`, ask-modu prompt'u) aynı bu fonksiyondan geçer, bu
+yüzden ANSI'nin yazılıp yazılmayacağına karar veren tam olarak tek bir
+yer vardır.
+
+**Bir bekleme spinner'ı** (`internal/cli/spinner.go`), her bloklayan
+LLM çağrısı sırasında (`do`/`fix`'in planlama ve tanı adımları,
+`explain`, chat'in `/do`'su) stderr üzerinde animasyon yapar —
+`bubbles/v2/spinner`'ın frame verisinden ödünç alınan bir braille
+frame seti (tam `tea.Model`'i değil, çünkü bu çağrı noktalarının
+hiçbiri o anda aktif bir bubbletea programı içinde çalışmaz), i18n'li
+"düşünüyor…" metniyle etiketlenir (`i18n.MsgSpinnerThinking`). Aynı
+`resolveColorEnabled` kararıyla (stderr'e karşı değerlendirilir)
+yönlendirilir, bu yüzden renk kapalıyken (TTY değil,
+`general.color=false`, `NO_COLOR`, veya `CLICOLOR_FORCE` gerekli ama
+yoksa) tamamen bir no-op'tur — hiçbir goroutine başlatılmaz, hiçbir
+şey yazılmaz. Durdurma fonksiyonu, dönmeden önce spinner satırının
+tamamen temizlendiğinden (sabit genişlikte bir üstüne-yazma değil, bir
+ANSI erase-in-line) her zaman emin olur, bu da çağıranın bir sonraki
+yazdırdığı şeyin asla aynı satıra denk gelmemesini garanti eder.
+Chat'in sıradan düz-metin turu bu spinner'dan bilinçli olarak hariç
+tutulmuştur — canlı bir bubbletea programı terminali sahiplenirken
+çalışır, ki bu da kendi UI durumunu render eder; yalnızca chat'in
+`/do`'su (terminali önce düz senkron bir çağrıya geri bırakan) bunu
+kullanır.
 
 ### `comrade` (çıplak, alt komutsuz)
 
@@ -432,6 +483,11 @@ snippet metnini yazdırır). Windows dışında, `powershell` yine yalnızca
 | `--print` | Sadece snippet'i yazdır; hiçbir dosya değişikliği yapma |
 | `--remove` | cli-comrade bloğunu rc/profile dosyasından/dosyalarından kaldır |
 | `-y`, `--yes` | Onay prompt'unu atla |
+
+y/N onayının kendisi (`confirmYesNo`, `internal/cli/init.go`), dile
+uygun yanıtları kabul eder: çözümlenen arayüz dili Türkçeyse
+`e`/`evet`, aksi halde `y`/`yes` — `internal/tui/confirm.go`'nun
+dile-özel, asla birleştirilmeyen tuş disiplinini yansıtır (§1).
 
 ```
 comrade init bash
@@ -755,14 +811,27 @@ taramasının `WriteString` tanıması, `confirm.go`'yu (ve gelecekteki
 herhangi bir `WriteString` tabanlı prompt'u) yalnızca bir kez
 düzeltmek yerine bundan sonra da denetimde tutan şeydir.
 
-**Belgelenmiş istisna**: `internal/cli/hook.go`, tek allowlist'lenmiş
-dosyadır — `recordLastCommand`'ın `COMRADE_DEBUG`-kapılı tanı satırı
-(her shell prompt'unda tetiklenir, sıcak bir yol) ve `hook record`'un
-üç flag açıklaması bilinçli olarak çevrilmeden bırakılmıştır: ikisi de
-geliştirici-/dahili-yönelimlidir (açık bir debug ortam değişkeni; yalnızca
-üretilen shell snippet'leri tarafından çağrılan gizli bir komut), ve
-orada bir görüntüleme dilini çözmek için config yüklemek, her tek
-prompt'ta çalışan koda ek yük getirir.
+**Belgelenmiş istisnalar**: `internal/cli/catalog_coverage_test.go`'nun
+`catalogCoverageAllowlist`'inde şu anda tam olarak iki girdi var, her
+biri kaynak kodda kendi gerekçe yorumuyla — genel bir muafiyet değil;
+`TestCatalogCoverageAllowlistHasNoStaleEntries`, ikisinden birinin son
+işaretlenmiş literal'i taşındığı anda başarısız olur, bu da o girdinin
+silinmesini zorunlu kılar:
+
+- `hook.go` — `recordLastCommand`'ın `COMRADE_DEBUG`-kapılı tanı satırı
+  (her shell prompt'unda tetiklenir, sıcak bir yol) ve `hook record`'un
+  üç flag açıklaması bilinçli olarak çevrilmeden bırakılmıştır: ikisi de
+  geliştirici-/dahili-yönelimlidir (açık bir debug ortam değişkeni;
+  yalnızca üretilen shell snippet'leri tarafından çağrılan gizli bir
+  komut), ve orada bir görüntüleme dilini çözmek için config yüklemek,
+  her tek prompt'ta çalışan koda ek yük getirir.
+- `spinner.go` — bekleme spinner'ının satır temizleme yazımı, tam olarak
+  `"\r\x1b[K"` literal'idir — bir dil metni değil, ham bir ANSI
+  imleç-döndürme + satır-içi-silme kontrol dizisi; kapsam taramasının
+  harf-tespit sezgisi, bu escape kodunun sonundaki `"K"`'yı gerçek
+  düzyazıdan ayırt edemez, bu yüzden bu tek düzyazı-olmayan literal'i
+  işaretler — burada herhangi bir `i18n.Translator`'ın çevirebileceği
+  hiçbir şey yoktur.
 
 ## 11. Paketleme, dağıtım ve kendi kendini güncelleme
 

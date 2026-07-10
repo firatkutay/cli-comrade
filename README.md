@@ -98,10 +98,14 @@ module whose `go.mod` contains `replace`/`exclude`. `git clone` + `make
 build` sidesteps this because the checkout itself becomes the main module.
 Details: [docs/INSTALL.md](docs/INSTALL.md).
 
-Once a release is tagged, Homebrew (cask), winget, Scoop, `.deb`/`.rpm`, and
-signed/checksum-verified install scripts will all build from the same
-goreleaser pipeline (`.goreleaser.yaml`) — see docs/INSTALL.md for the exact
-commands each channel will use.
+**v0.1.0 ships:** prebuilt archives for linux/darwin/windows (amd64+arm64) plus
+`.deb`/`.rpm` packages, `checksums.txt`, and the signed/checksum-verified
+`install.sh`/`install.ps1` scripts, all as [GitHub Release](https://github.com/firatkutay/cli-comrade/releases)
+assets from the same goreleaser pipeline (`.goreleaser.yaml`). Homebrew
+(cask), winget, and Scoop are **not live yet** — those publishers need a
+pre-existing tap/bucket/manifest repo goreleaser can push to, which don't
+exist yet; they'll be enabled in a follow-up release once those repos are
+created. See docs/INSTALL.md for the exact commands each live channel uses.
 
 ### Quick start
 
@@ -247,10 +251,15 @@ make build          # -> ./comrade
 `git clone` + `make build` bunu aşar, çünkü checkout'un kendisi ana modül
 haline gelir. Detaylar: [docs/INSTALL.md](docs/INSTALL.md).
 
-Bir sürüm etiketlendiğinde, Homebrew (cask), winget, Scoop, `.deb`/`.rpm` ve
-imzalı/checksum doğrulamalı kurulum script'lerinin hepsi aynı goreleaser
-pipeline'ından (`.goreleaser.yaml`) üretilecek — her kanalın kullanacağı tam
-komutlar için docs/INSTALL.md'ye bakın.
+**v0.1.0'da olanlar:** linux/darwin/windows (amd64+arm64) için hazır
+arşivler, `.deb`/`.rpm` paketleri, `checksums.txt` ve imzalı/checksum
+doğrulamalı `install.sh`/`install.ps1` script'leri — hepsi aynı goreleaser
+pipeline'ından (`.goreleaser.yaml`) üretilen [GitHub Release](https://github.com/firatkutay/cli-comrade/releases)
+eklentileri olarak. Homebrew (cask), winget ve Scoop **henüz canlı değil** —
+bu yayıncılar goreleaser'ın push edebileceği önceden var olan bir
+tap/bucket/manifest deposu gerektiriyor, bunlar henüz oluşturulmadı; bu
+depolar kurulduğunda sonraki bir sürümde etkinleştirilecekler. Her canlı
+kanalın kullanacağı tam komutlar için docs/INSTALL.md'ye bakın.
 
 ### Hızlı başlangıç
 

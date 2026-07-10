@@ -50,66 +50,76 @@ release:
     owner: firatkutay
     name: cli-comrade
 
-# --- Homebrew tap (macOS/Linux) --------------------------------------------
+# --- Homebrew tap (macOS/Linux) — DISABLED for v0.1.0 ----------------------
 # `brews:` (Homebrew Formula) is deprecated as of goreleaser v2.16 in
 # favor of `homebrew_casks:` (Homebrew Cask) — see
 # https://goreleaser.com/deprecations#brews; `goreleaser check` fails on
-# a deprecated key, so this uses the current, non-deprecated form.
-# Target repo (github.com/firatkutay/homebrew-tap) does not need to exist
-# yet for `goreleaser release --snapshot --clean` (snapshot mode never
-# publishes); it DOES need to exist, empty, before a real `goreleaser
-# release` run. A real run needs a token with push access to that repo —
-# GITHUB_TOKEN (the default) only works if homebrew-tap is owned by the
-# same account/org and GITHUB_TOKEN has cross-repo write access; otherwise
-# set a separate PAT as the HOMEBREW_TAP_GITHUB_TOKEN secret and reference
-# it via repository.token below (commented — enable once that secret
-# exists).
-homebrew_casks:
-  - name: comrade
-    repository:
-      owner: firatkutay
-      name: homebrew-tap
-      # token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Casks
-    homepage: "https://github.com/firatkutay/cli-comrade"
-    description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+# a deprecated key, so the block below (kept commented, not deleted, so
+# it is ready to re-enable) uses the current, non-deprecated form.
+#
+# Disabled because github.com/firatkutay/homebrew-tap does not exist yet
+# (verified via `gh repo view firatkutay/homebrew-tap` during the v0.1.0
+# preflight — GraphQL: could not resolve to a Repository). A real
+# `goreleaser release` run publishing this section would fail outright
+# (push target 404s) and take the whole release down with it — every
+# publisher in a single goreleaser run is all-or-nothing for that run's
+# success. Re-enable once the target repo exists, empty, AND either (a)
+# GITHUB_TOKEN has cross-repo write access to it (only true if it's
+# owned by this same account/org with no extra branch protection), or
+# (b) a PAT with `repo` scope on it is set as the HOMEBREW_TAP_GITHUB_TOKEN
+# secret and referenced via the commented `repository.token:` line below.
+#
+# homebrew_casks:
+#   - name: comrade
+#     repository:
+#       owner: firatkutay
+#       name: homebrew-tap
+#       # token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+#     directory: Casks
+#     homepage: "https://github.com/firatkutay/cli-comrade"
+#     description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
 
-# --- Scoop bucket (Windows) -------------------------------------------------
-# Same "repo must pre-exist for a real release" note as brews above;
-# snapshot mode does not require it. A cross-repo push needs
-# SCOOP_BUCKET_GITHUB_TOKEN if homebrew/scoop live outside the account
-# GITHUB_TOKEN already has write access to.
-scoops:
-  - name: comrade
-    repository:
-      owner: firatkutay
-      name: scoop-bucket
-      # token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
-    homepage: "https://github.com/firatkutay/cli-comrade"
-    description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
-    license: MIT
+# --- Scoop bucket (Windows) — DISABLED for v0.1.0 ---------------------------
+# Disabled for the same reason as homebrew_casks above:
+# github.com/firatkutay/scoop-bucket does not exist yet (verified via
+# `gh repo view firatkutay/scoop-bucket` — same GraphQL 404). Re-enable
+# once the target repo exists, empty, AND GITHUB_TOKEN has write access
+# to it or SCOOP_BUCKET_GITHUB_TOKEN is set as a repo secret.
+#
+# scoops:
+#   - name: comrade
+#     repository:
+#       owner: firatkutay
+#       name: scoop-bucket
+#       # token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
+#     homepage: "https://github.com/firatkutay/cli-comrade"
+#     description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+#     license: MIT
 
-# --- winget manifest (Windows) ----------------------------------------------
-# winget's own community repo (microsoft/winget-pkgs) is the real publish
-# target in production; pointing repository at a dedicated
-# firatkutay/winget-pkgs staging fork here keeps this file self-contained
-# and snapshot-safe without assuming a PR-to-microsoft/winget-pkgs
-# workflow is wired yet. Same pre-existing-repo/token caveat as brews/
-# scoops.
-winget:
-  - name: comrade
-    publisher: "Fırat Kutay"
-    short_description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
-    license: "MIT"
-    homepage: "https://github.com/firatkutay/cli-comrade"
-    package_identifier: FiratKutay.comrade
-    repository:
-      owner: firatkutay
-      name: winget-pkgs
-      branch: "comrade-{{ .Version }}"
-      # token: "{{ .Env.WINGET_PKGS_GITHUB_TOKEN }}"
-      pull_request:
-        enabled: true
+# --- winget manifest (Windows) — DISABLED for v0.1.0 ------------------------
+# Disabled for the same reason as homebrew_casks/scoops above:
+# github.com/firatkutay/winget-pkgs does not exist yet (verified via
+# `gh repo view firatkutay/winget-pkgs` — same GraphQL 404). winget's
+# own community repo (microsoft/winget-pkgs) is the real publish target
+# in production, which needs a whole separate PR-submission workflow
+# this repo hasn't built yet — re-enable only once that path (staging
+# fork or direct PR flow) is decided AND WINGET_PKGS_GITHUB_TOKEN (or
+# equivalent access) exists.
+#
+# winget:
+#   - name: comrade
+#     publisher: "Fırat Kutay"
+#     short_description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
+#     license: "MIT"
+#     homepage: "https://github.com/firatkutay/cli-comrade"
+#     package_identifier: FiratKutay.comrade
+#     repository:
+#       owner: firatkutay
+#       name: winget-pkgs
+#       branch: "comrade-{{ .Version }}"
+#       # token: "{{ .Env.WINGET_PKGS_GITHUB_TOKEN }}"
+#       pull_request:
+#         enabled: true
 
 # --- .deb / .rpm (nfpm) ------------------------------------------------------
 nfpms:

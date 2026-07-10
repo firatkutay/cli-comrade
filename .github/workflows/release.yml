@@ -40,24 +40,44 @@ jobs:
           upload-release-assets: false
           upload-artifact: false
 
+      # Derives the GitHub Release body from CHANGELOG.md's own
+      # `## [<version>] - <date>` section (Derive-or-Guard: CHANGELOG.md
+      # is the single source of truth for release notes; this step reads
+      # it rather than hand-maintaining a second copy in this workflow or
+      # relying on goreleaser's own commit-log changelog generator, which
+      # is deliberately disabled in .goreleaser.yaml's `changelog:` block).
+      # Fails the job loudly (rather than silently shipping an empty
+      # release body) if the tagged version has no matching CHANGELOG
+      # section — that means CHANGELOG.md wasn't cut before tagging.
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            BEGIN { pat = "^## \\[" ver "\\]" }
+            $0 ~ pat { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## [$version] - ...' section — cut the changelog before tagging." >&2
+            exit 1
+          fi
+
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: "~> v2.16"
-          args: release --clean
+          args: release --clean --release-notes=/tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Publishing brews/scoops/winget (.goreleaser.yaml) pushes to
-          # firatkutay/homebrew-tap, firatkutay/scoop-bucket, and
-          # firatkutay/winget-pkgs. GITHUB_TOKEN (above) is sufficient
-          # ONLY if those repos are owned by this same account/org and
-          # GITHUB_TOKEN's default permissions extend to them; if not
-          # (e.g. they're separate personal repos with branch
-          # protection, or this workflow's GITHUB_TOKEN is scoped to
-          # cli-comrade only), create a PAT with `repo` scope on each
-          # target repo and set it as the matching secret below, then
-          # uncomment the corresponding `repository.token:` line in
-          # .goreleaser.yaml:
+          # homebrew_casks/scoops/winget publishers are commented out in
+          # .goreleaser.yaml for v0.1.0 — the target repos
+          # (firatkutay/homebrew-tap, firatkutay/scoop-bucket,
+          # firatkutay/winget-pkgs) don't exist yet. Once created and one
+          # of those blocks is re-enabled there, add the matching PAT
+          # secret here (only needed if GITHUB_TOKEN's cross-repo write
+          # access doesn't already cover the target repo):
           #   HOMEBREW_TAP_GITHUB_TOKEN
           #   SCOOP_BUCKET_GITHUB_TOKEN
           #   WINGET_PKGS_GITHUB_TOKEN

@@ -77,28 +77,42 @@ release:
 # renders to "true" (skip) whenever the token is absent or empty, and
 # "false" (publish for real) once it's set to a non-empty value in CI.
 #
-# The `repository.token:` field is DELIBERATELY templated with
-# `envOrDefault "VAR" ""`, NOT the more common `{{ .Env.VAR }}` shown in
-# goreleaser's own docs — goreleaser's template engine runs Go's
-# text/template with `Option("missingkey=error")` (internal/tmpl/tmpl.go),
-# so `.Env.VAR` map-dot-access on a name that was NEVER set in the
-# process environment at all (not just set-to-empty) throws a template
-# execution error and would abort the ENTIRE release at the Run stage —
-# before skip_upload is ever evaluated. `envOrDefault` is a Go template
-# FUNCTION (not raw map indexing), so it is immune to missingkey=error
-# and safely returns "" for a truly-absent var. Belt-and-suspenders:
-# .github/workflows/release.yml ALSO always sets these three env vars
-# (to an empty string when the GitHub secret doesn't exist — referencing
-# an undefined `secrets.X` never fails a workflow), so in CI the var is
-# always at least present-but-empty; envOrDefault covers the case of
-# someone running `goreleaser release` locally with the var not
-# exported at all.
+# The `repository.token:` field MUST be plain `{{ .Env.VAR }}` — nothing
+# else. This was gotten wrong in v0.1.1 (`envOrDefault "VAR" ""`) and
+# broke the release: `repository.token` for homebrew_casks/scoops/winget
+# is NOT rendered by the general-purpose template engine that backs
+# `skip_upload` above (that one does register `envOrDefault`/`isEnvSet`
+# as real Funcs). It is rendered by a SEPARATE, restricted evaluator:
+# client.NewIfToken() (internal/client/client.go) calls
+# tmpl.Template.ApplySingleEnvOnly(), which parses with
+# `template.New("tmpl").Option("missingkey=error").Parse(s)` and
+# registers NO FuncMap at all, then rejects anything that doesn't match
+# `^{{\s*\.Env\.[^.\s}]+\s*}}$` via regex — so `envOrDefault "VAR" ""`
+# fails with "function \"envOrDefault\" not defined" the instant it's
+# evaluated (confirmed against the actual v2.16.0 source: no
+# `envOrDefault`/`isEnvSet`/any custom func exists in ApplySingleEnvOnly's
+# FuncMap; only `.Env.VAR` — literally that shape, no functions, no
+# extra whitespace beyond `\s*` — is accepted). Plain `{{ .Env.VAR }}` is
+# therefore the ONLY valid form here, not a stylistic alternative.
+#
+# This does not reopen the "abort on a truly-unset var" risk the old
+# comment worried about, because of evaluation ORDER, verified from
+# internal/pipe/{cask,scoop,winget}/*.go's doPublish(): the
+# `skip_upload == "true"` check runs and returns `pipe.Skip(...)` BEFORE
+# `client.NewIfToken()` (and hence before `.Env.VAR` is ever touched).
+# And `isEnvSet` (which drives skip_upload) is false for BOTH an empty
+# AND a wholly-absent var, so the token template is only ever reached
+# when the var is present *and* non-empty — `.Env.VAR` map access can't
+# missingkey-error in that case, present or not: the key is always in
+# the map by construction. .github/workflows/release.yml also always
+# sets these three env vars (empty string when the GitHub secret is
+# absent), so in CI the key is always present in `.Env` regardless.
 homebrew_casks:
   - name: comrade
     repository:
       owner: firatkutay
       name: homebrew-tap
-      token: "{{ envOrDefault \"HOMEBREW_TAP_TOKEN\" \"\" }}"
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     homepage: "https://github.com/firatkutay/cli-comrade"
     description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
@@ -109,7 +123,7 @@ scoops:
     repository:
       owner: firatkutay
       name: scoop-bucket
-      token: "{{ envOrDefault \"SCOOP_BUCKET_TOKEN\" \"\" }}"
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
     homepage: "https://github.com/firatkutay/cli-comrade"
     description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
     license: MIT
@@ -131,7 +145,7 @@ winget:
       owner: firatkutay
       name: winget-pkgs
       branch: "comrade-{{ .Version }}"
-      token: "{{ envOrDefault \"WINGET_TOKEN\" \"\" }}"
+      token: "{{ .Env.WINGET_TOKEN }}"
       pull_request:
         enabled: true
         base:

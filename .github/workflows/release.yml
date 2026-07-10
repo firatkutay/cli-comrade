@@ -79,7 +79,15 @@ jobs:
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
-          version: "~> v2.16"
+          # Exact pin, not a "~> v2.16" range: the v0.1.1 incident was
+          # diagnosed by downloading v2.16.0's actual source and reading
+          # internal/client/client.go + internal/tmpl/tmpl.go's
+          # ApplySingleEnvOnly (see .goreleaser.yaml's repository.token
+          # comment) — that diagnosis is only guaranteed to hold for
+          # this exact build. A floating range could silently pick up a
+          # later 2.16.x patch whose template internals differ from what
+          # was verified here.
+          version: "2.16.0"
           args: release --clean --release-notes=/tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,11 +108,16 @@ jobs:
           # environment instead of present-but-empty, which matters:
           # goreleaser's template engine runs Go's text/template with
           # `Option("missingkey=error")`, so a raw `.Env.VAR` reference
-          # to a truly-unset key errors out (aborting the whole release).
-          # .goreleaser.yaml's `repository.token:` fields use
-          # `envOrDefault "VAR" ""` specifically to also tolerate that
-          # case, but keep both defenses: this line is the primary one
-          # CI actually exercises.
+          # to a truly-unset key would error out — except that in
+          # practice it never gets the chance to: `.goreleaser.yaml`'s
+          # `repository.token:` field is only ever templated once
+          # `skip_upload` has already resolved to "false", which itself
+          # requires the var to be present AND non-empty (see
+          # .goreleaser.yaml for the exact doPublish() ordering this
+          # relies on). Keep setting all three unconditionally anyway —
+          # it's what CI actually exercises and keeps that ordering
+          # argument from being the only thing standing between a typo
+          # here and a broken release.
           #
           # Add each PAT once you've completed the matching step in
           # docs/PACKAGING.md:

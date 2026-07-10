@@ -138,7 +138,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Suggested verification: ..." line — plus its sibling "verification:
   ... succeeded"/"still fails" lines — were raw, un-routed English Go
   format strings (not LLM output), now catalog-driven like everything
-  else `comrade fix` prints.
+  else `comrade fix` prints. Real-host re-verification found one residual
+  case in this same fix: `comrade explain` (no arguments) and `comrade
+  config set` (wrong argument count) still rendered their usage errors in
+  English on a host with `general.language = "tr"` set only in the config
+  file (no `COMRADE_LANG`/`LANG` env vars) — both paths used
+  `envOnlyTranslator` (deliberately config-blind, for paths that must
+  report before config is ever loaded) instead of resolving the same
+  config-aware language the rest of each command already does. A new
+  `bestEffortTranslator` (config first, gracefully falling back to the
+  env-only chain if config can't be loaded — a usage-error render must
+  never itself fail) now backs both paths.
 - **`comrade hook --help` rendered a completely empty "Usage:" line**:
   `hook` (Hidden, a pure command-group namespace) had no `RunE` of its
   own, and its only child, `hook record`, is also Hidden — so neither of

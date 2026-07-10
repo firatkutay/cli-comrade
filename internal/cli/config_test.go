@@ -357,6 +357,49 @@ func TestConfigSetWrongArgCountShowsTranslatedUsageErrorInTurkish(t *testing.T) 
 	assert.Equal(t, "kullanım: comrade config set <anahtar> <değer>", err.Error())
 }
 
+// TestConfigSetWrongArgCountShowsTranslatedUsageErrorInTurkishFromConfigLanguageAlone
+// is the exact scenario a real host exposed: general.language="tr" in the
+// on-disk config file, with NO COMRADE_LANG/LANG/LC_ALL set at all.
+// envOnlyTranslator (which skips config entirely) rendered this in
+// English; bestEffortTranslator (which loads config first) must render
+// it in Turkish.
+func TestConfigSetWrongArgCountShowsTranslatedUsageErrorInTurkishFromConfigLanguageAlone(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cli-comrade"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "cli-comrade", "config.toml"),
+		[]byte("[general]\nlanguage = \"tr\"\n"), 0o600))
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "onlykey")
+
+	require.Error(t, err)
+	assert.Equal(t, "kullanım: comrade config set <anahtar> <değer>", err.Error())
+}
+
+// TestConfigSetWrongArgCountShowsTranslatedUsageErrorInEnglishWhenNeitherConfigNorEnvSetLanguage
+// is the EN-default counterpart: a totally fresh install (no config file
+// yet, no language env vars) must still render English, and must still
+// create the default config file — consistency with every other
+// command's first invocation, now that this usage-error path loads
+// config too.
+func TestConfigSetWrongArgCountShowsTranslatedUsageErrorInEnglishWhenNeitherConfigNorEnvSetLanguage(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+
+	_, stderr, err := execRootSplit(t, "dev", "config", "set", "onlykey")
+
+	require.Error(t, err)
+	assert.Equal(t, "usage: comrade config set <key> <value>", err.Error())
+	assert.Contains(t, stderr, "Created default config at")
+	_, statErr := os.Stat(filepath.Join(dir, "cli-comrade", "config.toml"))
+	assert.NoError(t, statErr, "the usage-error path must create the default config file, same as every other command's first invocation")
+}
+
 func TestConfigEditOpensEditorOnConfigFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake shell-script editor is Unix-only")

@@ -154,7 +154,15 @@ func newConfigSetCmd(newLoader loaderFactory) *cobra.Command {
 				return cmd.Help()
 			}
 			if len(args) != 2 {
-				return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgConfigSetUsageError))
+				// bestEffortTranslator, NOT envOnlyTranslator: a wrong-arg-
+				// count usage error is not the "validation must reject a
+				// bad key/value before any filesystem side effect" case
+				// the comment below is about — no real set attempt was
+				// even made here, so loading config for the language is
+				// fine (matches every other command's --help/usage-error
+				// behavior, e.g. `comrade config get <bad-key>` already
+				// loads config first too).
+				return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgConfigSetUsageError))
 			}
 			key, raw := args[0], args[1]
 

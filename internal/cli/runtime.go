@@ -40,6 +40,35 @@ func envOnlyTranslator() i18n.Translator {
 	return i18n.NewTranslator(i18n.ResolveLanguage("", os.Getenv, i18n.SystemLocale))
 }
 
+// bestEffortTranslator resolves the SAME Translator the rest of the
+// command would (config general.language, via loadConfigWithNotice —
+// full precedence: config > COMRADE_LANG > LANG > LC_ALL > Windows
+// locale > English), for a usage-error path that fires BEFORE the
+// command's own real work would otherwise load config — e.g. `comrade
+// explain` with no arguments, or `comrade config set` with the wrong
+// number of arguments. Unlike envOnlyTranslator (which skips config
+// entirely, by design, for paths that must never touch the filesystem —
+// see its own doc comment), this DOES load config, on the reasoning that
+// a plain usage-error render is not the kind of filesystem side effect
+// that rationale was protecting; it matches loadConfigWithNotice's own
+// first-run-file-creation/notice behavior, exactly like every other
+// command already has (e.g. `comrade config get <bad-key>` already
+// creates the file/prints the notice before its own unknown-key error).
+//
+// It never fails the caller's error path itself: if newLoader() or
+// Load() fails for any reason (a missing config directory it can't
+// create, a malformed on-disk TOML, ...), this falls back to
+// envOnlyTranslator's env-only resolution instead of propagating that
+// second error — a usage-error message must always render in SOME
+// language, never itself error out.
+func bestEffortTranslator(cmd *cobra.Command, newLoader loaderFactory) i18n.Translator {
+	_, tr, err := loadConfigWithNotice(cmd, newLoader)
+	if err != nil {
+		return envOnlyTranslator()
+	}
+	return tr
+}
+
 // loadConfigWithNotice loads newLoader's effective config, printing the
 // shared first-run notice to cmd's stderr when this call is what created
 // the file, and returns the Translator built from that same config

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -204,6 +205,52 @@ func TestExplainNoArgsShowsUsageErrorInTurkish(t *testing.T) {
 	_, _, err := execRootSplit(t, "dev", "explain")
 	require.Error(t, err)
 	assert.Equal(t, `kullanım: comrade explain <komut...> (--help gibi bayrakla başlayan bir komutu açıklamak için "comrade explain -- <komut>" kullanın)`, err.Error())
+}
+
+// TestExplainNoArgsShowsUsageErrorInTurkishFromConfigLanguageAlone is the
+// exact scenario a real host exposed: general.language="tr" in the
+// on-disk config file, with NO COMRADE_LANG/LANG/LC_ALL set at all (a
+// realistic en-US-locale host that only configured comrade's own
+// language, never its shell locale) — envOnlyTranslator (which skips
+// config entirely) rendered this in English; bestEffortTranslator (which
+// loads config first, exactly like the rest of the command eventually
+// would) must render it in Turkish.
+func TestExplainNoArgsShowsUsageErrorInTurkishFromConfigLanguageAlone(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cli-comrade"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "cli-comrade", "config.toml"),
+		[]byte("[general]\nlanguage = \"tr\"\n"), 0o600))
+
+	_, _, err := execRootSplit(t, "dev", "explain")
+
+	require.Error(t, err)
+	assert.Equal(t, `kullanım: comrade explain <komut...> (--help gibi bayrakla başlayan bir komutu açıklamak için "comrade explain -- <komut>" kullanın)`, err.Error())
+}
+
+// TestExplainNoArgsShowsUsageErrorInEnglishWhenNeitherConfigNorEnvSetLanguage
+// is the EN-default counterpart: a totally fresh install (no config file
+// yet, no language env vars) must still render English, and must still
+// create the default config file exactly like every other comrade
+// command's first invocation does (consistency check — this usage-error
+// path now loads config too, so it must behave identically to, say,
+// `comrade config get <bad-key>` on a first run).
+func TestExplainNoArgsShowsUsageErrorInEnglishWhenNeitherConfigNorEnvSetLanguage(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+
+	_, stderr, err := execRootSplit(t, "dev", "explain")
+
+	require.Error(t, err)
+	assert.Equal(t, `usage: comrade explain <command...> (to explain a command that starts with a flag, e.g. --help, use "comrade explain -- <command>")`, err.Error())
+	assert.Contains(t, stderr, "Created default config at")
+	_, statErr := os.Stat(filepath.Join(dir, "cli-comrade", "config.toml"))
+	assert.NoError(t, statErr, "the usage-error path must create the default config file, same as every other command's first invocation")
 }
 
 // TestExplainDoubleDashEscapeHatchExplainsLiteralHelpFlag proves the

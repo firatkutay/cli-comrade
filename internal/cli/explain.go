@@ -61,13 +61,13 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 		if len(args) > 0 && args[0] == "--" {
 			args = args[1:]
 			if len(args) == 0 {
-				return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgExplainUsageError))
+				return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgExplainUsageError))
 			}
 			return runExplain(cmd, newLoader, strings.Join(args, " "))
 		}
 
 		if len(args) == 0 {
-			return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgExplainUsageError))
+			return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgExplainUsageError))
 		}
 		if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
 			return cmd.Help()

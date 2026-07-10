@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-11
+
+### Changed
+
+- **winget package identifier renamed from `FiratKutay.comrade` to `cli.comrade`** — the manifest now publishes under `manifests/c/cli/comrade/` and installs via `winget install cli.comrade`. Supersedes the earlier `FiratKutay.comrade` submission to microsoft/winget-pkgs.
+
 ## [0.1.3] - 2026-07-11
 
 ### Fixed

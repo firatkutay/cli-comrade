@@ -69,7 +69,7 @@ scoop install comrade
 
 ---
 
-## 3. winget (`winget install FiratKutay.comrade`)
+## 3. winget (`winget install cli.comrade`)
 
 **Target repo:** the real `microsoft/winget-pkgs` community repo, via a
 PR opened from a fork.
@@ -95,7 +95,7 @@ PR opened from a fork.
 
 **End-user install command (once live):**
 ```powershell
-winget install FiratKutay.comrade
+winget install cli.comrade
 ```
 
 ---

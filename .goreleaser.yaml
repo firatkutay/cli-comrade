@@ -140,7 +140,7 @@ winget:
     short_description: "Cross-platform AI CLI companion for the terminal (TR/EN)."
     license: "MIT"
     homepage: "https://github.com/firatkutay/cli-comrade"
-    package_identifier: FiratKutay.comrade
+    package_identifier: cli.comrade
     repository:
       owner: firatkutay
       name: winget-pkgs

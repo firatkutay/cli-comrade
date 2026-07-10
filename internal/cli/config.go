@@ -26,10 +26,20 @@ type loaderFactory func() (*config.Loader, error)
 
 // newConfigCmd builds the "comrade config" command tree: get, set, list,
 // edit and path.
+//
+// RunE/Args mirror newAuthCmd's own pattern (auth.go), which itself
+// mirrors newHookCmd's (hook.go) — see translatedUnknownSubcommand's own
+// doc comment (argvalidation.go) for why a parent command needs BOTH to
+// get a translated "unknown subcommand" error instead of cobra's raw
+// English one.
 func newConfigCmd(newLoader loaderFactory) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "config",
 		Short: "View and edit cli-comrade configuration",
+		Args:  translatedUnknownSubcommand(newLoader),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
 	}
 
 	root.AddCommand(
@@ -52,10 +62,11 @@ func newConfigCmd(newLoader loaderFactory) *cobra.Command {
 // not a user-facing feature to advertise in --help.
 func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:    "test-llm",
-		Short:  "Send a tiny test completion through the configured LLM provider chain",
-		Hidden: true,
-		Args:   cobra.NoArgs,
+		Use:               "test-llm",
+		Short:             "Send a tiny test completion through the configured LLM provider chain",
+		Hidden:            true,
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			loader, err := newLoader()
 			if err != nil {
@@ -101,9 +112,10 @@ func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
 
 func newConfigGetCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <key>",
-		Short: "Print the effective value of a config key",
-		Args:  cobra.ExactArgs(1),
+		Use:               "get <key>",
+		Short:             "Print the effective value of a config key",
+		Args:              translatedExactArgs(newLoader, 1, i18n.MsgConfigGetUsageError),
+		ValidArgsFunction: completeFirstArgFromList(config.Keys()),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			loader, err := newLoader()
 			if err != nil {
@@ -149,6 +161,18 @@ func newConfigSetCmd(newLoader loaderFactory) *cobra.Command {
 		// arguments and defines no flags of its own, so disabling flag
 		// parsing here is safe and lets any raw value through untouched.
 		DisableFlagParsing: true,
+		// ValidArgsFunction fires despite DisableFlagParsing: cobra's
+		// completion engine (completions.go's getCompletions) only skips
+		// it for a toComplete word starting with "-" (flag-name
+		// completion); a plain key/value word still reaches
+		// ValidArgsFunction exactly like any other command's — verified
+		// empirically via "comrade __complete config set ''" and pinned
+		// by TestCompleteConfigSetFirstArgSuggestsKnownKeys
+		// (completion_test.go). completeFirstArgFromList's own len(args)
+		// gate limits candidates to the FIRST positional (the key) only —
+		// once a key is already typed, the second word (the value) offers
+		// no candidates, matching what B's spec asked for.
+		ValidArgsFunction: completeFirstArgFromList(config.Keys()),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
 				return cmd.Help()
@@ -234,9 +258,10 @@ func translateConfigError(tr i18n.Translator, err error) error {
 
 func newConfigListCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List every config key, its effective value, and its source",
-		Args:  cobra.NoArgs,
+		Use:               "list",
+		Short:             "List every config key, its effective value, and its source",
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			loader, err := newLoader()
 			if err != nil {
@@ -275,9 +300,10 @@ func newConfigListCmd(newLoader loaderFactory) *cobra.Command {
 
 func newConfigEditCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:   "edit",
-		Short: "Open the config file in $EDITOR",
-		Args:  cobra.NoArgs,
+		Use:               "edit",
+		Short:             "Open the config file in $EDITOR",
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			loader, err := newLoader()
 			if err != nil {
@@ -302,9 +328,10 @@ func newConfigEditCmd(newLoader loaderFactory) *cobra.Command {
 
 func newConfigPathCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:   "path",
-		Short: "Print the config file path",
-		Args:  cobra.NoArgs,
+		Use:               "path",
+		Short:             "Print the config file path",
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			loader, err := newLoader()
 			if err != nil {

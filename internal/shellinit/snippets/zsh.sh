@@ -14,3 +14,4 @@ __comrade_precmd() {
 if ! { autoload -Uz add-zsh-hook && add-zsh-hook precmd __comrade_precmd; } 2>/dev/null; then
   precmd() { __comrade_precmd; }
 fi
+command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)

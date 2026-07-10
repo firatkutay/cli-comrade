@@ -50,6 +50,12 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 		// flags and reject them as "unknown shorthand flag". Exactly the
 		// same fix config.go's "set" command applies for the same reason.
 		DisableFlagParsing: true,
+		// The command text being explained is arbitrary shell input, not
+		// a value from any known candidate set — cobra.NoFileCompletions
+		// stops the shell from offering filename completions for it
+		// (config.go's "set" ValidArgsFunction doc comment covers why
+		// DisableFlagParsing doesn't block this from firing).
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		// Escape hatch (documented in MsgExplainUsageError/--help itself):

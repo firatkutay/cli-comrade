@@ -30,9 +30,10 @@ import (
 // `comrade docker kur --auto` behave identically.
 func newDoCmd(newLoader loaderFactory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "do <request...>",
-		Short: "Generate a plan for a free-text request and run it per the active mode",
-		Args:  cobra.MinimumNArgs(1),
+		Use:               "do <request...>",
+		Short:             "Generate a plan for a free-text request and run it per the active mode",
+		Args:              translatedMinArgs(newLoader, 1, i18n.MsgDoUsageError),
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	flags := addExecutionFlags(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {

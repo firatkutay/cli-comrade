@@ -47,4 +47,5 @@ if (Get-Command comrade -ErrorAction SilentlyContinue) {
             "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
         }
     }
+    comrade completion powershell | Out-String | Invoke-Expression
 }

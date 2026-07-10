@@ -26,10 +26,27 @@ type passwordReader func(fd int) ([]byte, error)
 
 // newAuthCmd builds the "comrade auth" command tree: login, logout,
 // status (UYGULAMA_PLANI.md FAZ 8 item 2).
+//
+// RunE/Args mirror newHookCmd's own established pattern (hook.go): RunE
+// (print help) is what makes this command Runnable at all — without it,
+// cobra's execute() returns flag.ErrHelp for ANY invocation before Args
+// ever runs (see translatedUnknownSubcommand's own doc comment,
+// argvalidation.go) — so a bare "comrade auth" still just prints help
+// and exits 0 (RunE's own path, len(args)==0 passes Args trivially),
+// while "comrade auth <unmatched>" now gets a translated, actionable
+// error naming every real subcommand instead of cobra's raw "unknown
+// command %q for %q" (which this specific command never actually
+// surfaced before this change either — see translatedUnknownSubcommand's
+// doc comment for why "silently show help, exit 0" was the true prior
+// behavior, not a raw English error).
 func newAuthCmd(newLoader loaderFactory) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage stored LLM provider API keys (keychain, with a file fallback)",
+		Args:  translatedUnknownSubcommand(newLoader),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
 	}
 	root.AddCommand(
 		newAuthLoginCmd(newLoader, term.ReadPassword, term.IsTerminal),
@@ -52,9 +69,10 @@ func isKnownKeyProvider(provider string) bool {
 
 func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTerminal isTerminalFunc) *cobra.Command {
 	return &cobra.Command{
-		Use:   "login <provider>",
-		Short: "Store an API key for a provider, then send a small test request",
-		Args:  cobra.ExactArgs(1),
+		Use:               "login <provider>",
+		Short:             "Store an API key for a provider, then send a small test request",
+		Args:              translatedExactArgs(newLoader, 1, i18n.MsgAuthLoginUsageError, strings.Join(secrets.KnownProviders, ", ")),
+		ValidArgsFunction: completeFirstArgFromList(secrets.KnownProviders),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
 			// The ollama/unknown-provider checks intentionally run BEFORE
@@ -184,9 +202,10 @@ func pingProvider(cmd *cobra.Command, newLoader loaderFactory, provider, key str
 
 func newAuthLogoutCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:   "logout <provider>",
-		Short: "Remove a stored API key",
-		Args:  cobra.ExactArgs(1),
+		Use:               "logout <provider>",
+		Short:             "Remove a stored API key",
+		Args:              translatedExactArgs(newLoader, 1, i18n.MsgAuthLogoutUsageError, strings.Join(secrets.KnownProviders, ", ")),
+		ValidArgsFunction: completeFirstArgFromList(secrets.KnownProviders),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
 			_, tr, err := loadConfigWithNotice(cmd, newLoader)
@@ -214,9 +233,10 @@ func newAuthLogoutCmd(newLoader loaderFactory) *cobra.Command {
 
 func newAuthStatusCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Show which providers have a stored or environment API key",
-		Args:  cobra.NoArgs,
+		Use:               "status",
+		Short:             "Show which providers have a stored or environment API key",
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, tr, err := loadConfigWithNotice(cmd, newLoader)
 			if err != nil {

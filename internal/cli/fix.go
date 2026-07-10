@@ -37,6 +37,11 @@ func newFixCmd(newLoader loaderFactory) *cobra.Command {
 		Use:   "fix [-- command...]",
 		Short: "Diagnose the last failed command (or a given one) and fix it",
 		Args:  cobra.ArbitraryArgs,
+		// The optional "-- command..." text is arbitrary shell input, not
+		// a value from any known candidate set (see explain.go's own
+		// ValidArgsFunction doc comment for why this is set even without
+		// DisableFlagParsing).
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	flags := addExecutionFlags(cmd)
 	rerun := cmd.Flags().Bool("rerun", false, enUsageDefault(i18n.MsgFlagRerun))

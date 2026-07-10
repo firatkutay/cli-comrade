@@ -58,9 +58,10 @@ func newInitCmd(deps initDeps, newLoader loaderFactory) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init [bash|zsh|fish|powershell]",
-		Short: "Install shell integration hooks",
-		Args:  cobra.MaximumNArgs(1),
+		Use:               "init [bash|zsh|fish|powershell]",
+		Short:             "Install shell integration hooks",
+		Args:              translatedMaxArgs(newLoader, 1, i18n.MsgInitUsageError),
+		ValidArgsFunction: completeFirstArgFromList(shellinitShellNames()),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if printOnly && remove {
 				return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgInitPrintRemoveExclusiveError))
@@ -111,9 +112,9 @@ func newInitCmd(deps initDeps, newLoader loaderFactory) *cobra.Command {
 
 			path, ok, note := shellinit.RCPath(cmd.Context(), shell, deps.goos, deps.getenv, deps.lookPath, deps.run)
 			if remove {
-				return runInitRemove(cmd, path, ok, note, tr)
+				return runInitRemove(cmd, shell, path, ok, note, deps.getenv, tr)
 			}
-			return runInitInstall(cmd, shell, path, ok, note, assumeYes, tr)
+			return runInitInstall(cmd, shell, path, ok, note, assumeYes, deps.getenv, tr)
 		},
 	}
 
@@ -145,8 +146,10 @@ func resolveShellArg(args []string, deps initDeps) (string, error) {
 // runInitInstall implements comrade init's default (non-print,
 // non-remove) path: show the block that would be added and the target
 // rc file, then — unless assumeYes short-circuits it — ask for a y/N
-// confirmation on stdin before writing.
-func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok bool, note string, assumeYes bool, tr i18n.Translator) error {
+// confirmation on stdin before writing. getenv is only consulted for
+// shell == shellinit.Fish (installFishCompletionsIfApplicable's own
+// resolution of FishCompletionsPath) — every other shell ignores it.
+func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok bool, note string, assumeYes bool, getenv func(string) string, tr i18n.Translator) error {
 	block, err := shellinit.Block(shell)
 	if err != nil {
 		return err
@@ -168,6 +171,9 @@ func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok b
 	}
 
 	if status == shellinit.StatusAlreadyInstalled {
+		if err := installFishCompletionsIfApplicable(cmd, shell, getenv, tr); err != nil {
+			return err
+		}
 		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitAlreadyInstalled, path))
 		return err
 	}
@@ -182,6 +188,11 @@ func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok b
 			return err
 		}
 		if !confirmed {
+			// A decline covers the rc-file edit ONLY — completions are a
+			// separate, self-contained, comrade-owned artifact, never
+			// written here regardless: skipping
+			// installFishCompletionsIfApplicable on this path is what
+			// respects the "no" the user just gave.
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), tr.T(i18n.MsgInitAborted))
 			return err
 		}
@@ -190,12 +201,52 @@ func runInitInstall(cmd *cobra.Command, shell shellinit.Shell, path string, ok b
 	if err := writeFileContent(path, updated); err != nil {
 		return err
 	}
+	if err := installFishCompletionsIfApplicable(cmd, shell, getenv, tr); err != nil {
+		return err
+	}
 	_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitInstalled, path))
 	return err
 }
 
-// runInitRemove implements comrade init --remove.
-func runInitRemove(cmd *cobra.Command, path string, ok bool, note string, tr i18n.Translator) error {
+// installFishCompletionsIfApplicable writes comrade's fish completions
+// script (shellinit.FishCompletionsScript) to its native lazy-load
+// location (shellinit.FishCompletionsPath) whenever shell is Fish — a
+// no-op for every other shell. Idempotency is a plain overwrite (no
+// ApplyBlock-style merge/diff needed — see FishCompletionsScript's own
+// doc comment), so this always writes the exact same fixed content and
+// prints the exact same confirmation, every time it runs; there is no
+// separate "already installed" branch to maintain here.
+//
+// Called from both of runInitInstall's own "the hook is in place" exit
+// points (StatusAlreadyInstalled and a fresh successful write) — never
+// from the !ok fallback (nothing was resolved to write into either
+// case) or a declined confirmation (see runInitInstall's own comment on
+// that path).
+func installFishCompletionsIfApplicable(cmd *cobra.Command, shell shellinit.Shell, getenv func(string) string, tr i18n.Translator) error {
+	if shell != shellinit.Fish {
+		return nil
+	}
+	path, ok, _ := shellinit.FishCompletionsPath(getenv)
+	if !ok {
+		// FishCompletionsPath resolves from the exact same HOME/
+		// XDG_CONFIG_HOME chain RCPath's own Fish branch just used to
+		// reach this point at all (ok=true there is a precondition of
+		// ever calling this function) — this branch is therefore
+		// unreachable in practice, not a real failure mode worth its own
+		// message; skip silently rather than block an already-successful
+		// hook install on a completions nicety.
+		return nil
+	}
+	if err := writeFileContent(path, shellinit.FishCompletionsScript()); err != nil {
+		return err
+	}
+	_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitFishCompletionsInstalled, path))
+	return err
+}
+
+// runInitRemove implements comrade init --remove. getenv is only
+// consulted for shell == shellinit.Fish, mirroring runInitInstall.
+func runInitRemove(cmd *cobra.Command, shell shellinit.Shell, path string, ok bool, note string, getenv func(string) string, tr i18n.Translator) error {
 	if !ok {
 		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitRemoveNoProfile, note))
 		return err
@@ -208,6 +259,9 @@ func runInitRemove(cmd *cobra.Command, path string, ok bool, note string, tr i18
 
 	updated, removed := shellinit.RemoveBlock(existing)
 	if !removed {
+		if err := removeFishCompletionsIfApplicable(cmd, shell, getenv, tr); err != nil {
+			return err
+		}
 		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitNotInstalled, path))
 		return err
 	}
@@ -215,8 +269,53 @@ func runInitRemove(cmd *cobra.Command, path string, ok bool, note string, tr i18
 	if err := writeFileContent(path, updated); err != nil {
 		return err
 	}
+	if err := removeFishCompletionsIfApplicable(cmd, shell, getenv, tr); err != nil {
+		return err
+	}
 	_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitRemoved, path))
 	return err
+}
+
+// removeFishCompletionsIfApplicable deletes comrade's fish completions
+// file (installFishCompletionsIfApplicable's own target path) whenever
+// shell is Fish — a no-op for every other shell. Deletion is
+// unconditional and idempotent regardless of whether the hook BLOCK
+// itself was found (a completions file surviving a hook-block removal,
+// or vice-versa, is exactly the drift this guards against) — a missing
+// completions file is simply not reported (removeFileIfExists' own
+// "not there" case), never an error.
+func removeFishCompletionsIfApplicable(cmd *cobra.Command, shell shellinit.Shell, getenv func(string) string, tr i18n.Translator) error {
+	if shell != shellinit.Fish {
+		return nil
+	}
+	path, ok, _ := shellinit.FishCompletionsPath(getenv)
+	if !ok {
+		return nil
+	}
+	removed, err := removeFileIfExists(path)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return nil
+	}
+	_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgInitFishCompletionsRemoved, path))
+	return err
+}
+
+// removeFileIfExists deletes path, reporting whether a file was actually
+// there to delete — a missing file is not an error, mirroring
+// readFileOrEmpty's own "missing is not an error" convention elsewhere
+// in this file.
+func removeFileIfExists(path string) (bool, error) {
+	err := os.Remove(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("init: remove %s: %w", path, err)
 }
 
 // pendingPSInstall is one PowerShell profile runInitInstallPowerShell has

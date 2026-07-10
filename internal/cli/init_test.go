@@ -99,6 +99,18 @@ func TestInitUnsupportedShellArgErrors(t *testing.T) {
 	assert.ErrorContains(t, err, "tcsh")
 }
 
+// TestInitTooManyArgsShowsTranslatedUsageError proves `comrade init`'s
+// Args (translatedMaxArgs, init.go) renders a friendly, i18n'd usage
+// error naming the exact accepted invocation, instead of cobra's raw
+// English "accepts at most 1 arg(s), received 2", when given 2+
+// positional arguments.
+func TestInitTooManyArgsShowsTranslatedUsageError(t *testing.T) {
+	deps := testInitDeps("linux", map[string]string{"HOME": t.TempDir()})
+	err := execInitCmdErr(t, deps, "bash", "zsh")
+	require.Error(t, err)
+	assert.Equal(t, "usage: comrade init [bash|zsh|fish|powershell]", err.Error())
+}
+
 func TestInitNoArgDetectsShellFromEnv(t *testing.T) {
 	dir := t.TempDir()
 	deps := testInitDeps("linux", map[string]string{"HOME": dir, "SHELL": "/usr/bin/zsh"})
@@ -222,6 +234,137 @@ func TestInitRemoveWithNoMarkersIsFriendlyNoop(t *testing.T) {
 	data, err := os.ReadFile(rcPath)
 	require.NoError(t, err)
 	assert.Equal(t, "# untouched rc\n", string(data))
+}
+
+// TestInitFishInstallsHookAndCompletions proves "comrade init fish"
+// installs BOTH artifacts: the existing marker-block hook in
+// config.fish (unchanged mechanism) AND, newly, the completions script
+// at fish's native lazy-load location — reusing exactly
+// shellinit.FishCompletionsScript's own content (not a hand-duplicated
+// literal), and reporting both via their own message lines.
+func TestInitFishInstallsHookAndCompletions(t *testing.T) {
+	dir := t.TempDir()
+	deps := testInitDeps("linux", map[string]string{"HOME": dir})
+
+	out := execInitCmd(t, deps, "y\n", "fish")
+
+	assert.Contains(t, out, "Installed cli-comrade shell integration in")
+	assert.Contains(t, out, "Installed shell completions for fish:")
+
+	hookData, err := os.ReadFile(filepath.Join(dir, ".config", "fish", "config.fish"))
+	require.NoError(t, err)
+	block, err := shellinit.Block(shellinit.Fish)
+	require.NoError(t, err)
+	assert.Equal(t, block+"\n", string(hookData))
+
+	compData, err := os.ReadFile(filepath.Join(dir, ".config", "fish", "completions", "comrade.fish"))
+	require.NoError(t, err)
+	assert.Equal(t, shellinit.FishCompletionsScript(), string(compData))
+}
+
+// TestInitFishSecondRunIsIdempotent proves running "comrade init fish"
+// twice never duplicates the completions file's content (its
+// idempotency is a plain overwrite — see FishCompletionsScript's own
+// doc comment — as opposed to the hook block's marker-based merge) and
+// still reports the hook block itself as already installed, unchanged.
+func TestInitFishSecondRunIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	deps := testInitDeps("linux", map[string]string{"HOME": dir})
+	compPath := filepath.Join(dir, ".config", "fish", "completions", "comrade.fish")
+
+	execInitCmd(t, deps, "", "fish", "--yes")
+	before, err := os.ReadFile(compPath)
+	require.NoError(t, err)
+
+	out := execInitCmd(t, deps, "", "fish", "--yes")
+	assert.Contains(t, out, "already installed")
+	assert.Contains(t, out, "Installed shell completions for fish:")
+
+	after, err := os.ReadFile(compPath)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after), "the completions file's content must never change or duplicate across repeated installs")
+}
+
+// TestInitFishRemoveDeletesHookAndCompletions proves "comrade init fish
+// --remove" deletes BOTH the hook block content from config.fish and the
+// separate, fully comrade-owned completions file.
+func TestInitFishRemoveDeletesHookAndCompletions(t *testing.T) {
+	dir := t.TempDir()
+	deps := testInitDeps("linux", map[string]string{"HOME": dir})
+	compPath := filepath.Join(dir, ".config", "fish", "completions", "comrade.fish")
+
+	execInitCmd(t, deps, "", "fish", "--yes")
+	_, err := os.Stat(compPath)
+	require.NoError(t, err, "precondition: completions file must exist after install")
+
+	out := execInitCmd(t, deps, "", "fish", "--remove")
+	assert.Contains(t, out, "Removed cli-comrade shell integration from")
+	assert.Contains(t, out, "Removed shell completions for fish:")
+
+	_, statErr := os.Stat(compPath)
+	assert.True(t, os.IsNotExist(statErr), "the completions file must be deleted by --remove")
+
+	hookData, err := os.ReadFile(filepath.Join(dir, ".config", "fish", "config.fish"))
+	require.NoError(t, err)
+	assert.Equal(t, "", string(hookData))
+}
+
+// TestInitFishRemoveWithNothingInstalledIsNoop proves --remove on a
+// fish setup that was never installed neither errors nor fabricates a
+// "removed completions" message for a file that was never there.
+func TestInitFishRemoveWithNothingInstalledIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	deps := testInitDeps("linux", map[string]string{"HOME": dir})
+
+	out := execInitCmd(t, deps, "", "fish", "--remove")
+
+	assert.Contains(t, out, "nothing to do")
+	assert.NotContains(t, out, "Removed shell completions for fish:")
+}
+
+// TestInitFishPrintOnlyNeverWritesCompletionsFile proves --print's
+// documented "make no file changes" contract extends to the completions
+// file too, not just the hook block.
+func TestInitFishPrintOnlyNeverWritesCompletionsFile(t *testing.T) {
+	dir := t.TempDir()
+	deps := testInitDeps("linux", map[string]string{"HOME": dir})
+
+	execInitCmd(t, deps, "", "fish", "--print")
+
+	_, statErr := os.Stat(filepath.Join(dir, ".config", "fish", "completions", "comrade.fish"))
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+// TestInitFishDeclinedConfirmationNeverWritesCompletionsFile proves a
+// declined y/N confirmation for the hook-block edit ALSO skips the
+// completions file — installFishCompletionsIfApplicable is never called
+// on that path (see its own doc comment) so a "no" to the rc-file edit
+// is a "no" to both artifacts, not a partial install.
+func TestInitFishDeclinedConfirmationNeverWritesCompletionsFile(t *testing.T) {
+	dir := t.TempDir()
+	deps := testInitDeps("linux", map[string]string{"HOME": dir})
+
+	execInitCmd(t, deps, "n\n", "fish")
+
+	_, statErr := os.Stat(filepath.Join(dir, ".config", "fish", "completions", "comrade.fish"))
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+// TestInitFishInstallAndRemoveMessagesRenderInTurkish is the Turkish
+// counterpart to TestInitFishInstallsHookAndCompletions/
+// TestInitFishRemoveDeletesHookAndCompletions for the two new
+// MsgInitFishCompletionsInstalled/MsgInitFishCompletionsRemoved
+// messages specifically.
+func TestInitFishInstallAndRemoveMessagesRenderInTurkish(t *testing.T) {
+	t.Setenv("COMRADE_LANG", "tr")
+	dir := t.TempDir()
+	deps := testInitDeps("linux", map[string]string{"HOME": dir})
+
+	installOut := execInitCmd(t, deps, "e\n", "fish")
+	assert.Contains(t, installOut, "fish için kabuk tamamlama kuruldu:")
+
+	removeOut := execInitCmd(t, deps, "", "fish", "--remove")
+	assert.Contains(t, removeOut, "fish için kabuk tamamlama kaldırıldı:")
 }
 
 func TestInitPowerShellFallsBackToPrintingWhenProfileCannotBeResolved(t *testing.T) {

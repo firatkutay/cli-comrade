@@ -33,6 +33,7 @@ case ";${PROMPT_COMMAND:-};" in
   *";__comrade_hook;"*) ;;
   *) PROMPT_COMMAND="__comrade_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
 esac
+command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)
 `
 
 const wantZshSnippet = `__comrade_last_cmd=""
@@ -51,6 +52,7 @@ __comrade_precmd() {
 if ! { autoload -Uz add-zsh-hook && add-zsh-hook precmd __comrade_precmd; } 2>/dev/null; then
   precmd() { __comrade_precmd; }
 fi
+command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)
 `
 
 const wantFishSnippet = `set -g __comrade_last_cmd ""
@@ -116,6 +118,7 @@ const wantPowerShellSnippet = `if (Get-Command comrade -ErrorAction SilentlyCont
             "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
         }
     }
+    comrade completion powershell | Out-String | Invoke-Expression
 }
 `
 
@@ -176,9 +179,25 @@ func TestBlockWrapsSnippetInExactMarkers(t *testing.T) {
 		"  *\";__comrade_hook;\"*) ;;\n" +
 		"  *) PROMPT_COMMAND=\"__comrade_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\" ;;\n" +
 		"esac\n" +
+		"command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)\n" +
 		shellinit.MarkerEnd
 	assert.Equal(t, want, got)
 	assert.False(t, strings.HasSuffix(got, "\n"), "Block must not end with a trailing newline")
+}
+
+// wantFishCompletionsScript is FishCompletionsScript's golden copy
+// (internal/shellinit/snippets/fish-completions.fish), mirroring this
+// file's existing per-shell golden-content convention: an edit to that
+// embedded file must update this literal too, so an unreviewed change
+// to completion-registration behavior fails this test instead of
+// silently shipping.
+const wantFishCompletionsScript = `if command -v comrade >/dev/null
+    comrade completion fish | source
+end
+`
+
+func TestFishCompletionsScriptGoldenContent(t *testing.T) {
+	assert.Equal(t, wantFishCompletionsScript, shellinit.FishCompletionsScript())
 }
 
 func TestSnippetUnsupportedShellErrors(t *testing.T) {

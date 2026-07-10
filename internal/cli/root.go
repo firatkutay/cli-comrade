@@ -66,6 +66,15 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		// which is this UX pattern's deliberate, documented tradeoff
 		// (see docs/phases/FAZ-06.md).
 		Args: cobra.ArbitraryArgs,
+		// The free-text tail RunE dispatches to `do` (below) is arbitrary
+		// natural-language request text, never a file path — same
+		// rationale as explain's own ValidArgsFunction. This does NOT
+		// interfere with cobra's automatic subcommand-name completion
+		// (chat/do/explain/.../help): that happens unconditionally,
+		// earlier in cobra's own getCompletions, before ValidArgsFunction
+		// is ever consulted — see completion_test.go's
+		// TestCompleteRootSuggestsTopLevelCommandsExcludingHidden.
+		ValidArgsFunction: cobra.NoFileCompletions,
 		// QA D4b: cobra's own auto-added "completion" command generates
 		// several KB of its own internal help text (per-shell usage,
 		// eval/source instructions, flag descriptions) with no i18n hook
@@ -176,7 +185,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		doCmd, fixCmd, explainCmd, chatCmd,
 		authCmd, initCmd, configCmd,
 		historyCmd, upgradeCmd,
-		newHookCmd(),
+		newHookCmd(newLoader),
 	)
 
 	// Localizes every command's --help/usage output (help.go) — must run

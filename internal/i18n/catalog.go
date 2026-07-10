@@ -434,6 +434,19 @@ const (
 	// the rc/profile file path.
 	MsgInitRemoved MessageID = "init_removed"
 
+	// MsgInitFishCompletionsInstalled confirms "comrade init fish" wrote
+	// its shell-completions script (shellinit.FishCompletionsScript) to
+	// fish's native lazy-load location — a separate artifact from the
+	// hook block above, printed in addition to (never instead of)
+	// MsgInitInstalled/MsgInitAlreadyInstalled. One arg: the completions
+	// file path.
+	MsgInitFishCompletionsInstalled MessageID = "init_fish_completions_installed"
+
+	// MsgInitFishCompletionsRemoved confirms "comrade init fish --remove"
+	// deleted a previously-installed completions file. One arg: the
+	// completions file path.
+	MsgInitFishCompletionsRemoved MessageID = "init_fish_completions_removed"
+
 	// -- comrade init powershell (multi-variant: Windows PowerShell 5.1 +
 	// PowerShell 7) --------------------------------------------------------
 	//
@@ -737,6 +750,53 @@ const (
 	// the picker's number is outside the listed range.
 	MsgModelsChoiceOutOfRange MessageID = "models_choice_out_of_range"
 
+	// -- translated cobra.PositionalArgs arg-count usage errors -----------
+	//
+	// Every message below replaces a raw, English-only cobra Args-
+	// validator failure ("accepts N arg(s), received M", "unknown
+	// command %q for %q") with a friendly, i18n'd usage error — see
+	// internal/cli/argvalidation.go's translatedExactArgs/translatedMinArgs/
+	// translatedMaxArgs/translatedNoArgs, the one shared implementation
+	// behind every leaf command's Args field this applies to.
+
+	// MsgAuthLoginUsageError is `comrade auth login`'s error when given
+	// zero or 2+ arguments (it takes exactly one: the provider name).
+	// One arg: the comma-joined list of secrets.KnownProviders.
+	MsgAuthLoginUsageError MessageID = "auth_login_usage_error"
+	// MsgAuthLogoutUsageError is `comrade auth logout`'s error when given
+	// zero or 2+ arguments. One arg: the comma-joined list of
+	// secrets.KnownProviders.
+	MsgAuthLogoutUsageError MessageID = "auth_logout_usage_error"
+	// MsgDoUsageError is `comrade do`'s error when given zero arguments.
+	// No args — the example request text in the message is the same
+	// literal example every language's MsgHelpExamplesRoot already uses
+	// for its own free-text-request example line.
+	MsgDoUsageError MessageID = "do_usage_error"
+	// MsgInitUsageError is `comrade init`'s error when given 2+
+	// arguments (it takes at most one: the shell name).
+	MsgInitUsageError MessageID = "init_usage_error"
+	// MsgConfigGetUsageError is `comrade config get`'s error when given
+	// zero or 2+ arguments (it takes exactly one: the key).
+	MsgConfigGetUsageError MessageID = "config_get_usage_error"
+	// MsgUsageNoArgsError is the SHARED error for every leaf command that
+	// takes no positional arguments at all (chat, history, config
+	// list/edit/path/models/test-llm, upgrade, auth status, hook, hook
+	// record) when given one or more stray arguments — one MessageID
+	// covering every such command rather than a dedicated one apiece,
+	// since there is nothing command-specific left to say once the
+	// command's own full path is in the message. One arg: the resolved
+	// command's own CommandPath (e.g. "comrade chat"), filled in at
+	// validation time, not baked in at construction.
+	MsgUsageNoArgsError MessageID = "usage_no_args_error"
+	// MsgUnknownSubcommandError is the SHARED error for a parent command
+	// with real, visible subcommands (auth, config) given a first
+	// positional argument that matches none of them (translatedUnknownSubcommand,
+	// argvalidation.go) — e.g. "comrade auth bogus" — instead of cobra's
+	// raw, untranslated "unknown command %q for %q". Three args: the
+	// unmatched subcommand name, the parent command's own CommandPath,
+	// and its comma-joined list of non-Hidden child command names.
+	MsgUnknownSubcommandError MessageID = "unknown_subcommand_error"
+
 	// -- comrade upgrade (FAZ 10) -----------------------------------------
 
 	// MsgUpgradeDevBuildError refuses to run `comrade upgrade` (--check or
@@ -925,6 +985,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgInitRemoveNoProfile:          "Nothing to remove: could not locate a profile file (%s).\n",
 	MsgInitNotInstalled:             "cli-comrade shell integration is not installed in %s; nothing to do.\n",
 	MsgInitRemoved:                  "Removed cli-comrade shell integration from %s\n",
+	MsgInitFishCompletionsInstalled: "Installed shell completions for fish: %s\n",
+	MsgInitFishCompletionsRemoved:   "Removed shell completions for fish: %s\n",
 
 	MsgInitPSVariantAlreadyInstalled: "%s: cli-comrade shell integration is already installed in %s\n",
 	MsgInitPSVariantInstalled:        "%s: Installed cli-comrade shell integration in %s\n",
@@ -982,6 +1044,14 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgModelsUnknownProviderError:    "unknown provider %q",
 	MsgModelsChoiceNotANumber:        "%q is not a number (expected 1-%d)",
 	MsgModelsChoiceOutOfRange:        "%d is out of range (expected 1-%d)",
+
+	MsgAuthLoginUsageError:    "usage: comrade auth login <provider> (expected one of: %s)",
+	MsgAuthLogoutUsageError:   "usage: comrade auth logout <provider> (expected one of: %s)",
+	MsgDoUsageError:           `usage: comrade do <request...> (e.g. comrade do "install docker")`,
+	MsgInitUsageError:         "usage: comrade init [bash|zsh|fish|powershell]",
+	MsgConfigGetUsageError:    "usage: comrade config get <key>",
+	MsgUsageNoArgsError:       "%s does not take any arguments",
+	MsgUnknownSubcommandError: "unknown subcommand %q for %s (expected one of: %s)",
 
 	MsgUpgradeDevBuildError:  "upgrade: this is a dev build (no version was embedded at build time); install a released build to use `comrade upgrade`",
 	MsgUpgradeUpToDate:       "you're already on the latest version (%s)\n",
@@ -1127,6 +1197,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgInitRemoveNoProfile:          "Kaldırılacak bir şey yok: bir profil dosyası bulunamadı (%s).\n",
 	MsgInitNotInstalled:             "cli-comrade kabuk entegrasyonu %s içinde kurulu değil; yapılacak bir şey yok.\n",
 	MsgInitRemoved:                  "cli-comrade kabuk entegrasyonu %s içinden kaldırıldı\n",
+	MsgInitFishCompletionsInstalled: "fish için kabuk tamamlama kuruldu: %s\n",
+	MsgInitFishCompletionsRemoved:   "fish için kabuk tamamlama kaldırıldı: %s\n",
 
 	MsgInitPSVariantAlreadyInstalled: "%s: cli-comrade kabuk entegrasyonu zaten %s içinde kurulu\n",
 	MsgInitPSVariantInstalled:        "%s: cli-comrade kabuk entegrasyonu %s içine kuruldu\n",
@@ -1184,6 +1256,14 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgModelsUnknownProviderError:    "bilinmeyen sağlayıcı %q",
 	MsgModelsChoiceNotANumber:        "%q bir sayı değil (beklenen: 1-%d)",
 	MsgModelsChoiceOutOfRange:        "%d aralık dışında (beklenen: 1-%d)",
+
+	MsgAuthLoginUsageError:    "kullanım: comrade auth login <sağlayıcı> (beklenen: %s)",
+	MsgAuthLogoutUsageError:   "kullanım: comrade auth logout <sağlayıcı> (beklenen: %s)",
+	MsgDoUsageError:           `kullanım: comrade do <istek...> (örnek: comrade do "docker kur")`,
+	MsgInitUsageError:         "kullanım: comrade init [bash|zsh|fish|powershell]",
+	MsgConfigGetUsageError:    "kullanım: comrade config get <anahtar>",
+	MsgUsageNoArgsError:       "%s hiçbir argüman almaz",
+	MsgUnknownSubcommandError: "%q: %s için bilinmeyen alt komut (beklenen: %s)",
 
 	MsgUpgradeDevBuildError:  "upgrade: bu bir geliştirme (dev) derlemesi (derleme zamanında bir sürüm gömülmemiş); `comrade upgrade` kullanmak için yayımlanmış bir derleme kurun",
 	MsgUpgradeUpToDate:       "zaten en güncel sürümdesiniz (%s)\n",

@@ -16,3 +16,4 @@ case ";${PROMPT_COMMAND:-};" in
   *";__comrade_hook;"*) ;;
   *) PROMPT_COMMAND="__comrade_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
 esac
+command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)

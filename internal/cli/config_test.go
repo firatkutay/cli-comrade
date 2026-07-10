@@ -400,6 +400,90 @@ func TestConfigSetWrongArgCountShowsTranslatedUsageErrorInEnglishWhenNeitherConf
 	assert.NoError(t, statErr, "the usage-error path must create the default config file, same as every other command's first invocation")
 }
 
+// TestConfigGetWrongArgCountShowsTranslatedUsageError proves `comrade
+// config get`'s Args (translatedExactArgs, config.go) renders a
+// friendly, i18n'd usage error instead of cobra's raw English "accepts 1
+// arg(s), received 0/2", for both too few (0) and too many (2+)
+// arguments.
+func TestConfigGetWrongArgCountShowsTranslatedUsageError(t *testing.T) {
+	for _, extraArgs := range [][]string{{}, {"a", "b"}} {
+		withIsolatedConfigDir(t)
+		args := append([]string{"config", "get"}, extraArgs...)
+		_, _, err := execRootSplit(t, "dev", args...)
+		require.Error(t, err)
+		assert.Equal(t, "usage: comrade config get <key>", err.Error())
+	}
+}
+
+// TestConfigListStrayArgShowsTranslatedUsageError proves `comrade config
+// list`'s Args (translatedNoArgs) renders a friendly, i18n'd usage error
+// naming its own full command path, instead of cobra's raw English
+// "accepts 0 arg(s), received 1", when given a stray positional argument.
+func TestConfigListStrayArgShowsTranslatedUsageError(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "config", "list", "unexpected")
+
+	require.Error(t, err)
+	assert.Equal(t, "comrade config list does not take any arguments", err.Error())
+}
+
+// TestConfigUnknownSubcommandShowsTranslatedError proves `comrade config
+// <bogus>` renders a friendly, i18n'd "unknown subcommand" error
+// (translatedUnknownSubcommand, argvalidation.go) naming every real,
+// non-Hidden subcommand — "test-llm" (Hidden) must NOT appear — instead
+// of silently printing help and exiting 0.
+func TestConfigUnknownSubcommandShowsTranslatedError(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "config", "bogus")
+
+	require.Error(t, err)
+	assert.Equal(t, `unknown subcommand "bogus" for comrade config (expected one of: edit, get, list, models, path, set)`, err.Error())
+	assert.NotContains(t, err.Error(), "test-llm", "the Hidden test-llm subcommand must never appear in the suggested list")
+}
+
+// TestConfigUnknownSubcommandShowsTranslatedErrorInTurkish is the same
+// proof under COMRADE_LANG=tr.
+func TestConfigUnknownSubcommandShowsTranslatedErrorInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "config", "bogus")
+
+	require.Error(t, err)
+	assert.Equal(t, `"bogus": comrade config için bilinmeyen alt komut (beklenen: edit, get, list, models, path, set)`, err.Error())
+}
+
+// TestConfigBareInvocationStillPrintsHelpAndExitsZero is `comrade
+// config`'s counterpart to TestAuthBareInvocationStillPrintsHelpAndExitsZero.
+func TestConfigBareInvocationStillPrintsHelpAndExitsZero(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	stdout, _, err := execRootSplit(t, "dev", "config")
+
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "Usage:")
+	assert.Contains(t, stdout, "comrade config")
+	assert.Contains(t, stdout, "get")
+}
+
+// TestConfigGetSubcommandResolutionBypassesParentUnknownSubcommandCheck
+// is `comrade config`'s counterpart to auth_test.go's
+// TestAuthLoginSubcommandResolutionBypassesParentUnknownSubcommandCheck —
+// proving cobra's Find() resolves a real child name ("get") all the way
+// down to the leaf command, so the parent's translatedUnknownSubcommand
+// never runs for it.
+func TestConfigGetSubcommandResolutionBypassesParentUnknownSubcommandCheck(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "config", "get")
+
+	require.Error(t, err)
+	assert.Equal(t, "usage: comrade config get <key>", err.Error())
+	assert.NotContains(t, err.Error(), "unknown subcommand")
+}
+
 func TestConfigEditOpensEditorOnConfigFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake shell-script editor is Unix-only")

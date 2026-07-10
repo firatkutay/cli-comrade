@@ -76,6 +76,31 @@ func RCPath(ctx stdctx.Context, shell Shell, goos string, getenv func(string) st
 	}
 }
 
+// FishCompletionsPath resolves the path "comrade init fish" writes its
+// shell-completions script to (FishCompletionsScript) — fish's own
+// native lazy-load location for a single tool's completions (fish
+// auto-sources any file placed in this exact directory the first time
+// it needs to complete that command's name, no rc-file sourcing
+// required) — using the EXACT same XDG_CONFIG_HOME-or-HOME resolution
+// RCPath's own Fish branch already uses for config.fish above, one
+// directory level deeper ("completions/comrade.fish" instead of
+// "config.fish"). Kept as its own function (not folded into RCPath)
+// because this path is written to unconditionally on every "comrade
+// init fish" (full-file overwrite, no marker-block idempotency
+// machinery — see FishCompletionsScript's own doc comment), never
+// merged/diffed against existing content the way RCPath's other three
+// shells' rc files are.
+func FishCompletionsPath(getenv func(string) string) (path string, ok bool, note string) {
+	if xdg := getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "fish", "completions", "comrade.fish"), true, ""
+	}
+	home := getenv("HOME")
+	if home == "" {
+		return "", false, "cannot resolve fish completions file: HOME environment variable is not set"
+	}
+	return filepath.Join(home, ".config", "fish", "completions", "comrade.fish"), true, ""
+}
+
 // resolvePowerShellProfile is RCPath's PowerShell branch: see RCPath's
 // doc comment for the resolution strategy and rationale. It always
 // queries exactly one binary, chosen purely from goos ("powershell" on

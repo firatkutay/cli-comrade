@@ -206,6 +206,34 @@ func TestDoIsVisibleInHelp(t *testing.T) {
 	assert.Contains(t, out, "do          Generate a plan", "`do` must be a visible subcommand as of FAZ 6")
 }
 
+// TestDoNoArgsShowsTranslatedUsageError proves `comrade do`'s Args
+// (translatedMinArgs, do.go) renders a friendly, i18n'd usage error —
+// including an actionable example request — for a bare `comrade do`
+// invocation, instead of cobra's raw English "requires at least 1
+// arg(s), only received 0". No mock LLM server is set up: a translated
+// arg-count usage error must fire before any plan generation is even
+// attempted.
+func TestDoNoArgsShowsTranslatedUsageError(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "do")
+
+	require.Error(t, err)
+	assert.Equal(t, `usage: comrade do <request...> (e.g. comrade do "install docker")`, err.Error())
+}
+
+// TestDoNoArgsShowsTranslatedUsageErrorInTurkish is the same proof under
+// COMRADE_LANG=tr.
+func TestDoNoArgsShowsTranslatedUsageErrorInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "do")
+
+	require.Error(t, err)
+	assert.Equal(t, `kullanım: comrade do <istek...> (örnek: comrade do "docker kur")`, err.Error())
+}
+
 // TestRenderPlanShowsEffectiveRiskNotDeclaredRisk is renderPlan's own
 // exact-value unit test for MEDIUM 6: the RISK column must always render
 // internal/safety's independent Decision, never the LLM-declared

@@ -27,9 +27,10 @@ func newHistoryCmd(newLoader loaderFactory) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "history",
-		Short: "Show recently executed commands from the audit log",
-		Args:  cobra.NoArgs,
+		Use:               "history",
+		Short:             "Show recently executed commands from the audit log",
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, tr, err := loadConfigWithNotice(cmd, newLoader)
 			if err != nil {

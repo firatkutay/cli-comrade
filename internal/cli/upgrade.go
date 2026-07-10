@@ -51,9 +51,10 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 	var checkOnly bool
 
 	cmd := &cobra.Command{
-		Use:   "upgrade",
-		Short: "Check for or install a newer released version of comrade",
-		Args:  cobra.NoArgs,
+		Use:               "upgrade",
+		Short:             "Check for or install a newer released version of comrade",
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, tr, err := loadConfigWithNotice(cmd, newLoader)
 			if err != nil {

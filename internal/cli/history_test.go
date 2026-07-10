@@ -141,3 +141,32 @@ func TestHistoryIsReadOnlyNeverRewritesAuditFile(t *testing.T) {
 	require.Len(t, after, 1)
 	assert.Equal(t, before[0], after[0])
 }
+
+// TestHistoryStrayArgShowsTranslatedUsageError proves `comrade history`'s
+// Args (translatedNoArgs, argvalidation.go) renders a friendly, i18n'd
+// usage error naming the command's own full path, instead of cobra's raw
+// English "accepts 0 arg(s), received 1", when given a stray positional
+// argument — representative of every other translatedNoArgs command in
+// this tree (chat, config list/edit/path/models/test-llm, upgrade, auth
+// status, hook, hook record), which all share this exact same
+// implementation.
+func TestHistoryStrayArgShowsTranslatedUsageError(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "history", "unexpected")
+
+	require.Error(t, err)
+	assert.Equal(t, "comrade history does not take any arguments", err.Error())
+}
+
+// TestHistoryStrayArgShowsTranslatedUsageErrorInTurkish is the same proof
+// under COMRADE_LANG=tr.
+func TestHistoryStrayArgShowsTranslatedUsageErrorInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "history", "unexpected")
+
+	require.Error(t, err)
+	assert.Equal(t, "comrade history hiçbir argüman almaz", err.Error())
+}

@@ -60,6 +60,25 @@ func TestRCPathFishFallsBackToHomeConfig(t *testing.T) {
 	assert.Equal(t, filepath.Join("/home/alice", ".config", "fish", "config.fish"), path)
 }
 
+func TestFishCompletionsPathPrefersXDGConfigHome(t *testing.T) {
+	path, ok, _ := shellinit.FishCompletionsPath(
+		fakeEnv(map[string]string{"HOME": "/home/alice", "XDG_CONFIG_HOME": "/home/alice/.config-custom"}))
+	require.True(t, ok)
+	assert.Equal(t, filepath.Join("/home/alice/.config-custom", "fish", "completions", "comrade.fish"), path)
+}
+
+func TestFishCompletionsPathFallsBackToHomeConfig(t *testing.T) {
+	path, ok, _ := shellinit.FishCompletionsPath(fakeEnv(map[string]string{"HOME": "/home/alice"}))
+	require.True(t, ok)
+	assert.Equal(t, filepath.Join("/home/alice", ".config", "fish", "completions", "comrade.fish"), path)
+}
+
+func TestFishCompletionsPathNotOKWhenHomeUnset(t *testing.T) {
+	_, ok, note := shellinit.FishCompletionsPath(fakeEnv(nil))
+	assert.False(t, ok)
+	assert.Contains(t, note, "HOME")
+}
+
 func TestRCPathPowerShellResolvesViaPwshWhenAvailable(t *testing.T) {
 	lookPath := func(name string) (string, error) {
 		if name == "pwsh" {

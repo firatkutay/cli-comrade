@@ -24,9 +24,10 @@ import (
 // uses.
 func newConfigModelsCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:   "models",
-		Short: "List models available for the active provider and select one",
-		Args:  cobra.NoArgs,
+		Use:               "models",
+		Short:             "List models available for the active provider and select one",
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			loader, err := newLoader()
 			if err != nil {

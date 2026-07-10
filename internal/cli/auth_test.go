@@ -455,3 +455,141 @@ func TestAuthStatusNeverPrintsKeyValues(t *testing.T) {
 	assert.NotContains(t, stdout, sentinel)
 	assert.NotContains(t, stderr, sentinel)
 }
+
+// TestAuthLoginWrongArgCountShowsTranslatedUsageError proves `comrade
+// auth login`'s Args (translatedExactArgs, auth.go) renders a friendly,
+// i18n'd usage error — naming every secrets.KnownProviders entry, per
+// the same pattern MsgAuthUnknownProviderError already uses — instead
+// of cobra's raw English "accepts 1 arg(s), received 0/2", for both too
+// few (0) and too many (2+) arguments, under both halves of
+// bestEffortTranslator's resolution chain: (a) a config file with
+// general.language="tr" and every language env var explicitly emptied
+// (proving config alone, with no matching env var, is enough — the
+// exact case config_test.go's own "...FromConfigLanguageAlone" sibling
+// tests pin for `config set`), and (b) a totally fresh install (no
+// config file yet) with LANG=en_US and no COMRADE_LANG/LC_ALL set
+// (proving the English default, and that the usage-error path still
+// creates the first-run config file exactly like every other command's
+// first invocation).
+func TestAuthLoginWrongArgCountShowsTranslatedUsageError(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T)
+		want  string
+	}{
+		{
+			name: "turkish from config general.language alone",
+			setup: func(t *testing.T) {
+				dir := withIsolatedConfigDir(t)
+				t.Setenv("COMRADE_LANG", "")
+				t.Setenv("LANG", "")
+				t.Setenv("LC_ALL", "")
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "cli-comrade"), 0o755))
+				require.NoError(t, os.WriteFile(
+					filepath.Join(dir, "cli-comrade", "config.toml"),
+					[]byte("[general]\nlanguage = \"tr\"\n"), 0o600))
+			},
+			want: "kullanım: comrade auth login <sağlayıcı> (beklenen: anthropic, openai_compat, google)",
+		},
+		{
+			name: "english default with no config and LANG=en_US",
+			setup: func(t *testing.T) {
+				withIsolatedConfigDir(t)
+				t.Setenv("COMRADE_LANG", "")
+				t.Setenv("LANG", "en_US")
+				t.Setenv("LC_ALL", "")
+			},
+			want: "usage: comrade auth login <provider> (expected one of: anthropic, openai_compat, google)",
+		},
+	}
+
+	for _, tc := range cases {
+		for _, extraArgs := range [][]string{{}, {"a", "b"}} {
+			t.Run(tc.name+"/"+strings.Join(extraArgs, ","), func(t *testing.T) {
+				tc.setup(t)
+				args := append([]string{"auth", "login"}, extraArgs...)
+				_, _, err := execRootSplit(t, "dev", args...)
+				require.Error(t, err)
+				assert.Equal(t, tc.want, err.Error())
+			})
+		}
+	}
+}
+
+// TestAuthLogoutWrongArgCountShowsTranslatedUsageError is `comrade auth
+// logout`'s counterpart to TestAuthLoginWrongArgCountShowsTranslatedUsageError
+// — a leaner single-case proof (0 args, default English) since logout's
+// Args wiring is otherwise identical (translatedExactArgs, same
+// provider-list message shape).
+func TestAuthLogoutWrongArgCountShowsTranslatedUsageError(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "auth", "logout")
+
+	require.Error(t, err)
+	assert.Equal(t, "usage: comrade auth logout <provider> (expected one of: anthropic, openai_compat, google)", err.Error())
+}
+
+// TestAuthUnknownSubcommandShowsTranslatedError proves `comrade auth
+// <bogus>` (no subcommand named "bogus") renders a friendly, i18n'd
+// "unknown subcommand" error (translatedUnknownSubcommand,
+// argvalidation.go) naming every real subcommand, instead of silently
+// printing help and exiting 0 (auth's prior behavior — see
+// translatedUnknownSubcommand's own doc comment for why this was never
+// actually cobra's raw "unknown command" text either).
+func TestAuthUnknownSubcommandShowsTranslatedError(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "auth", "bogus")
+
+	require.Error(t, err)
+	assert.Equal(t, `unknown subcommand "bogus" for comrade auth (expected one of: login, logout, status)`, err.Error())
+}
+
+// TestAuthUnknownSubcommandShowsTranslatedErrorInTurkish is the same
+// proof under COMRADE_LANG=tr.
+func TestAuthUnknownSubcommandShowsTranslatedErrorInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "auth", "bogus")
+
+	require.Error(t, err)
+	assert.Equal(t, `"bogus": comrade auth için bilinmeyen alt komut (beklenen: login, logout, status)`, err.Error())
+}
+
+// TestAuthBareInvocationStillPrintsHelpAndExitsZero proves a bare
+// "comrade auth" (no subcommand at all) keeps its pre-existing behavior
+// unchanged: help text, exit 0 — translatedUnknownSubcommand only ever
+// fires for len(args) > 0, and newAuthCmd's own RunE (added alongside
+// it, mirroring newHookCmd) reproduces exactly what cobra's non-Runnable
+// default used to do for this exact case.
+func TestAuthBareInvocationStillPrintsHelpAndExitsZero(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	stdout, _, err := execRootSplit(t, "dev", "auth")
+
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "Usage:")
+	assert.Contains(t, stdout, "comrade auth")
+	assert.Contains(t, stdout, "login")
+}
+
+// TestAuthLoginSubcommandResolutionBypassesParentUnknownSubcommandCheck
+// verifies the assumption translatedUnknownSubcommand's doc comment
+// states as fact: cobra's Find() resolves a REAL subcommand name (e.g.
+// "login") all the way down to that leaf command, so the PARENT's own
+// Args validator (translatedUnknownSubcommand) never runs for it at all
+// — only the leaf's own Args (translatedExactArgs) does. Proven here by
+// the exact error text: it must be login's own usage error (naming
+// "login"/providers), never the parent's "unknown subcommand" message
+// naming "login" as the unmatched arg.
+func TestAuthLoginSubcommandResolutionBypassesParentUnknownSubcommandCheck(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "auth", "login")
+
+	require.Error(t, err)
+	assert.Equal(t, "usage: comrade auth login <provider> (expected one of: anthropic, openai_compat, google)", err.Error())
+	assert.NotContains(t, err.Error(), "unknown subcommand")
+}

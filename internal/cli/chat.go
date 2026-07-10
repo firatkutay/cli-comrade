@@ -135,9 +135,10 @@ func runChatDo(ctx context.Context, cfg config.Config, client engine.Completer, 
 // autosave, only explicit "/save <file>"; "/do" routing decision).
 func newChatCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
-		Use:   "chat",
-		Short: "Start an interactive, context-preserving chat session",
-		Args:  cobra.NoArgs,
+		Use:               "chat",
+		Short:             "Start an interactive, context-preserving chat session",
+		Args:              translatedNoArgs(newLoader),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runChat(cmd, newLoader, term.IsTerminal)
 		},

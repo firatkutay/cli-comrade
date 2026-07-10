@@ -79,6 +79,21 @@ func TestHookRecordExitsZeroSilentlyWhenPathCannotBeResolved(t *testing.T) {
 	assert.Equal(t, "", out)
 }
 
+// TestHookStrayArgShowsTranslatedUsageError proves a bare `comrade hook
+// <bogus>` (no valid "record" subcommand match) renders a friendly,
+// i18n'd usage error (translatedNoArgs, hook.go) instead of cobra's own
+// raw, untranslated "unknown command %q for %q" — hook has a subcommand
+// ("record"), so leaving Args unset would otherwise hit cobra's
+// legacyArgs default rather than a plain arity-mismatch message.
+func TestHookStrayArgShowsTranslatedUsageError(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "hook", "bogus")
+
+	require.Error(t, err)
+	assert.Equal(t, "comrade hook does not take any arguments", err.Error())
+}
+
 func TestHookRecordIsHiddenFromHelp(t *testing.T) {
 	root := NewRootCmd("dev")
 	hookCmd, _, err := root.Find([]string{"hook"})

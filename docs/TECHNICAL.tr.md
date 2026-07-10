@@ -279,14 +279,32 @@ bir kullanım hatasıdır (`modeFlagValue`, `flags.go`).
 renklidir** (`internal/cli/help.go`). Herhangi bir seviyede `--help`,
 komutları üç i18n'li grup başlığı altında listeler — Core
 (`do`/`fix`/`explain`/`chat`), Setup (`auth`/`init`/`config`), Info
-(`history`/`upgrade`) — artı cobra'nın gruplanmamış birkaç komut için
-(`hook`, `completion`, `help`) varsayılan "Additional Commands:"
-kovası. Root'un kendi `--help`'i ayrıca çevrilmiş bir Examples bloğu
-yazdırır (`root.Example`, `MsgHelpExamplesRoot`). Renk etkinken
-(aşağıya bakın), bölüm/grup başlıkları kalın pastel lavantada, komut
-adları pastel cyan/tealde, ve flag adları (tek harfli kısaltmalar
-dahil) pastel şeftalide render edilir — lipgloss'un canlı-terminal-
-sorgusu tabanlı adaptive renk yerine, her `--help`/`--version`'da
+(`history`/`upgrade`) — artı `hook`/`help` için cobra'nın varsayılan
+"Additional Commands:" kovası (otomatik üretilen `completion` komutu
+artık help'ten tamamen **gizlidir** — `cobra.CompletionOptions{
+HiddenDefaultCmd: true}` ile; `comrade completion bash` vb. hâlâ
+çalışır, sadece reklamı yapılmaz). Cobra'nın kendi yapısal bölüm
+etiketleri (`Usage:`/`Aliases:`/`Examples:`/`Available Commands:`/
+`Additional Commands:`/`Flags:`/`Global Flags:`/`Additional help
+topics:`, artı sondaki "Use `\"...\"` for more information..."
+satırı) de artık çevrilidir — `usageTemplateFor(tr)` ile: cobra
+v1.10.2'nin kendi export edilmemiş `defaultUsageTemplate`'inin, yalnızca
+o sekiz etiket `tr.T(...)` çağrılarıyla değiştirilmiş, birebir yapısal
+bir kopyası; `root.SetUsageTemplate` ile tüm ağaca kurulur. Bu bilinçli,
+belgelenmiş bir sürüm-eşleşmesi riskidir (cobra bu şablonu programatik
+türetmenin hiçbir yolunu sunmuyor):
+`TestUsageTemplateForMatchesCobraDefaultShapeInEnglish` (`help_test.go`),
+`usageTemplateFor(EN)`'in temsili bir komut ağacı için cobra'nın
+dokunulmamış varsayılanıyla birebir aynı çıktı ürettiğini kanıtlar, bu
+yüzden gelecekteki bir cobra şablon değişikliği sessizce değil yüksek
+sesle bozulur — ve `go.mod` cobra'yı tam bir sürüme sabitlediğinden, bu
+yalnızca bilinçli bir yükseltmede bayatlayabilir. Root'un kendi
+`--help`'i ayrıca çevrilmiş bir Examples bloğu yazdırır (`root.Example`,
+`MsgHelpExamplesRoot`). Renk etkinken (aşağıya bakın), bölüm/grup
+başlıkları kalın pastel lavantada, komut adları pastel cyan/tealde, ve
+flag adları (tek harfli kısaltmalar dahil) pastel şeftalide render
+edilir — lipgloss'un canlı-terminal-sorgusu tabanlı adaptive renk
+yerine, her `--help`/`--version`'da
 bloklayıcı bir terminal sorgusu ödememek için sabit ANSI256 kodları
 (§13'ün vendored clipboard fork'u için ele aldığı aynı cold-start
 kaygısı).
@@ -384,11 +402,20 @@ dökümü ve kendi risk notunu ister.
 
 `explain`, `DisableFlagParsing: true` ayarını kullanır — açıklanan
 komut metni sıklıkla bir tire ile başlar (`-rf`, `-la`) ve comrade'ın
-kendi flag'i olarak ayrıştırılmamalıdır. **Sonuç:** `comrade explain -h`
-veya `comrade explain --help`, `-h`/`--help`'i cobra'nın kendi help'i
-için bir istek olarak değil, açıklanacak düz metin olarak ele alır (ve
-sonra bir LLM'e ulaşmaya çalışırken başarısız olur); bu komutun help
-metnini görmek için `comrade help explain` kullanın.
+kendi flag'i olarak ayrıştırılmamalıdır. Bu, cobra'nın kendi flag
+ayrıştırıcısının (normalde `-h`/`--help`'i yakalayan ve Args
+doğrulamasını çalıştıran) bu komut için hiç çalışmadığı anlamına da
+geldiğinden, `explain`'in `RunE`'si bunu kendisi, açıkça ele alır:
+hiç argümansız veya tam olarak `-h`/`--help` ile çağrıldığında, bir
+LLM çağrısı yapmak yerine bu komutun help'ini gösterir (`cmd.Help()`);
+başka türlü argümansız çağrıldığında, cobra'nın genel İngilizce
+`MinimumNArgs` mesajı yerine i18n'li bir kullanım hatası
+(`MsgExplainUsageError`) döner. Tam olarak `-h` veya `--help` olan bir
+komut dizesini birebir açıklamak için `comrade explain -- -h` kaçış
+kapısını kullanın — baştaki `--`, `explain`'in kendisi tarafından
+kaldırılır (cobra bunu burada asla kaldırmaz, çünkü
+`DisableFlagParsing` argüman token'larını dokunulmadan bırakır) ve
+ondan sonraki her şey, ne olursa olsun birebir açıklanır.
 
 ```
 comrade explain "git rebase -i HEAD~5"
@@ -418,6 +445,13 @@ değiştirme, bağlamı temizleme, transkripti kaydetme, ve oturumdan
 | `edit` | Config dosyasını `$EDITOR`'da aç |
 | `path` | Config dosyasının çözümlenmiş yolunu yazdır |
 | `models` | **O an yapılandırılmış** provider için mevcut modelleri listele ve etkileşimli olarak birini seç, seçimi `llm.model`'e kalıcı hale getir |
+
+`config set`, `explain` gibi `DisableFlagParsing: true` ayarını
+kullanır (bir değer kendisi bir flag gibi görünebilir, ör. `comrade
+config set safety.denylist_extra --foo`) ve bu yüzden benzer şekilde
+`-h`/`--help`'i ve yanlış argüman sayısını kendisi ele alır — cobra'nın
+ham İngilizce `ExactArgs(2)` mesajı yerine i18n'li bir kullanım hatası
+(`MsgConfigSetUsageError`).
 
 ```
 comrade config path
@@ -507,6 +541,16 @@ durumu için rename manevrası dahil).
 | Flag | Etki |
 |---|---|
 | `--check` | Sadece yeni bir versiyonun mevcut olup olmadığını bildir; indirme/kurulum yapma |
+
+Depoda henüz hiç yayınlanmış release yokken — GitHub'ın API'si bu
+belirli durum için 404 döner (`update.ErrReleaseNotFound`,
+`internal/update/github.go`) — `comrade upgrade`/`--check`, GitHub'ın
+kendi ham İngilizce 404 JSON gövdesi yerine temiz, i18n'li bir mesaj
+yazdırır (`MsgUpgradeNoReleaseFound`). Bu, gerçek bir fetch
+başarısızlığından (ağ erişilemez, 200/404 dışı bir durum —
+`MsgUpgradeFetchFailed`) ayırt edilir; onun ham HTTP hata detayı
+yalnızca `COMRADE_DEBUG` ayarlıyken stderr'e yazılır,
+`hook.go`'nun kendi yerleşik debug-detay kuralını yansıtarak.
 
 ```
 comrade upgrade --check
@@ -832,6 +876,57 @@ silinmesini zorunlu kılar:
   düzyazıdan ayırt edemez, bu yüzden bu tek düzyazı-olmayan literal'i
   işaretler — burada herhangi bir `i18n.Translator`'ın çevirebileceği
   hiçbir şey yoktur.
+
+Sonraki bir QA turu (D4b), iki gerçek "usage erişilemez" hatasını
+düzeltti (`explain`/`config set`'in `-h`/`--help` ele alışı, yukarıda)
+ve cobra'nın kendi yapısal şablon etiketlerini çevirdi, ama beş kalıntı
+çevrilmemiş İngilizce metin kaynağını bilinçli olarak kapsam dışı
+bıraktı — `docs/PROGRESS.md`'de belgelendi, sessizce atlanmadı:
+
+1. pflag'in kendi flag-ayrıştırma hataları (`"unknown flag: --x"`,
+   `"unknown shorthand flag"`) — pflag bunlar için hiçbir
+   yapılandırılmış hata tipi/sentinel sunmuyor, yalnızca ham İngilizce
+   `fmt.Errorf` metni; güvenilir çevirisi bu ham metni regex/
+   string-eşleştirmeyle ayrıştırmayı gerektirir, pflag sürüm
+   güncellemelerinde kırılgan ve bu projenin "ham metin ayrıştırma"
+   karşıtı duruşuyla çelişir.
+2. `explain`/`config set` **dışındaki** her komutta cobra'nın kendi
+   `Args` doğrulayıcı mesajları (`"accepts N arg(s), received M"`,
+   `"unknown command %q for %q"`) — bu ikisi, gerçek hatanın
+   `--help`'in kendisinin erişilemez olması olduğu tek komutlardı;
+   başka her yerde (`auth login`, `chat`, `history`, ...) `--help`
+   zaten doğru çalışıyor, bu yüzden yalnızca bir argüman-sayısı *yazım
+   hatası mesajı* ham İngilizce kalıyor, "usage keşfedilemez" hatası
+   değil.
+3. gizli `completion`'ın kendi üretilen yardım metni (hâlâ İngilizce,
+   i18n kancası olmayan birkaç KB'lık cobra-üretimi içerik — yalnızca
+   *görünürlüğü* değişti, yukarıdaki "Help çıktısı gruplanmıştır..."
+   notuna bakın).
+4. cobra'nın otomatik üretilen `help` komutunun kendi `Short`/`Long`
+   metni ("Help about any command...") — tek satır, düşük etki, ve
+   geç/tembel başlatma zamanlamasının `applyTranslatedHelp`'in
+   ağaç-yürüyüşüyle güvenilir şekilde kesiştiği doğrulanmadı.
+5. cobra'nın otomatik `-h, --help` flag'inin kendi dinamik
+   `"help for <command-name>"` açıklaması — `flagUsageByName`, sabit,
+   tek-katalog-girdili metinler için tasarlandı, komut adına göre
+   değişen bir metin için değil; bu tek flag açıklaması için
+   genişletmek, katılan karmaşıklığa değer görülmedi.
+
+**İkinci, ayrı bir i18n mekanizması yapılandırılmış hataları ele alır**,
+ham string literal'ları değil: `internal/config`'in
+`Validate`/`Loader.Get`/`Loader.Source`/`Loader.Set`'i, kötü bir config
+anahtarı veya değeri için tipli `*config.UnknownKeyError`/
+`*config.InvalidValueError` değerleri döner (önceden biçimlendirilmiş
+kullanıcıya-görünen metin değil). `internal/cli/config.go`'nun
+`translateConfigError`'ı, bunları aktif `i18n.Translator` üzerinden CLI
+sınırında yeniden render eder — `internal/config`'in kendi İngilizce
+`Error()` string'ini ayrıştırmak yerine, hata tipini eşleştirmek için
+`errors.As` kullanarak. Bu bilinçli bir katmanlamadır:
+`internal/config` tamamen i18n'siz kalır (hiç `internal/i18n` import'u
+yok), ve her çeviri kararı, bir `Translator`'ın gerçekten mevcut olduğu
+`internal/cli`'de yaşar — bu mimarinin başka yerlerde de zaten
+izlediği "engine/config paketleri sunumdan bağımsız kalır,
+`internal/cli` render eder" ayrımının aynısı (§2).
 
 ## 11. Paketleme, dağıtım ve kendi kendini güncelleme
 

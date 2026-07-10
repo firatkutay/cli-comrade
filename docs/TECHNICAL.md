@@ -267,16 +267,32 @@ is a usage error (`modeFlagValue`, `flags.go`).
 colorized** (`internal/cli/help.go`). `--help` at any level lists
 commands under three i18n'd group titles — Core (`do`/`fix`/`explain`/
 `chat`), Setup (`auth`/`init`/`config`), Info (`history`/`upgrade`) —
-plus cobra's default "Additional Commands:" bucket for the few left
-ungrouped (`hook`, `completion`, `help`). Root's own `--help` also
-prints a translated Examples block (`root.Example`,
-`MsgHelpExamplesRoot`). When color is enabled (see below), section/
-group headers render in a bold pastel lavender, command names in
-pastel cyan/teal, and flag names (including one-letter shorthand) in
-pastel peach — fixed ANSI256 codes rather than lipgloss's
-live-terminal-query-based adaptive color, to avoid paying a blocking
-terminal query on every `--help`/`--version` (the same cold-start
-concern §13 covers for the vendored clipboard fork).
+plus cobra's default "Additional Commands:" bucket for `hook`/`help`
+(the auto-generated `completion` command itself is now **hidden** from
+help entirely via `cobra.CompletionOptions{HiddenDefaultCmd: true}` —
+`comrade completion bash` etc. still works, just isn't advertised).
+Cobra's own structural section labels (`Usage:`/`Aliases:`/
+`Examples:`/`Available Commands:`/`Additional Commands:`/`Flags:`/
+`Global Flags:`/`Additional help topics:`, plus the trailing "Use
+`\"...\"` for more information..." line) are also translated now, via
+`usageTemplateFor(tr)` — a byte-for-byte structural copy of cobra
+v1.10.2's own unexported `defaultUsageTemplate` with only those eight
+labels swapped for `tr.T(...)` calls, installed tree-wide via
+`root.SetUsageTemplate`. This is a deliberate, documented version-
+coupling risk (cobra exposes no programmatic way to derive this
+template): `TestUsageTemplateForMatchesCobraDefaultShapeInEnglish`
+(`help_test.go`) proves `usageTemplateFor(EN)` renders byte-identical
+output to cobra's untouched default for a representative command tree,
+so a future cobra template change breaks loudly, not silently — and
+`go.mod` pins cobra to an exact version, so this can only go stale on a
+conscious upgrade. Root's own `--help` also prints a translated
+Examples block (`root.Example`, `MsgHelpExamplesRoot`). When color is
+enabled (see below), section/group headers render in a bold pastel
+lavender, command names in pastel cyan/teal, and flag names (including
+one-letter shorthand) in pastel peach — fixed ANSI256 codes rather than
+lipgloss's live-terminal-query-based adaptive color, to avoid paying a
+blocking terminal query on every `--help`/`--version` (the same
+cold-start concern §13 covers for the vendored clipboard fork).
 
 **Color is decided in exactly one place**: `internal/cli.
 resolveColorEnabled` (`internal/cli/color.go`). `general.color=false`
@@ -367,11 +383,20 @@ summary, flag-by-flag breakdown, and its own risk note.
 
 `explain` sets `DisableFlagParsing: true` — the command text being
 explained routinely starts with a dash (`-rf`, `-la`) and must not be
-parsed as comrade's own flags. **Consequence:** `comrade explain -h` or
-`comrade explain --help` treats `-h`/`--help` as literal text to
-explain (and then fails trying to reach an LLM), not as a request for
-cobra's own help; use `comrade help explain` to see this command's help
-text instead.
+parsed as comrade's own flags. Because that also means cobra's own
+flag parser (which is what normally intercepts `-h`/`--help` and runs
+Args validation) never runs at all for this command, `explain`'s `RunE`
+does that handling itself, explicitly: called with no arguments at all,
+or with exactly `-h`/`--help`, it shows this command's help
+(`cmd.Help()`) instead of making an LLM call; called with no arguments
+otherwise, it returns an i18n'd usage error
+(`MsgExplainUsageError`) rather than cobra's generic English
+`MinimumNArgs` message. To literally explain a command string that is
+itself exactly `-h` or `--help`, use the escape hatch `comrade explain
+-- -h` — the leading `--` is stripped by `explain` itself (cobra never
+strips it here, since `DisableFlagParsing` leaves argument tokens
+untouched) and everything after it is explained literally, no matter
+what it looks like.
 
 ```
 comrade explain "git rebase -i HEAD~5"
@@ -401,6 +426,13 @@ mode switching, clearing context, saving the transcript, and issuing a
 | `edit` | Open the config file in `$EDITOR` |
 | `path` | Print the config file's resolved path |
 | `models` | List models available for the *currently configured* provider and interactively select one, persisting the choice to `llm.model` |
+
+`config set`, like `explain`, sets `DisableFlagParsing: true` (a value
+can itself look like a flag, e.g. `comrade config set safety.
+denylist_extra --foo`) and so likewise handles `-h`/`--help` and a
+wrong argument count itself — an i18n'd usage error
+(`MsgConfigSetUsageError`) rather than cobra's raw English
+`ExactArgs(2)` message.
 
 ```
 comrade config path
@@ -489,6 +521,16 @@ can't-overwrite-a-running-exe rename dance).
 | Flag | Effect |
 |---|---|
 | `--check` | Only report whether a newer version is available; do not download/install |
+
+When the repository has no published release at all yet — GitHub's API
+returns 404 for that specific case (`update.ErrReleaseNotFound`,
+`internal/update/github.go`) — `comrade upgrade`/`--check` prints a
+clean i18n'd message (`MsgUpgradeNoReleaseFound`) instead of GitHub's
+own raw English 404 JSON body. That distinguishes it from a genuine
+fetch failure (network unreachable, a non-200/non-404 status —
+`MsgUpgradeFetchFailed`), whose raw HTTP error detail is written to
+stderr only when `COMRADE_DEBUG` is set, mirroring `hook.go`'s
+established debug-detail convention.
 
 ```
 comrade upgrade --check
@@ -798,6 +840,54 @@ deleted:
   heuristic has no way to distinguish the trailing `"K"` of that escape
   code from real prose, so it flags this one non-prose literal — there
   is nothing here for any `i18n.Translator` to translate.
+
+A later QA round (D4b) fixed the two genuine "usage is unreachable"
+bugs (`explain`/`config set`'s `-h`/`--help` handling, above) and
+translated cobra's own structural template labels, but deliberately
+left five residual sources of untranslated English text out of scope
+— documented in `docs/PROGRESS.md`, not silently dropped:
+
+1. pflag's own flag-parse errors (`"unknown flag: --x"`, `"unknown
+   shorthand flag"`) — pflag exposes no structured error type/sentinel
+   for these, only raw English `fmt.Errorf` text; reliably translating
+   them would mean regex/string-matching that raw text, fragile across
+   pflag version bumps and against this project's own stance against
+   parsing raw text for meaning.
+2. cobra's own `Args` validator messages (`"accepts N arg(s), received
+   M"`, `"unknown command %q for %q"`) on every command **other than**
+   `explain`/`config set` — those two are the only ones where the real
+   bug was `--help` itself being unreachable; everywhere else
+   (`auth login`, `chat`, `history`, ...) `--help` already works fine,
+   so only an argument-count *typo message* stays raw English, not a
+   "usage is undiscoverable" defect.
+3. hidden `completion`'s own generated help text (still English,
+   several KB of cobra-generated content with no i18n hook — only its
+   *visibility* changed, per the "Help output is grouped..." note
+   above).
+4. cobra's auto-generated `help` command's own `Short`/`Long` text
+   ("Help about any command...") — one line, low impact, and its
+   late/lazy initialization timing wasn't verified to reliably
+   intersect `applyTranslatedHelp`'s tree-walk.
+5. cobra's automatic `-h, --help` flag's own dynamic
+   `"help for <command-name>"` description — `flagUsageByName` is built
+   for fixed, single-catalog-entry text, not one that varies by command
+   name; extending it for this single flag description wasn't judged
+   worth the added complexity.
+
+**A second, separate i18n mechanism handles structured errors**, not
+raw string literals: `internal/config`'s `Validate`/`Loader.Get`/
+`Loader.Source`/`Loader.Set` return typed `*config.UnknownKeyError`/
+`*config.InvalidValueError` values (not pre-formatted user-facing
+text) for a bad config key or value. `internal/cli/config.go`'s
+`translateConfigError` re-renders these through the active
+`i18n.Translator` at the CLI boundary, using `errors.As` to match the
+error type rather than parsing `internal/config`'s own English
+`Error()` string. This is deliberate layering: `internal/config` stays
+completely i18n-free (no `internal/i18n` import at all), and every
+translation decision lives in `internal/cli` where a `Translator` is
+actually available — the same "engine/config packages stay
+presentation-agnostic, `internal/cli` renders" split this whole
+architecture already follows elsewhere (§2).
 
 ## 11. Packaging, distribution & self-update
 

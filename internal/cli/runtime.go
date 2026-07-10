@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -91,11 +93,100 @@ func loadConfigWithNotice(cmd *cobra.Command, newLoader loaderFactory) (config.C
 	return *cfg, tr, nil
 }
 
+// classifyLLMError re-renders err — the error a blocking LLM call
+// (planner.GeneratePlan/diagnoser.Diagnose/explainer.Explain/chatTurn/
+// runChatDo) returned — through tr when it is classifiable, returning
+// (true, translated); returns (false, nil) for anything else, leaving
+// the caller's own existing handling untouched (QA MAJOR-1's regression
+// fix — the previous behavior was to surface the raw internal wrap-chain
+// verbatim: "llm: all providers failed: anthropic: no API key found for
+// provider \"anthropic\"; set one of: ..." — English regardless of
+// general.language, and internal detail (the wrap-chain, the literal env
+// var names) a terminal beginner cannot act on).
+//
+// Currently classifies exactly one case: *llm.KeyMissingError (every
+// configured provider/fallback attempt failed because no credential was
+// found at all) — internal/llm's fallback loop already wraps this with
+// %w at every level (Client.Complete/Stream's per-attempt wrap, then
+// finalChainError's "all providers failed" wrap), so errors.As sees
+// through the whole chain to recover the original *KeyMissingError's own
+// Provider field, without this function ever parsing error TEXT. This is
+// the SAME errors.Is/As-at-the-CLI-boundary pattern
+// translateConfigError (config.go) and translateUpgradeFetchError
+// (upgrade.go) already established for their own respective error
+// families — a third application of one existing pattern, not a new one.
+//
+// A pure function — no I/O — so chatdispatch.go's dispatchChatLine (which
+// deliberately has no bubbletea/terminal/cmd access at all — see its own
+// doc comment) can call it directly for chat's in-model error rendering;
+// translateLLMError (below) is the version WITH the COMRADE_DEBUG detail
+// dump, for callers that do have a cmd/stderr to dump to.
+func classifyLLMError(tr i18n.Translator, err error) (bool, error) {
+	var keyMissing *llm.KeyMissingError
+	if errors.As(err, &keyMissing) {
+		return true, fmt.Errorf("%s", tr.T(i18n.MsgLLMNoKeyError, keyMissing.Provider, keyMissing.Provider))
+	}
+	return false, nil
+}
+
+// translateLLMError is classifyLLMError plus the two things a plain CLI
+// command (do/fix/explain — every LLM-reaching command except chat, which
+// uses classifyLLMError directly) needs around it: the original,
+// un-translated err's full detail is written to w, but ONLY when
+// COMRADE_DEBUG is set (matching hook.go's own established debug-gated-
+// detail convention elsewhere in this tree) — the wrap-chain is
+// SUPPRESSED from the primary message, never silently discarded; and
+// every OTHER (unclassified) error is returned wrapped exactly as it
+// always was (fmt.Errorf("prefix: %w", err)) — nothing about an
+// unclassified failure's own detail changes.
+func translateLLMError(w io.Writer, prefix string, tr i18n.Translator, err error) error {
+	if ok, translated := classifyLLMError(tr, err); ok {
+		if os.Getenv("COMRADE_DEBUG") != "" {
+			_, _ = fmt.Fprintf(w, "%s: %v\n", prefix, err)
+		}
+		return translated
+	}
+	return fmt.Errorf("%s: %w", prefix, err)
+}
+
+// isTerminalFunc reports whether fd is an interactive terminal. Its
+// production value is golang.org/x/term.IsTerminal (matches that
+// function's own signature exactly, so no wrapping is needed at the call
+// site). Commands take it as a parameter — exactly like passwordReader
+// (auth.go) — so tests can simulate both a real TTY (the overwhelmingly
+// common case) and a non-TTY (QA MINOR-5's actual bug) deterministically,
+// without depending on go test's own stdin, which is unpredictable across
+// environments (a real terminal when run locally by hand, virtually never
+// one under CI or a piped/scripted invocation).
+type isTerminalFunc func(fd int) bool
+
+// requireInteractiveTTY returns a friendly, i18n'd error (rendered
+// through tr as msgID, a no-arg MessageID) when stdin — as reported by
+// isTerminal — is not an interactive terminal, and nil otherwise. Shared
+// by `comrade auth login` (MsgAuthLoginRequiresTTY) and `comrade chat`
+// (MsgChatRequiresTTY), QA MINOR-5's fix: both previously let the
+// underlying library (x/term.ReadPassword / bubbletea) fail on its own —
+// a raw platform errno ("inappropriate ioctl for device" on Unix) for
+// auth login, an indefinite hang for chat (bubbletea needs a real TTY) —
+// neither of which names a cause a non-expert user could act on. Checked
+// up front, before any config load or provider I/O, so a non-interactive
+// invocation fails fast and cleanly instead of however the library
+// underneath would otherwise fail.
+func requireInteractiveTTY(tr i18n.Translator, isTerminal isTerminalFunc, msgID i18n.MessageID) error {
+	if isTerminal(int(os.Stdin.Fd())) {
+		return nil
+	}
+	return fmt.Errorf("%s", tr.T(msgID))
+}
+
 // buildLLMClient constructs the full llm.Client (fallback chain included)
 // for cfg, resolving API keys through the same keychain/file/env chain
-// every FAZ 8 command uses (see newSecretsStore/secretsKeyResolver).
-func buildLLMClient(cmd *cobra.Command, cfg config.Config) (*llm.Client, error) {
-	store, err := newSecretsStore(cmd.ErrOrStderr())
+// every FAZ 8 command uses (see newSecretsStore/secretsKeyResolver). tr
+// is only used for the file-fallback keychain-unavailable notice's
+// language (QA MINOR-4) — every caller already has it in scope from its
+// own loadConfigWithNotice call.
+func buildLLMClient(cmd *cobra.Command, cfg config.Config, tr i18n.Translator) (*llm.Client, error) {
+	store, err := newSecretsStore(cmd.ErrOrStderr(), tr)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +220,7 @@ func setupCLIRuntime(cmd *cobra.Command, newLoader loaderFactory, flags *executi
 		}
 	}
 
-	client, err := buildLLMClient(cmd, cfg)
+	client, err := buildLLMClient(cmd, cfg, tr)
 	if err != nil {
 		return config.Config{}, nil, err
 	}

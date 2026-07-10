@@ -16,7 +16,10 @@ import (
 // any Store method actually runs against the file backend — never when
 // the keychain backend is active. It intentionally does not repeat the
 // full explanation (that lives in fileHeader, inside the file itself,
-// where it stays visible every time someone opens the file later).
+// where it stays visible every time someone opens the file later). This
+// is the package's own English default; internal/cli's newSecretsStore
+// prefers the i18n'd, QA-MINOR-4-softened wording
+// (i18n.MsgSecretsFileFallbackWarning) instead — see NewStoreWithWarning.
 const fileFallbackWarning = "cli-comrade: no OS keychain available on this machine; storing API keys base64-obfuscated (NOT encrypted) in a 0600 file instead. See that file's header comment for details.\n"
 
 // fileHeader is written verbatim at the top of the credentials file on

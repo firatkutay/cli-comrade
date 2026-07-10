@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/secrets"
 )
 
@@ -62,7 +63,7 @@ func TestSecretsKeyResolverPrecedence(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			withMockKeychain(t)
-			store, err := newSecretsStore(io.Discard)
+			store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 			require.NoError(t, err)
 			tc.setup(t, store)
 

@@ -89,7 +89,7 @@ func runExplain(cmd *cobra.Command, newLoader loaderFactory, command string) err
 	if err != nil {
 		return fmt.Errorf("comrade explain: %w", err)
 	}
-	client, err := buildLLMClient(cmd, cfg)
+	client, err := buildLLMClient(cmd, cfg, tr)
 	if err != nil {
 		return fmt.Errorf("comrade explain: %w", err)
 	}
@@ -110,7 +110,7 @@ func runExplain(cmd *cobra.Command, newLoader loaderFactory, command string) err
 	explanation, err := explainer.Explain(cmd.Context(), command)
 	stopSpinner()
 	if err != nil {
-		return fmt.Errorf("comrade explain: %w", err)
+		return translateLLMError(cmd.ErrOrStderr(), "comrade explain", tr, err)
 	}
 
 	return renderExplanation(cmd.OutOrStdout(), tr, explanation)

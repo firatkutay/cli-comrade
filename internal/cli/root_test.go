@@ -73,7 +73,13 @@ func TestRootDispatchKnownSubcommandRoutesNormally(t *testing.T) {
 // API key, the pipeline deterministically fails once it actually reaches
 // plan generation, which is exactly what proves dispatch worked: the
 // error is llm/engine-shaped, never "unknown command" or the old
-// "--dry-run" message.
+// "--dry-run" message. The error text itself is now the QA MAJOR-1
+// friendly no-key message (translateLLMError, runtime.go) rather than a
+// "comrade do: ..."-prefixed wrap-chain — that prefix is deliberately
+// SUPPRESSED for this specific, classified error (see runtime.go's
+// translateLLMError doc comment), so this asserts on the friendly
+// message's own content instead, which is equally (arguably more)
+// specific proof that dispatch reached runDo's plan-generation step.
 func TestRootDispatchUnmatchedArgsFallsBackToDo(t *testing.T) {
 	withIsolatedConfigDir(t)
 	t.Setenv("COMRADE_ANTHROPIC_API_KEY", "")
@@ -83,7 +89,7 @@ func TestRootDispatchUnmatchedArgsFallsBackToDo(t *testing.T) {
 
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "unknown command")
-	assert.Contains(t, err.Error(), "comrade do:", "must have reached runDo, proving free-text dispatch")
+	assert.Contains(t, err.Error(), "comrade auth login anthropic", "must have reached runDo's plan generation, proving free-text dispatch")
 	_ = stderr
 }
 

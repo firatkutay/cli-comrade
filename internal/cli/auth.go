@@ -32,7 +32,7 @@ func newAuthCmd(newLoader loaderFactory) *cobra.Command {
 		Short: "Manage stored LLM provider API keys (keychain, with a file fallback)",
 	}
 	root.AddCommand(
-		newAuthLoginCmd(newLoader, term.ReadPassword),
+		newAuthLoginCmd(newLoader, term.ReadPassword, term.IsTerminal),
 		newAuthLogoutCmd(newLoader),
 		newAuthStatusCmd(newLoader),
 	)
@@ -50,7 +50,7 @@ func isKnownKeyProvider(provider string) bool {
 	return false
 }
 
-func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader) *cobra.Command {
+func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTerminal isTerminalFunc) *cobra.Command {
 	return &cobra.Command{
 		Use:   "login <provider>",
 		Short: "Store an API key for a provider, then send a small test request",
@@ -77,6 +77,15 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader) *cobr
 				return err
 			}
 
+			// QA MINOR-5: without this check, a non-interactive stdin
+			// (piped/redirected/scripted invocation) reached
+			// readPassword below and failed with x/term.ReadPassword's
+			// own raw platform errno ("inappropriate ioctl for device"
+			// on Unix) — a message that names no actionable cause.
+			if err := requireInteractiveTTY(tr, isTerminal, i18n.MsgAuthLoginRequiresTTY); err != nil {
+				return err
+			}
+
 			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthEnterKeyPrompt, provider)); err != nil {
 				return err
 			}
@@ -92,25 +101,44 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader) *cobr
 				return fmt.Errorf("%s", tr.T(i18n.MsgAuthNoKeyEnteredError))
 			}
 
-			store, err := newSecretsStore(cmd.ErrOrStderr())
+			store, err := newSecretsStore(cmd.ErrOrStderr(), tr)
 			if err != nil {
+				return err
+			}
+
+			// Ping BEFORE ever storing anything (QA MAJOR-2, reordered
+			// per review): pingProvider verifies the IN-MEMORY key
+			// directly (llm.WithKeyResolver's closure below, never the
+			// store), so there is no need to write first and undo on
+			// rejection. What happens next depends on WHY the ping
+			// failed:
+			//   - llm.ErrAuthRejected (401/403 — the provider itself
+			//     definitively rejected this key): the key is wrong, not
+			//     merely unverifiable. Return a genuine command error
+			//     (nonzero exit) WITHOUT ever writing to the keychain/
+			//     file store — no write, no delete, no window where a
+			//     known-bad key sits stored, no delete-failure mode to
+			//     handle at all.
+			//   - anything else (network/timeout/5xx/parse — the key
+			//     might be fine, the PING failed): store it anyway,
+			//     reported but not a command error — an offline user (or
+			//     one hitting a transient provider-side error) must not
+			//     be blocked from saving a key they believe is correct,
+			//     see docs/phases/FAZ-08.md's "login stores even if ping
+			//     fails" rationale.
+			resp, latency, pingErr := pingProvider(cmd, newLoader, provider, key)
+			if pingErr != nil {
+				if errors.Is(pingErr, llm.ErrAuthRejected) {
+					return fmt.Errorf("%s", tr.T(i18n.MsgAuthKeyRejected, provider, pingErr, provider))
+				}
+				if err := store.Set(cmd.Context(), provider, key); err != nil {
+					return fmt.Errorf("auth login: store key: %w", err)
+				}
+				_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyPingFailed, provider, pingErr))
 				return err
 			}
 			if err := store.Set(cmd.Context(), provider, key); err != nil {
 				return fmt.Errorf("auth login: store key: %w", err)
-			}
-
-			// The key is stored before the ping runs, and stays stored
-			// regardless of the ping's outcome: an offline user (or one
-			// hitting a transient provider-side error) must not be
-			// blocked from saving a key they believe is correct — see
-			// docs/phases/FAZ-08.md's "login stores even if ping fails"
-			// rationale. A ping failure is reported, not returned as a
-			// command error, for the same reason.
-			resp, latency, pingErr := pingProvider(cmd, newLoader, provider, key)
-			if pingErr != nil {
-				_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyPingFailed, provider, pingErr))
-				return err
 			}
 			_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyPingSucceeded,
 				provider, resp.Model, latency.Round(time.Millisecond)))
@@ -166,7 +194,7 @@ func newAuthLogoutCmd(newLoader loaderFactory) *cobra.Command {
 				return err
 			}
 
-			store, err := newSecretsStore(cmd.ErrOrStderr())
+			store, err := newSecretsStore(cmd.ErrOrStderr(), tr)
 			if err != nil {
 				return err
 			}
@@ -195,7 +223,7 @@ func newAuthStatusCmd(newLoader loaderFactory) *cobra.Command {
 				return err
 			}
 
-			store, err := newSecretsStore(cmd.ErrOrStderr())
+			store, err := newSecretsStore(cmd.ErrOrStderr(), tr)
 			if err != nil {
 				return err
 			}

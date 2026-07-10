@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
@@ -138,7 +139,7 @@ func newChatCmd(newLoader loaderFactory) *cobra.Command {
 		Short: "Start an interactive, context-preserving chat session",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runChat(cmd, newLoader)
+			return runChat(cmd, newLoader, term.IsTerminal)
 		},
 	}
 }
@@ -149,12 +150,21 @@ func newChatCmd(newLoader loaderFactory) *cobra.Command {
 // config general.mode — chat itself defines no --auto/--ask/--info flags:
 // "/mode" is the in-session way to change it), and runs the bubbletea
 // program.
-func runChat(cmd *cobra.Command, newLoader loaderFactory) error {
+func runChat(cmd *cobra.Command, newLoader loaderFactory, isTerminal isTerminalFunc) error {
+	// QA MINOR-5's guard, extended to chat (the coordinator's own "also
+	// record"/(b) note): bubbletea requires a real TTY and otherwise
+	// hangs indefinitely rather than failing — reported by QA as an
+	// observed hang on non-TTY stdin. Checked up front, before any
+	// config load, exactly like auth login's identical guard.
+	if err := requireInteractiveTTY(bestEffortTranslator(cmd, newLoader), isTerminal, i18n.MsgChatRequiresTTY); err != nil {
+		return err
+	}
+
 	cfg, tr, err := loadConfigWithNotice(cmd, newLoader)
 	if err != nil {
 		return fmt.Errorf("comrade chat: %w", err)
 	}
-	client, err := buildLLMClient(cmd, cfg)
+	client, err := buildLLMClient(cmd, cfg, tr)
 	if err != nil {
 		return fmt.Errorf("comrade chat: %w", err)
 	}

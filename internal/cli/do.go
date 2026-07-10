@@ -70,7 +70,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 	plan, err := planner.GeneratePlan(cmd.Context(), request, sysCtx)
 	stopSpinner()
 	if err != nil {
-		return fmt.Errorf("comrade do: %w", err)
+		return translateLLMError(cmd.ErrOrStderr(), "comrade do", tr, err)
 	}
 
 	if flags.dryRun {

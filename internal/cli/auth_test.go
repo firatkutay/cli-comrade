@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/secrets"
 )
 
@@ -47,6 +50,17 @@ func withUnavailableKeychain(t *testing.T) {
 // have.
 func fakePasswordReader(value string) passwordReader {
 	return func(int) ([]byte, error) { return []byte(value), nil }
+}
+
+// fakeTTY is the isTerminalFunc test double every `comrade auth login`
+// test that needs to get PAST the QA MINOR-5 TTY guard injects — go
+// test's own stdin is essentially never a real TTY (locally or in CI),
+// so relying on the real term.IsTerminal here would make every one of
+// those tests fail regardless of what they're actually testing.
+// fakeTTY(false) is MINOR-5's own dedicated test's way of simulating the
+// non-interactive case without needing a real piped/redirected stdin.
+func fakeTTY(present bool) isTerminalFunc {
+	return func(int) bool { return present }
 }
 
 // newTestLoaderFactory returns a loaderFactory resolving against the
@@ -102,7 +116,7 @@ func TestAuthLoginStoresKeyAndReportsPingSuccess(t *testing.T) {
 	require.NoError(t, err)
 
 	var stdout strings.Builder
-	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-test-key-123"))
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-test-key-123"), fakeTTY(true))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -114,7 +128,7 @@ func TestAuthLoginStoresKeyAndReportsPingSuccess(t *testing.T) {
 	assert.Contains(t, stdout.String(), "Test request succeeded")
 	assert.NotContains(t, stdout.String(), "sk-test-key-123", "the entered key must never be echoed back")
 
-	store, err := newSecretsStore(io.Discard)
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 	key, source, err := store.Get(context.Background(), "openai_compat")
 	require.NoError(t, err)
@@ -138,7 +152,7 @@ func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {
 	require.NoError(t, err)
 
 	var stdout strings.Builder
-	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"))
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -146,20 +160,151 @@ func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {
 	require.NoError(t, cmd.Execute(), "a failed ping must not turn auth login into a command error")
 
 	assert.Contains(t, stdout.String(), "Stored key for openai_compat")
-	assert.Contains(t, stdout.String(), "Test request failed")
+	assert.Contains(t, stdout.String(), "Could not verify it right now")
 
-	store, err := newSecretsStore(io.Discard)
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 	key, _, err := store.Get(context.Background(), "openai_compat")
 	require.NoError(t, err)
 	assert.Equal(t, "sk-still-stored", key, "the key must be stored regardless of whether the ping succeeded")
 }
 
+// TestAuthLoginNeverWritesKeyWhenProviderRejectsIt is QA MAJOR-2's
+// branch (a), reordered per review: pingProvider verifies the IN-MEMORY
+// key directly (its own llm.WithKeyResolver closure, never the store),
+// so a 401/403 response (llm.ErrAuthRejected) is now known BEFORE any
+// store.Set call ever happens — auth login must return a genuine
+// (nonzero-exit) command error, the i18n'd MsgAuthKeyRejected message,
+// and the credentials file must NEVER be created at all (proving the key
+// was never written in the first place, not written-then-deleted — the
+// file backend, not the keychain mock, is used here specifically because
+// "the file was never created" is directly observable on disk, where a
+// write-then-delete would still have created it, just later emptied it).
+func TestAuthLoginNeverWritesKeyWhenProviderRejectsIt(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	withUnavailableKeychain(t)
+	credentialsPath := filepath.Join(dir, "cli-comrade", credentialsFileName)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+	_, statErr := os.Stat(credentialsPath)
+	require.True(t, os.IsNotExist(statErr), "precondition: no credentials file yet from the config-set calls above")
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	err = cmd.Execute()
+
+	require.Error(t, err, "a definitively rejected key must be a nonzero-exit command error")
+	assert.Contains(t, err.Error(), "The provider rejected this key for openai_compat")
+	assert.Contains(t, err.Error(), `comrade auth login openai_compat`)
+	assert.NotContains(t, stdout.String(), "Stored key for openai_compat", "the storage confirmation must not print once the key is known-bad")
+
+	_, statErr = os.Stat(credentialsPath)
+	assert.True(t, os.IsNotExist(statErr), "the credentials file must never be created when the provider rejects the key — proof of ping-before-store, not store-then-delete")
+
+	store, storeErr := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
+	require.NoError(t, storeErr)
+	_, source, getErr := store.Get(context.Background(), "openai_compat")
+	require.NoError(t, getErr)
+	assert.Equal(t, secrets.SourceNone, source, "a key the provider rejected must not remain stored")
+}
+
+// TestAuthLoginNeverWritesKeyWhenProviderRejectsItInTurkish is the same
+// proof in Turkish — this project's established TR-smoke-test convention
+// (exact full-string pin, not merely "TR appears").
+func TestAuthLoginNeverWritesKeyWhenProviderRejectsItInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withUnavailableKeychain(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"message":"forbidden"}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetOut(&strings.Builder{})
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	err = cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "openai_compat için bu anahtar sağlayıcı tarafından reddedildi")
+	assert.Contains(t, err.Error(), `comrade auth login openai_compat`)
+}
+
+// TestAuthLoginNonInteractiveStdinReportsFriendlyError is QA MINOR-5's
+// fix: without it, a non-TTY stdin reached x/term.ReadPassword and
+// failed with a raw platform errno ("inappropriate ioctl for device" on
+// Unix) instead of a message a non-expert user could act on. The
+// password reader is never even invoked once the guard fires (asserted
+// via a reader that panics if called), and no key is stored.
+func TestAuthLoginNonInteractiveStdinReportsFriendlyError(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	panicReader := func(int) ([]byte, error) {
+		panic("readPassword must not be called once the TTY guard fires")
+	}
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), panicReader, fakeTTY(false))
+	cmd.SetOut(&strings.Builder{})
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"anthropic"})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Equal(t, "auth login needs an interactive terminal (stdin is not a TTY) — run it directly in a terminal, not piped or redirected.", err.Error())
+
+	store, storeErr := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
+	require.NoError(t, storeErr)
+	_, source, getErr := store.Get(context.Background(), "anthropic")
+	require.NoError(t, getErr)
+	assert.Equal(t, secrets.SourceNone, source)
+}
+
+// TestAuthLoginNonInteractiveStdinReportsFriendlyErrorInTurkish is the
+// same proof in Turkish.
+func TestAuthLoginNonInteractiveStdinReportsFriendlyErrorInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("unused"), fakeTTY(false))
+	cmd.SetOut(&strings.Builder{})
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"anthropic"})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Equal(t, "auth login, etkileşimli bir terminal gerektirir (stdin bir TTY değil) — doğrudan bir terminalde çalıştırın, boru hattına yönlendirmeyin.", err.Error())
+}
+
 func TestAuthLoginRejectsEmptyKey(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
 
-	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("   "))
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("   "), fakeTTY(true))
 	cmd.SetOut(&strings.Builder{})
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"anthropic"})
@@ -168,7 +313,7 @@ func TestAuthLoginRejectsEmptyKey(t *testing.T) {
 
 	assert.ErrorContains(t, err, "no key entered")
 
-	store, err := newSecretsStore(io.Discard)
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 	_, source, err := store.Get(context.Background(), "anthropic")
 	require.NoError(t, err)
@@ -178,7 +323,7 @@ func TestAuthLoginRejectsEmptyKey(t *testing.T) {
 func TestAuthLogoutRemovesStoredKey(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
-	store, err := newSecretsStore(io.Discard)
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 	require.NoError(t, store.Set(context.Background(), "anthropic", "sk-to-remove"))
 
@@ -237,7 +382,7 @@ func TestAuthStatusPrefersStoredKeychainOverEnv(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
 	t.Setenv("ANTHROPIC_API_KEY", "sk-from-env")
-	store, err := newSecretsStore(io.Discard)
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 	require.NoError(t, store.Set(context.Background(), "anthropic", "sk-from-keychain"))
 
@@ -250,7 +395,7 @@ func TestAuthStatusPrefersStoredKeychainOverEnv(t *testing.T) {
 func TestAuthStatusShowsFileSourceWhenKeychainUnavailable(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withUnavailableKeychain(t)
-	store, err := newSecretsStore(io.Discard)
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 	require.NoError(t, store.Set(context.Background(), "google", "sk-file-fallback"))
 
@@ -260,11 +405,46 @@ func TestAuthStatusShowsFileSourceWhenKeychainUnavailable(t *testing.T) {
 	assert.Contains(t, findTableRow(stdout, "google"), "set (file)")
 }
 
+// TestAuthStatusFileFallbackWarningIsSoftenedAndTranslated is QA
+// MINOR-4's fix: the file-fallback notice now routes through i18n
+// (rather than internal/secrets' own hardcoded English default), with
+// softened wording — the security-relevant fact (base64, not encrypted)
+// stays, the earlier more alarming phrasing does not.
+func TestAuthStatusFileFallbackWarningIsSoftenedAndTranslated(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withUnavailableKeychain(t)
+	// Pre-touch the config file so this call's own stderr contains
+	// nothing but the file-fallback warning under test — MsgFirstRunNotice
+	// would otherwise also land on stderr the first time ANY command
+	// touches a freshly isolated config dir.
+	_, _, err := execRootSplit(t, "dev", "config", "list")
+	require.NoError(t, err)
+
+	_, stderr, err := execRootSplit(t, "dev", "auth", "status")
+
+	require.NoError(t, err)
+	assert.Equal(t, "cli-comrade: no system keychain found, so API keys are being saved to a local file instead (base64-encoded, not encrypted — see the file's own header for details).\n", stderr)
+}
+
+// TestAuthStatusFileFallbackWarningIsSoftenedAndTranslatedInTurkish is
+// the same proof in Turkish.
+func TestAuthStatusFileFallbackWarningIsSoftenedAndTranslatedInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withUnavailableKeychain(t)
+	_, _, err := execRootSplit(t, "dev", "config", "set", "general.language", "tr")
+	require.NoError(t, err)
+
+	_, stderr, err := execRootSplit(t, "dev", "auth", "status")
+
+	require.NoError(t, err)
+	assert.Equal(t, "cli-comrade: sistem anahtarlığı bulunamadı, bu yüzden API anahtarları yerel bir dosyaya kaydediliyor (base64 ile kodlanmış, şifrelenmemiş — ayrıntılar için dosyanın kendi başlığına bakın).\n", stderr)
+}
+
 func TestAuthStatusNeverPrintsKeyValues(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
 	const sentinel = "sk-super-secret-sentinel-value"
-	store, err := newSecretsStore(io.Discard)
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 	require.NoError(t, store.Set(context.Background(), "anthropic", sentinel))
 	t.Setenv("GOOGLE_API_KEY", sentinel)

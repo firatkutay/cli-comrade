@@ -9,6 +9,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **No-API-key error was a novice-hostile internal wrap-chain, always in
+  English** (Linux QA MAJOR-1): `comrade do`/`fix`/`explain`/`chat` used
+  to surface `llm`'s raw fallback-chain error verbatim — `comrade do:
+  engine: generate plan: llm: all providers failed: anthropic: no API key
+  found for provider "anthropic"; set one of: COMRADE_ANTHROPIC_API_KEY,
+  ANTHROPIC_API_KEY` — regardless of `general.language`, with no
+  onboarding pointer. `internal/llm`'s existing `*KeyMissingError` (already
+  `%w`-wrapped through the whole fallback chain) is now recovered via
+  `errors.As` at the CLI boundary (`classifyLLMError`/`translateLLMError`,
+  `internal/cli/runtime.go` — the same errors.Is/As-at-the-boundary
+  pattern `translateConfigError`/`translateUpgradeFetchError` already
+  established) and rendered as a friendly, i18n'd message pointing at
+  `comrade auth login <provider>`; the raw wrap-chain is suppressed from
+  the primary message and only dumped when `COMRADE_DEBUG` is set. Applies
+  identically to `comrade chat` (`renderChatLLMError`, `chatdispatch.go`).
+- **`comrade auth login` could store a key the provider had definitively
+  rejected** (Linux QA MAJOR-2): a 401/403 ping response
+  (`llm.ErrAuthRejected`) used to be treated exactly like any other ping
+  failure (network/timeout/5xx) — the key stayed stored, with only a
+  printed notice. `auth login` now pings the entered key *before* ever
+  storing it (the ping already verifies the in-memory key directly, never
+  the store): a definitive rejection returns a genuine, nonzero-exit
+  command error (new `MsgAuthKeyRejected`) without writing anything to the
+  keychain/file store at all; every other ping failure stores the key
+  anyway, preserving the previous "store regardless" behavior, with
+  softened wording (`MsgAuthStoredKeyPingFailed`) making clear the key
+  might still be fine.
+- **`comrade auth login`/`comrade chat` against a non-interactive stdin
+  failed unhelpfully** (Linux QA MINOR-5): a piped/redirected/scripted
+  invocation of `auth login` hit `x/term.ReadPassword`'s raw platform
+  errno ("inappropriate ioctl for device" on Unix); `comrade chat` against
+  a non-TTY stdin hung indefinitely (bubbletea requires a real terminal).
+  Both now detect a non-interactive stdin up front (new shared
+  `isTerminalFunc`/`requireInteractiveTTY`, `internal/cli/runtime.go`) and
+  fail fast with a clean, i18n'd message (`MsgAuthLoginRequiresTTY`,
+  `MsgChatRequiresTTY`) instead.
+- **Keychain file-fallback notice was hardcoded English with alarming
+  wording** (Linux QA MINOR-4): the one-time "no OS keychain available...
+  NOT encrypted" notice printed by `internal/secrets`'s file backend was
+  always in English, regardless of `general.language`. `internal/secrets`
+  stays i18n-agnostic (new `NewStoreWithWarning`, taking the already-
+  rendered text); `internal/cli`'s `newSecretsStore` now renders it
+  through the resolved `Translator` with softened, calmer wording (new
+  `MsgSecretsFileFallbackWarning`, TR+EN) that keeps the one load-bearing
+  security fact (base64-encoded, not encrypted) in a single sentence.
 - **`comrade chat` gave no visible reply against Anthropic, ever**: every
   plain-text chat turn's `llm.CompletionRequest` (`chatTurn`,
   `internal/cli/chat.go`) never set `MaxTokens`, so it went out at its Go

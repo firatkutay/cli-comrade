@@ -103,6 +103,13 @@ const (
 	// starts.
 	MsgChatWelcome MessageID = "chat_welcome"
 
+	// MsgChatRequiresTTY is `comrade chat`'s error when stdin is not an
+	// interactive terminal (QA MINOR-5's non-TTY guard, extended to
+	// chat: bubbletea itself needs a real TTY and otherwise hangs
+	// rather than failing cleanly — see runChat's doc comment). No
+	// args.
+	MsgChatRequiresTTY MessageID = "chat_requires_tty"
+
 	// MsgChatHelp is the multi-line help text `/help` prints, listing
 	// every slash command chat understands.
 	MsgChatHelp MessageID = "chat_help"
@@ -317,9 +324,24 @@ const (
 	MsgAuthEnterKeyPrompt MessageID = "auth_enter_key_prompt"
 
 	// MsgAuthStoredKeyPingFailed reports a stored key whose live test
-	// request failed (the key is still stored — see auth.go's own doc
-	// comment on why). Two args: provider name, the ping error.
+	// request failed for a reason OTHER than the provider rejecting the
+	// key itself (network/timeout/5xx/parse — see MsgAuthKeyRejected for
+	// the 401/403 case, which does NOT use this message) — the key is
+	// still stored, since this class of failure says nothing about
+	// whether the key itself is actually good (QA MAJOR-2). Two args:
+	// provider name, the ping error.
 	MsgAuthStoredKeyPingFailed MessageID = "auth_stored_key_ping_failed"
+
+	// MsgAuthKeyRejected reports `comrade auth login`'s live test request
+	// coming back 401/403 (llm.ErrAuthRejected) — a DEFINITIVE rejection,
+	// unlike every other ping-failure class MsgAuthStoredKeyPingFailed
+	// covers. auth.go removes the just-stored key before rendering this
+	// (QA MAJOR-2: a rejected key must never be left stored, silently
+	// waiting to fail again on the next real LLM call) and returns it as
+	// a genuine command error (nonzero exit), not a printed notice. Three
+	// args: provider name, the ping error, provider name again (for the
+	// suggested retry command).
+	MsgAuthKeyRejected MessageID = "auth_key_rejected"
 
 	// MsgAuthStoredKeyPingSucceeded reports a stored key whose live test
 	// request succeeded. Three args: provider name, model name, rounded
@@ -352,6 +374,15 @@ const (
 
 	// MsgAuthStatusNotSet renders a provider with no key at all.
 	MsgAuthStatusNotSet MessageID = "auth_status_not_set"
+
+	// MsgSecretsFileFallbackWarning is printed once, the first time any
+	// stored-credential operation actually runs against the 0600 file
+	// fallback (no OS keychain reachable on this machine) — QA MINOR-4's
+	// softened wording. It keeps the one load-bearing security fact (the
+	// file is base64-encoded, NOT encrypted) in a single calm sentence,
+	// dropping the earlier, more alarming "no OS keychain available...
+	// NOT encrypted" phrasing. No args.
+	MsgSecretsFileFallbackWarning MessageID = "secrets_file_fallback_warning"
 
 	// -- comrade history --------------------------------------------------
 
@@ -653,6 +684,23 @@ const (
 	// MsgAuthNoKeyEnteredError is `comrade auth login`'s error when the
 	// interactive prompt received an empty key.
 	MsgAuthNoKeyEnteredError MessageID = "auth_no_key_entered_error"
+	// MsgAuthLoginRequiresTTY is `comrade auth login`'s error when
+	// stdin is not an interactive terminal (QA MINOR-5) — replaces the
+	// raw errno x/term.ReadPassword returns in that situation (e.g.
+	// "inappropriate ioctl for device" on Unix), which named no cause a
+	// non-expert user could act on. No args.
+	MsgAuthLoginRequiresTTY MessageID = "auth_login_requires_tty"
+	// MsgLLMNoKeyError replaces the raw internal wrap-chain
+	// ("llm: all providers failed: anthropic: no API key found for
+	// provider \"anthropic\"; set one of: ...") every LLM-reaching
+	// command (do/fix/explain/chat) used to surface verbatim, English-
+	// only, when *llm.KeyMissingError bubbles out of a blocking
+	// Complete/Stream call (QA MAJOR-1) — the single most common
+	// first-run failure mode, not a bug, so it gets a friendly,
+	// actionable message instead of an internal error dump. Two args:
+	// the provider name (prose), the provider name again (the suggested
+	// command's own argument).
+	MsgLLMNoKeyError MessageID = "llm_no_key_error"
 	// MsgFixRerunNoLastCommandError is `comrade fix --rerun`'s error when
 	// there is no recorded last command to re-run.
 	MsgFixRerunNoLastCommandError MessageID = "fix_rerun_no_last_command_error"
@@ -810,7 +858,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgModelsSelectPrompt: "Select a model number: ",
 	MsgModelsSetConfirm:   "llm.model = %s\n",
 
-	MsgChatWelcome: "cli-comrade chat — type a message, or /help for commands.",
+	MsgChatWelcome:     "cli-comrade chat — type a message, or /help for commands.",
+	MsgChatRequiresTTY: "comrade chat needs an interactive terminal (stdin is not a TTY) — run it directly in a terminal, not piped or redirected.",
 	MsgChatHelp: "Slash commands:\n" +
 		"  /mode auto|ask|info   switch this session's active mode\n" +
 		"  /do <request>         run a request through the plan+execute pipeline (safety-gated, per the active mode)\n" +
@@ -851,7 +900,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgVerificationStillFails:   "verification: %s still fails (exit %d)",
 
 	MsgAuthEnterKeyPrompt:         "Enter API key for %s: ",
-	MsgAuthStoredKeyPingFailed:    "Stored key for %s. Test request failed (%v) — the key may still be correct; this can also mean the network or provider is unreachable right now.\n",
+	MsgAuthStoredKeyPingFailed:    "Stored key for %s. Could not verify it right now (%v) — this looks like a network or connectivity issue, not necessarily a bad key. The key was saved.\n",
+	MsgAuthKeyRejected:            "The provider rejected this key for %s (%v) — it was not saved. Double-check the key and try \"comrade auth login %s\" again.\n",
 	MsgAuthStoredKeyPingSucceeded: "Stored key for %s. Test request succeeded (model=%s, latency=%s).\n",
 	MsgAuthNoStoredKey:            "No stored key for %s.\n",
 	MsgAuthRemovedStoredKey:       "Removed stored key for %s.\n",
@@ -860,6 +910,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStatusSet:              "set (%s)",
 	MsgAuthStatusSetEnv:           "set (env: %s)",
 	MsgAuthStatusNotSet:           "not set",
+
+	MsgSecretsFileFallbackWarning: "cli-comrade: no system keychain found, so API keys are being saved to a local file instead (base64-encoded, not encrypted — see the file's own header for details).\n",
 
 	MsgHistoryTableHeader: "TIME\tMODE\tRISK\tEXIT\tCOMMAND",
 	MsgHistoryEmpty:       "No commands recorded yet.",
@@ -918,6 +970,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthOllamaNoKeyError:          "auth login: ollama needs no API key — it talks to a local server directly; set llm.ollama.base_url instead",
 	MsgAuthUnknownProviderError:      "auth login: unknown provider %q (expected one of: %s)",
 	MsgAuthNoKeyEnteredError:         "auth login: no key entered",
+	MsgAuthLoginRequiresTTY:          "auth login needs an interactive terminal (stdin is not a TTY) — run it directly in a terminal, not piped or redirected.",
+	MsgLLMNoKeyError:                 "no API key configured for %s yet — run \"comrade auth login %s\" to set one up (or export its env var directly; see \"comrade auth login --help\")",
 	MsgFixRerunNoLastCommandError:    "--rerun: no recorded last command found; run a command with shell integration installed first, or use `comrade fix -- <command>`",
 	MsgFlagsModeExclusiveError:       "only one of --auto, --ask, or --info may be given",
 	MsgInitPrintRemoveExclusiveError: "init: --print and --remove are mutually exclusive",
@@ -1006,7 +1060,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgModelsSelectPrompt: "Bir model numarası seçin: ",
 	MsgModelsSetConfirm:   "llm.model = %s\n",
 
-	MsgChatWelcome: "cli-comrade sohbet — bir mesaj yazın, ya da komutlar için /help yazın.",
+	MsgChatWelcome:     "cli-comrade sohbet — bir mesaj yazın, ya da komutlar için /help yazın.",
+	MsgChatRequiresTTY: "comrade chat, etkileşimli bir terminal gerektirir (stdin bir TTY değil) — doğrudan bir terminalde çalıştırın, boru hattına yönlendirmeyin.",
 	MsgChatHelp: "Slash komutları:\n" +
 		"  /mode auto|ask|info   bu oturumun aktif modunu değiştirir\n" +
 		"  /do <istek>           isteği plan+yürütme hattından geçirir (aktif moda göre güvenlik kontrollü)\n" +
@@ -1047,7 +1102,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgVerificationStillFails:   "doğrulama: %s hâlâ başarısız (çıkış %d)",
 
 	MsgAuthEnterKeyPrompt:         "%s için API anahtarını girin: ",
-	MsgAuthStoredKeyPingFailed:    "%s için anahtar kaydedildi. Test isteği başarısız oldu (%v) — anahtar yine de doğru olabilir; bu, ağın veya sağlayıcının şu an erişilemez olduğu anlamına da gelebilir.\n",
+	MsgAuthStoredKeyPingFailed:    "%s için anahtar kaydedildi. Şu anda doğrulanamadı (%v) — bu, ağ veya bağlantı sorunundan kaynaklanıyor olabilir, anahtarın hatalı olduğu anlamına gelmez. Anahtar kaydedildi.\n",
+	MsgAuthKeyRejected:            "%s için bu anahtar sağlayıcı tarafından reddedildi (%v) — kaydedilmedi. Anahtarı kontrol edip \"comrade auth login %s\" komutunu tekrar deneyin.\n",
 	MsgAuthStoredKeyPingSucceeded: "%s için anahtar kaydedildi. Test isteği başarılı oldu (model=%s, gecikme=%s).\n",
 	MsgAuthNoStoredKey:            "%s için kayıtlı anahtar yok.\n",
 	MsgAuthRemovedStoredKey:       "%s için kayıtlı anahtar kaldırıldı.\n",
@@ -1056,6 +1112,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStatusSet:              "kayıtlı (%s)",
 	MsgAuthStatusSetEnv:           "kayıtlı (ortam değişkeni: %s)",
 	MsgAuthStatusNotSet:           "kayıtlı değil",
+
+	MsgSecretsFileFallbackWarning: "cli-comrade: sistem anahtarlığı bulunamadı, bu yüzden API anahtarları yerel bir dosyaya kaydediliyor (base64 ile kodlanmış, şifrelenmemiş — ayrıntılar için dosyanın kendi başlığına bakın).\n",
 
 	MsgHistoryTableHeader: "ZAMAN\tMOD\tRİSK\tÇIKIŞ\tKOMUT",
 	MsgHistoryEmpty:       "Henüz kayıtlı komut yok.",
@@ -1114,6 +1172,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthOllamaNoKeyError:          "auth login: ollama API anahtarı gerektirmez — doğrudan yerel bir sunucuyla konuşur; bunun yerine llm.ollama.base_url ayarını yapın",
 	MsgAuthUnknownProviderError:      "auth login: bilinmeyen sağlayıcı %q (beklenen: %s)",
 	MsgAuthNoKeyEnteredError:         "auth login: hiçbir anahtar girilmedi",
+	MsgAuthLoginRequiresTTY:          "auth login, etkileşimli bir terminal gerektirir (stdin bir TTY değil) — doğrudan bir terminalde çalıştırın, boru hattına yönlendirmeyin.",
+	MsgLLMNoKeyError:                 "%s için henüz bir API anahtarı yapılandırılmamış — kurmak için \"comrade auth login %s\" çalıştırın (ya da doğrudan ortam değişkenini ayarlayın; ayrıntılar için \"comrade auth login --help\")",
 	MsgFixRerunNoLastCommandError:    "--rerun: kayıtlı son komut bulunamadı; önce kabuk entegrasyonu kurulu bir komut çalıştırın ya da `comrade fix -- <komut>` kullanın",
 	MsgFlagsModeExclusiveError:       "--auto, --ask veya --info bayraklarından yalnızca biri verilebilir",
 	MsgInitPrintRemoveExclusiveError: "init: --print ve --remove birlikte kullanılamaz",

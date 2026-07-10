@@ -73,7 +73,7 @@ func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
 				}
 			}
 
-			store, err := newSecretsStore(cmd.ErrOrStderr())
+			store, err := newSecretsStore(cmd.ErrOrStderr(), tr)
 			if err != nil {
 				return fmt.Errorf("test-llm: %w", err)
 			}

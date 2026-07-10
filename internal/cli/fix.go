@@ -90,7 +90,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 	diagnosis, err := diagnoser.Diagnose(cmd.Context(), errCtx)
 	stopSpinner()
 	if err != nil {
-		return fmt.Errorf("comrade fix: %w", err)
+		return translateLLMError(cmd.ErrOrStderr(), "comrade fix", tr, err)
 	}
 
 	// The explanation is printed first, in every mode, per UYGULAMA_PLANI.md

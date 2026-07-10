@@ -206,6 +206,25 @@ func TestFileFallbackWarnsOnceOnFirstUse(t *testing.T) {
 	assert.Equal(t, 1, warnings, "expected exactly one not-encrypted warning across three file-backend calls, got stderr: %q", stderr.String())
 }
 
+// TestNewStoreWithWarningUsesCallerSuppliedText is QA MINOR-4's seam:
+// internal/cli's newSecretsStore renders the file-fallback warning in
+// the user's own language and passes the already-rendered text in here,
+// rather than internal/secrets' own hardcoded English default
+// (fileFallbackWarning) — this pins that NewStoreWithWarning actually
+// prints exactly what it was given, not the package default.
+func TestNewStoreWithWarningUsesCallerSuppliedText(t *testing.T) {
+	withUnavailableKeychain(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "credentials")
+	var stderr strings.Builder
+	const customWarning = "sohbet dilinde özel bir uyarı\n"
+	store := NewStoreWithWarning(path, &stderr, customWarning)
+
+	require.NoError(t, store.Set(context.Background(), "anthropic", "sk-ant-1"))
+
+	assert.Equal(t, customWarning, stderr.String())
+}
+
 func TestKeychainNeverWarns(t *testing.T) {
 	withMockKeychain(t)
 	var stderr strings.Builder

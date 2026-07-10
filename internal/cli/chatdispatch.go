@@ -103,6 +103,24 @@ func (dc *chatController) dispatchChatLine(ctx context.Context, session *chatSes
 	}
 }
 
+// renderChatLLMError renders err (a failed chat-turn or "/do" pipeline
+// error) through MsgChatLLMError, substituting classifyLLMError's
+// friendly, translated message in place of err's own raw wrap-chain
+// whenever it's classifiable — currently: *llm.KeyMissingError (QA
+// MAJOR-1), applied to chat exactly like every other LLM-reaching
+// command. dispatchChatLine and its handlers have no cmd/stderr to dump
+// a COMRADE_DEBUG detail to (see dispatchChatLine's own doc comment:
+// deliberately no bubbletea/terminal dependency at all — every branch is
+// driven by dc's injected dependencies), so this calls classifyLLMError
+// directly rather than translateLLMError (runtime.go), which needs an
+// io.Writer for that dump.
+func renderChatLLMError(tr i18n.Translator, err error) string {
+	if ok, translated := classifyLLMError(tr, err); ok {
+		err = translated
+	}
+	return tr.T(i18n.MsgChatLLMError, err)
+}
+
 // handleText drives one plain-text chat turn: chatTurn (chat.go) sends
 // session.history plus the new message to dc.llm. Both the user's
 // message and the assistant's reply are appended to session.history only
@@ -112,7 +130,7 @@ func (dc *chatController) dispatchChatLine(ctx context.Context, session *chatSes
 func (dc *chatController) handleText(ctx context.Context, session *chatSession, text string) string {
 	reply, err := chatTurn(ctx, dc.llm, dc.tr.Lang(), session.history, text, dc.maxTokens)
 	if err != nil {
-		return dc.tr.T(i18n.MsgChatLLMError, err)
+		return renderChatLLMError(dc.tr, err)
 	}
 	session.appendUser(text)
 	session.appendAssistant(reply)
@@ -130,7 +148,7 @@ func (dc *chatController) handleDo(ctx context.Context, session *chatSession, re
 	summary, err := dc.doRun(ctx, session.mode, request)
 	session.appendUser("/do " + request)
 	if err != nil {
-		reply := dc.tr.T(i18n.MsgChatLLMError, err)
+		reply := renderChatLLMError(dc.tr, err)
 		session.appendAssistant(reply)
 		return reply
 	}

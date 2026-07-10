@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 	"github.com/firatkutay/cli-comrade/internal/secrets"
 )
@@ -18,17 +19,21 @@ const credentialsFileName = "credentials"
 
 // newSecretsStore resolves the platform credentials path and constructs
 // a secrets.Store, wiring stderr as the destination for the file
-// fallback's one-time "not encrypted" warning (see
-// secrets.NewStore/fileFallbackWarning). Every FAZ 8 command that touches
-// a stored credential — `comrade auth login/logout/status` and
-// `comrade config models`'s openai_compat key lookup — goes through this
-// one constructor, so they all resolve the exact same store.
-func newSecretsStore(stderr io.Writer) (secrets.Store, error) {
+// fallback's one-time "not encrypted" warning — rendered in tr's
+// language (QA MINOR-4) via secrets.NewStoreWithWarning, rather than
+// internal/secrets' own hardcoded English default (see that function's
+// doc comment for why internal/secrets itself stays i18n-agnostic).
+// Every FAZ 8 command that touches a stored credential — `comrade auth
+// login/logout/status` and `comrade config models`'s openai_compat key
+// lookup — goes through this one constructor, so they all resolve the
+// exact same store.
+func newSecretsStore(stderr io.Writer, tr i18n.Translator) (secrets.Store, error) {
 	dir, err := config.DefaultDir()
 	if err != nil {
 		return nil, err
 	}
-	return secrets.NewStore(filepath.Join(dir, credentialsFileName), stderr), nil
+	warning := tr.T(i18n.MsgSecretsFileFallbackWarning)
+	return secrets.NewStoreWithWarning(filepath.Join(dir, credentialsFileName), stderr, warning), nil
 }
 
 // secretsKeyResolver builds an llm.KeyResolver that checks store first —

@@ -96,7 +96,7 @@ func fetchModelsForProvider(ctx context.Context, stderr io.Writer, cfg config.Co
 		return llm.KnownGoogleModels(), llm.GoogleModelsDocsURL, nil
 
 	case "openai_compat":
-		store, err := newSecretsStore(stderr)
+		store, err := newSecretsStore(stderr, tr)
 		if err != nil {
 			return nil, "", err
 		}

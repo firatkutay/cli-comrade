@@ -123,6 +123,28 @@ func TestDispatchChatLinePlainTextLeavesHistoryUntouchedOnLLMError(t *testing.T)
 	assert.Empty(t, session.history, "a failed turn must not leave a phantom half-turn in history")
 }
 
+// TestDispatchChatLinePlainTextNoKeyErrorIsRenderedFriendly is QA
+// MAJOR-1's chat-side proof: a plain-text turn whose underlying LLM call
+// fails with the real internal/llm no-key wrap-chain (exactly the shape
+// runtime_test.go's realNoKeyChainError builds — a *llm.KeyMissingError
+// wrapped by Client.Complete/finalChainError's own "provider: %w" /
+// "llm: all providers failed: %w" layers) renders the SAME friendly
+// classifyLLMError message every other LLM-reaching command now uses,
+// wrapped in MsgChatLLMError's "chat request failed: %v" — never the
+// raw wrap-chain, and history stays untouched exactly like any other
+// failed turn.
+func TestDispatchChatLinePlainTextNoKeyErrorIsRenderedFriendly(t *testing.T) {
+	fake := &fakeChatLLM{err: realNoKeyChainError()}
+	dc, session := newTestController(t, fake, nil)
+
+	output, exit := dc.dispatchChatLine(context.Background(), session, "hello")
+
+	assert.False(t, exit)
+	assert.Equal(t, `chat request failed: no API key configured for anthropic yet — run "comrade auth login anthropic" to set one up (or export its env var directly; see "comrade auth login --help")`, output)
+	assert.NotContains(t, output, "all providers failed")
+	assert.Empty(t, session.history, "a failed turn must not leave a phantom half-turn in history")
+}
+
 func TestDispatchChatLineModeSwitchesSessionMode(t *testing.T) {
 	dc, session := newTestController(t, &fakeChatLLM{}, nil)
 	output, exit := dc.dispatchChatLine(context.Background(), session, "/mode auto")
@@ -296,6 +318,25 @@ func TestDispatchChatLineDoRunnerErrorIsReported(t *testing.T) {
 	output, exit := dc.dispatchChatLine(context.Background(), session, "/do docker kur")
 	assert.False(t, exit)
 	assert.Contains(t, output, "provider unreachable")
+}
+
+// TestDispatchChatLineDoNoKeyErrorIsRenderedFriendly is
+// TestDispatchChatLinePlainTextNoKeyErrorIsRenderedFriendly's "/do"
+// counterpart: handleDo funnels its runner's error through the same
+// renderChatLLMError as handleText, so a no-key failure reached via
+// "/do" gets the identical friendly message, appended to history as the
+// assistant's turn (handleDo always appends a reply, success or not).
+func TestDispatchChatLineDoNoKeyErrorIsRenderedFriendly(t *testing.T) {
+	doRun := func(context.Context, engine.Mode, string) (engine.RunSummary, error) {
+		return engine.RunSummary{}, realNoKeyChainError()
+	}
+	dc, session := newTestController(t, &fakeChatLLM{}, doRun)
+
+	output, exit := dc.dispatchChatLine(context.Background(), session, "/do docker kur")
+
+	assert.False(t, exit)
+	assert.Equal(t, `chat request failed: no API key configured for anthropic yet — run "comrade auth login anthropic" to set one up (or export its env var directly; see "comrade auth login --help")`, output)
+	assert.NotContains(t, output, "all providers failed")
 }
 
 // --- runChatDo: the real safety-gated pipeline, driven directly ----------

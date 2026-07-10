@@ -53,34 +53,52 @@ func detectKeychainAvailable() bool {
 // the one-time "this file is obfuscated, not encrypted" warning the
 // first time the file backend is actually used (Get/Set/Delete/Status
 // all count) — never printed at all when the keychain backend is active.
+// Uses the package's own English default wording (fileFallbackWarning);
+// callers that need the warning in the user's own language (QA MINOR-4 —
+// internal/secrets deliberately has no internal/i18n dependency, staying
+// a language-agnostic infra package) should use NewStoreWithWarning
+// instead — see internal/cli/secretsstore.go's newSecretsStore.
 func NewStore(credentialsPath string, stderr io.Writer) Store {
+	return NewStoreWithWarning(credentialsPath, stderr, fileFallbackWarning)
+}
+
+// NewStoreWithWarning is NewStore plus an explicit, already-rendered
+// warning string in place of the package's English default — the seam
+// QA MINOR-4 uses to print the file-fallback notice in the user's
+// configured language: internal/cli's newSecretsStore renders it via
+// i18n.MsgSecretsFileFallbackWarning before calling this, exactly like
+// passwordReader/isTerminalFunc's own "render/resolve at the call site,
+// take the already-decided value as a plain parameter" pattern elsewhere
+// in this codebase.
+func NewStoreWithWarning(credentialsPath string, stderr io.Writer, warning string) Store {
 	var b backend
 	if detectKeychainAvailable() {
 		b = keychainBackend{service: serviceName}
 	} else {
 		b = &fileBackend{path: credentialsPath}
 	}
-	return &store{backend: b, stderr: stderr}
+	return &store{backend: b, stderr: stderr, warning: warning}
 }
 
 // store is Store's sole implementation: every method dispatches to
-// exactly one backend, decided once by NewStore.
+// exactly one backend, decided once by NewStore/NewStoreWithWarning.
 type store struct {
 	backend  backend
 	stderr   io.Writer
+	warning  string
 	warnOnce sync.Once
 }
 
-// warnIfFileFallback prints fileFallbackWarning to s.stderr, exactly
-// once per store, the first time any method actually runs against the
-// file backend. It is a no-op (and never fires the warning) when the
-// keychain backend is active.
+// warnIfFileFallback prints s.warning to s.stderr, exactly once per
+// store, the first time any method actually runs against the file
+// backend. It is a no-op (and never fires the warning) when the keychain
+// backend is active.
 func (s *store) warnIfFileFallback() {
 	if s.backend.kind() != SourceFile {
 		return
 	}
 	s.warnOnce.Do(func() {
-		_, _ = io.WriteString(s.stderr, fileFallbackWarning)
+		_, _ = io.WriteString(s.stderr, s.warning)
 	})
 }
 

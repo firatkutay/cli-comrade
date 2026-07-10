@@ -69,3 +69,36 @@ func commandStyle(colorEnabled bool) lipgloss.Style {
 	}
 	return lipgloss.NewStyle().Bold(true)
 }
+
+// PromptYellow is the pastel-yellow ANSI256 code the edit-mode textinput's
+// "> " prompt symbol renders in (editPromptStyle, below) — deliberately
+// the SAME value as internal/cli/color.go's unexported paletteYellow
+// constant, for one consistent prompt color across both of this
+// codebase's "> "-prompted textinputs (this package's own ask-mode edit
+// prompt, and internal/cli/chatmodel.go's chat input). internal/tui
+// cannot import internal/cli (internal/cli already imports internal/tui
+// — the correct, one-way dependency direction; importing the other way
+// would be a cycle), so this is a deliberate, minimal, hand-maintained
+// mirror of a single scalar value rather than a shared color package for
+// one constant. It is NOT an unguarded mirror: internal/cli's own test
+// suite (color_test.go's TestPromptYellowMatchesTUIPackage) asserts
+// paletteYellow == tui.PromptYellow — internal/cli is already permitted
+// to import internal/tui, so that guard lives on the cli side, and it
+// fails the moment either constant changes without the other.
+const PromptYellow = "222"
+
+// editPromptStyle returns the lipgloss.Style the ask-mode confirm
+// prompt's edit-mode textinput applies to its own "> " prompt symbol —
+// PromptYellow when colorEnabled, or a completely empty, unstyled Style
+// (matching every other style function in this file) when not, so a
+// disabled render is genuinely byte-clean, not merely "not yellow yet
+// still colored" (see newConfirmModel's own doc comment for the
+// pre-existing bug this closes: bubbles/v2/textinput.New()'s own default
+// styles color the prompt unconditionally, with no colorEnabled/NO_COLOR/
+// TTY awareness at all).
+func editPromptStyle(colorEnabled bool) lipgloss.Style {
+	if !colorEnabled {
+		return lipgloss.NewStyle()
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(PromptYellow))
+}

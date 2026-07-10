@@ -12,6 +12,41 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/config"
 )
 
+// Pastel palette — every fixed ANSI256 color code this package's styling
+// uses lives HERE, by name, so no style literal is ever scattered across
+// help.go/spinner.go/chatmodel.go/chatdispatch.go as a bare quoted
+// number. All six are deliberately fixed, mid-tone/desaturated codes
+// rather than lipgloss's AdaptiveColor/compat package — see
+// helpHeaderStyle's doc comment (help.go) for the full reasoning
+// (charm.land/lipgloss/v2/compat's HasDarkBackground/Profile vars run an
+// unconditional, up-to-2-second-blocking live terminal query at that
+// package's own import/init time — a cold-start regression class this
+// codebase has already hardened against once, see go.mod's atotto/
+// clipboard replace comment). Every one of these six is chosen to read
+// acceptably on both a light and a dark 256-color terminal without any
+// runtime background detection.
+const (
+	// paletteLavender is help.go's section-header/spinner accent (bold).
+	paletteLavender = "183"
+	// paletteCyan is help.go's command-name accent.
+	paletteCyan = "115"
+	// palettePeach is help.go's flag-name accent.
+	palettePeach = "216"
+	// paletteGray is `comrade chat`'s own echoed transcript lines (the
+	// user's own typed message text, NOT the "> " prefix — see
+	// paletteYellow).
+	paletteGray = "245"
+	// paletteBlue is `comrade chat`'s command-like content — concretely,
+	// today, the leading "/xxx" token on each row of "/help"'s rendered
+	// slash-command list (see chatmodel.go's colorizeSlashCommandList).
+	paletteBlue = "111"
+	// paletteYellow is `comrade chat`'s input-prompt "> " symbol — both
+	// the live bubbles/v2/textinput prompt and the transcript's own
+	// echoed "> " prefix render with this same color, so the two visually
+	// match.
+	paletteYellow = "222"
+)
+
 // resolveColorEnabled is internal/cli's single color-decision point.
 // Before this function existed, every call site read cfg.General.Color
 // directly as the one and only signal, with no TTY/env awareness at all;

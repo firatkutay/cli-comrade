@@ -33,7 +33,7 @@ var waitSpinnerFrames = spinner.MiniDot
 // across both surfaces, again a fixed ANSI256 code rather than
 // AdaptiveColor/compat for the same live-terminal-query cost documented on
 // help.go's helpHeaderStyle.
-var waitSpinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("183"))
+var waitSpinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(paletteLavender))
 
 // startWaitSpinner starts an animated braille spinner labeled per tr
 // (i18n.MsgSpinnerThinking) on out, and returns a stop function the caller

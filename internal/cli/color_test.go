@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/tui"
 )
 
 // resolveColorEnabledTestCfg returns a config.Config with only
@@ -122,4 +123,21 @@ func TestResolveColorEnabledSkipsWindowsANSIEnableForNonFileWriter(t *testing.T)
 		got := resolveColorEnabled(resolveColorEnabledTestCfg(true), environ, &out)
 		assert.True(t, got, "sanity: this environ must actually resolve to enabled for the guard to be exercised")
 	})
+}
+
+// TestPromptYellowMatchesTUIPackage is the drift guard for
+// internal/tui.PromptYellow (styles.go), a deliberate, minimal,
+// hand-maintained mirror of this package's own unexported paletteYellow
+// constant: internal/tui cannot import internal/cli (internal/cli
+// already imports internal/tui — the correct, one-way dependency
+// direction; the reverse would be a cycle), so the mirrored constant
+// lives in internal/tui, and the guard that keeps the two in sync lives
+// HERE instead, on the side that's already permitted to import the
+// other. If either value ever changes without the other, this test
+// fails immediately — both `comrade chat`'s input prompt and the
+// ask-mode confirm prompt's edit-mode input render the exact same
+// pastel yellow, by construction, not by two developers remembering to
+// keep two files' literals in sync.
+func TestPromptYellowMatchesTUIPackage(t *testing.T) {
+	assert.Equal(t, paletteYellow, tui.PromptYellow)
 }

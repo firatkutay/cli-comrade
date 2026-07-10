@@ -144,10 +144,32 @@ type confirmModel struct {
 	editedCommand string
 }
 
+// newConfirmModel builds the confirmModel Confirm drives, including its
+// edit-mode textinput's own "> " prompt style: bubbles/v2/textinput.New()'s
+// own default styles (DefaultDarkStyles()) color the prompt symbol
+// UNCONDITIONALLY — Foreground(Color("7")), i.e. ANSI "white" — with no
+// colorEnabled/NO_COLOR/TTY awareness at all (confirmed by direct
+// inspection of textinput.New()/DefaultStyles(); the exact same
+// pre-existing gap internal/cli/chatmodel.go's setChatInputPromptStyle
+// found and closed for `comrade chat`'s own input). Explicitly setting
+// BOTH the Focused and Blurred Prompt style here (editPromptStyle,
+// styles.go — pastel yellow when colorEnabled, a completely empty Style
+// otherwise) closes the same leak for this package's edit-mode prompt:
+// colorEnabled=false now yields a genuinely plain "> ", not merely "not
+// yellow yet still colored 7". Every other Styles field (Text/
+// Placeholder/Suggestion/Cursor) is left exactly as New()'s own default
+// set it — out of scope, untouched.
 func newConfirmModel(step PromptStep, colorEnabled bool, tr i18n.Translator) confirmModel {
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.SetValue(step.Command)
+
+	promptStyle := editPromptStyle(colorEnabled)
+	tiStyles := ti.Styles()
+	tiStyles.Focused.Prompt = promptStyle
+	tiStyles.Blurred.Prompt = promptStyle
+	ti.SetStyles(tiStyles)
+
 	return confirmModel{step: step, colorEnabled: colorEnabled, tr: tr, input: ti}
 }
 

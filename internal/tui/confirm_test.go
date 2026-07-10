@@ -354,6 +354,54 @@ func TestConfirmModelViewShowsEditPromptWhileEditingEN(t *testing.T) {
 	assert.NotContains(t, view.Content, "Komutu düzenle")
 }
 
+// TestConfirmModelEditPromptColoredWhenEnabled is the cross-surface
+// finding's regression guard: the edit-mode textinput's own "> " prompt
+// symbol must render in the pastel yellow (ANSI256 "222", the same value
+// internal/cli/chatmodel.go's chat input prompt uses — see
+// newConfirmModel's own doc comment for the pre-existing
+// bubbles/v2/textinput unconditional-color-7 leak this closes) when
+// colorEnabled is true.
+func TestConfirmModelEditPromptColoredWhenEnabled(t *testing.T) {
+	m := newConfirmModel(PromptStep{Command: "apt-get install docker.io"}, true, trTranslator())
+	m.editing = true
+	m.input.Focus() // matches Update's own real edit-mode entry (confirm.go), which always focuses the input
+
+	view := m.View()
+
+	assert.Contains(t, view.Content, "\x1b[38;5;222m")
+}
+
+// TestConfirmModelEditPromptPlainWhenDisabled is the disabled-path
+// counterpart: colorEnabled=false must leave the edit-mode view with
+// ZERO ANSI escape bytes at all — not merely "not yellow yet still
+// colored 7" (bubbles/v2/textinput.New()'s own default styles color the
+// prompt unconditionally; newConfirmModel now explicitly overrides both
+// the Focused and Blurred Prompt style to close that gap). Note: this
+// test needed an explicit SetVirtualCursor(false) to isolate the prompt
+// specifically — while writing it, a genuinely SEPARATE, still-open,
+// equally unconditional leak was found empirically: the virtual cursor's
+// own rendering emits `\x1b[7;37m \x1b[m` (a reverse-video block)
+// regardless of colorEnabled, on BOTH this surface and `comrade chat`'s
+// input. Out of scope for this fix (which is specifically about the "> "
+// prompt symbol), left untouched, and flagged here rather than silently
+// worked around.
+func TestConfirmModelEditPromptPlainWhenDisabled(t *testing.T) {
+	m := newConfirmModel(PromptStep{Command: "apt-get install docker.io"}, false, trTranslator())
+	m.editing = true
+	m.input.Focus() // matches Update's own real edit-mode entry (confirm.go), which always focuses the input
+	// The virtual cursor's OWN rendering (a reverse-video block, unrelated
+	// to the prompt symbol) is a separate, out-of-scope styling surface —
+	// same exclusion internal/cli/chatmodel_color_test.go's identical
+	// prompt-leak test applies, for the identical reason: this test is
+	// scoped to the "> " prompt specifically, not every stylable part of
+	// the textinput.
+	m.input.SetVirtualCursor(false)
+
+	view := m.View()
+
+	assert.NotContains(t, view.Content, "\x1b[")
+}
+
 // TestConfirmRunsHeadlessProgramAndReturnsChoice drives the full
 // bubbletea Program (not just Update()) end-to-end, but entirely
 // headlessly: tea.WithInput/tea.WithOutput redirect the program to a

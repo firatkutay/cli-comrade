@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
 	"github.com/firatkutay/cli-comrade/internal/engine"
@@ -34,6 +36,18 @@ type chatModel struct {
 	viewport viewport.Model
 	input    textinput.Model
 	spinner  spinner.Model
+
+	// colorEnabled is resolveColorEnabled's result for this session's
+	// output stream, resolved ONCE by runChat (the same single color-
+	// decision point every other command routes through — color.go) and
+	// carried on the model rather than re-resolved per render: cheap,
+	// and there is only ever one output stream for the lifetime of one
+	// `comrade chat` session anyway. Gates every one of chatModel's own
+	// pastel styles (the echoed user line, "/help"'s slash-command
+	// tokens, the input prompt) — false means every one of those degrades
+	// to the exact plain text this view already rendered before any of
+	// them existed.
+	colorEnabled bool
 
 	// waiting is true from the moment Enter dispatches a line (chat
 	// turn or "/do") until its chatTurnDoneMsg comes back. It gates
@@ -62,14 +76,18 @@ type chatModel struct {
 // real runChatDo pipeline (via newRealChatDoRunner) for "/do". ctx and the
 // I/O streams/*tea.Program are filled in by runChatProgram once they
 // exist (see its own doc comment) — newChatModel itself never touches a
-// terminal.
-func newChatModel(cfg config.Config, tr i18n.Translator, client *llm.Client, session *chatSession) *chatModel {
+// terminal. colorEnabled is runChat's own resolveColorEnabled result
+// (color.go's single decision point) for this session's real output
+// stream — see chatModel.colorEnabled's own doc comment for what it
+// gates.
+func newChatModel(cfg config.Config, tr i18n.Translator, client *llm.Client, session *chatSession, colorEnabled bool) *chatModel {
 	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	vp.SetContent(tr.T(i18n.MsgChatWelcome))
 
 	ti := textinput.New()
 	ti.Prompt = "> "
 	ti.Focus()
+	setChatInputPromptStyle(&ti, colorEnabled)
 
 	// waitSpinnerStyle/waitSpinnerFrames' frame set (spinner.go) is reused
 	// here verbatim — same braille frames, same pastel-183 color as every
@@ -78,7 +96,7 @@ func newChatModel(cfg config.Config, tr i18n.Translator, client *llm.Client, ses
 	// second, independently-drifting one.
 	sp := spinner.New(spinner.WithSpinner(waitSpinnerFrames), spinner.WithStyle(waitSpinnerStyle))
 
-	m := &chatModel{session: session, viewport: vp, input: ti, spinner: sp}
+	m := &chatModel{session: session, viewport: vp, input: ti, spinner: sp, colorEnabled: colorEnabled}
 	m.controller = &chatController{
 		tr:        tr,
 		llm:       client,
@@ -172,7 +190,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if line == "" {
 				return m, nil
 			}
-			m.appendViewportLine("> " + line)
+			m.appendViewportLine(m.styleEchoedUserLine(line))
 			m.waiting = true
 			m.input.Blur()
 			return m, tea.Batch(m.spinner.Tick, runChatTurnCmd(m.ctx, m.controller, m.session, line))
@@ -182,7 +200,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.waiting = false
 		m.input.Focus()
 		if msg.output != "" {
-			m.appendViewportLine(msg.output)
+			m.appendViewportLine(m.styleChatOutput(msg.output))
 		}
 		if msg.exit {
 			m.quitting = true
@@ -220,6 +238,114 @@ func (m *chatModel) appendViewportLine(line string) {
 	}
 	m.viewport.SetContent(content + line)
 	m.viewport.GotoBottom()
+}
+
+// chatUserMessageStyle/chatCommandStyle/chatPromptSymbolStyle are the
+// chat view's own pastel styles (never applied when m.colorEnabled is
+// false — see each call site below): the user's own transcript message
+// text in a muted gray, command-like content (concretely, today: "/help"'s
+// own slash-command tokens — see colorizeSlashCommandList) in a soft
+// pastel blue, and the ">" prompt symbol — both the live input's own
+// prompt and the transcript's echoed "> " prefix — in a pastel yellow.
+// Assistant replies are DELIBERATELY left completely unstyled: no
+// markdown/backtick parsing, no color, byte-identical to how they always
+// rendered — a deliberate scope decision (a full markdown renderer for a
+// braille-terminal chat view was explicitly out of scope), not an
+// oversight.
+var (
+	chatUserMessageStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color(paletteGray))
+	chatCommandStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(paletteBlue))
+	chatPromptSymbolStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(paletteYellow))
+)
+
+// chatSlashCommandRowPattern matches "/help"'s own rendered row shape —
+// MsgChatHelp's catalog value (TR+EN) is a fixed, hand-authored multi-line
+// string, every row of which is exactly two spaces of indent followed by
+// a "/xxx" token and then a space — never markdown, never LLM output, so
+// this is not "building a markdown parser": it is a structural match
+// against ONE specific, fully-known, catalog-owned string, the same
+// discipline colorizeHelpText (help.go) already uses for cobra's own
+// fully-known --help row shapes.
+var chatSlashCommandRowPattern = regexp.MustCompile(`(?m)^  /\S+`)
+
+// colorizeSlashCommandList re-colors "/help"'s own output, wrapping only
+// each row's leading "/xxx" token in chatCommandStyle — never called
+// unless m.colorEnabled is true AND text is an EXACT match for
+// tr.T(i18n.MsgChatHelp) (see styleChatOutput), so this never runs
+// against arbitrary chat-turn/assistant-reply text.
+func colorizeSlashCommandList(text string) string {
+	return chatSlashCommandRowPattern.ReplaceAllStringFunc(text, func(match string) string {
+		return "  " + chatCommandStyle.Render(match[2:])
+	})
+}
+
+// styleEchoedUserLine renders line (the user's own just-submitted input)
+// as the transcript will show it: a pastel-yellow "> " prompt-symbol
+// prefix (matching the live input's own prompt — see
+// setChatInputPromptStyle) followed by the message text itself in a
+// muted pastel gray. Plain "> " + line, byte-for-byte, when
+// m.colorEnabled is false.
+func (m chatModel) styleEchoedUserLine(line string) string {
+	if !m.colorEnabled {
+		return "> " + line
+	}
+	return chatPromptSymbolStyle.Render("> ") + chatUserMessageStyle.Render(line)
+}
+
+// styleChatOutput re-colors dispatchChatLine's returned output ONLY when
+// it is an exact match for "/help"'s own fixed text (see
+// colorizeSlashCommandList's doc comment for why an exact-string check
+// against the one known catalog value is the right test here, not a
+// content-sniffing heuristic) — every other output (a chat-turn reply,
+// "/do"'s summary, "/mode"/"/save"/"/clear"'s confirmations, an error)
+// passes through completely unchanged, always, regardless of
+// m.colorEnabled: assistant replies and every other dispatch output stay
+// exactly as they already rendered before this task.
+func (m chatModel) styleChatOutput(output string) string {
+	if m.colorEnabled && output == m.controller.tr.T(i18n.MsgChatHelp) {
+		return colorizeSlashCommandList(output)
+	}
+	return output
+}
+
+// setChatInputPromptStyle sets ti's own prompt-symbol style (both the
+// Focused and Blurred state — the input toggles between them on every
+// Enter/reply round-trip, see Update) to chatPromptSymbolStyle when
+// colorEnabled, or to a completely empty lipgloss.Style{} otherwise —
+// NOT left at bubbles/v2/textinput's own New()'s default
+// (DefaultDarkStyles(), which sets Prompt to Foreground(Color("7"))
+// UNCONDITIONALLY, with no NO_COLOR/TTY/colorEnabled awareness at all:
+// confirmed by direct inspection of textinput.New()/DefaultStyles()).
+// That default was a real, pre-existing gap in this codebase's "single
+// color decision point" architecture (color.go) — every other styled
+// surface in this tree explicitly gates on colorEnabled, but a "> "
+// prompt built via a bare textinput.New() never did, emitting `\x1b[37m`
+// regardless of NO_COLOR/non-TTY/general.color=false. This function
+// closes that gap for `comrade chat`'s own input as a direct side effect
+// of making it pastel yellow when enabled: colorEnabled=false now yields
+// a genuinely plain, un-styled "> " prompt, not merely "not yellow yet
+// still colored 7". The IDENTICAL gap existed in internal/tui/confirm.go's
+// edit-mode textinput too (same bare textinput.New() + Prompt = "> "
+// shape) — newConfirmModel (confirm.go) now closes it the same way, via
+// internal/tui/styles.go's editPromptStyle; both of this codebase's "> "
+// -prompted textinputs are gated through colorEnabled now, with no
+// unguarded default left anywhere. Every other Styles field (Text/
+// Placeholder/Suggestion/Cursor) is left exactly as New()'s own default
+// set it, on BOTH surfaces — out of scope: the virtual cursor's own
+// rendering in particular is a SEPARATE, still-open, equally
+// unconditional leak (`\x1b[7;37m`, a reverse-video block) on both
+// surfaces, not addressed by either fix — see
+// TestConfirmModelEditPromptPlainWhenDisabled's own doc comment
+// (confirm_test.go) for where this was directly observed.
+func setChatInputPromptStyle(ti *textinput.Model, colorEnabled bool) {
+	promptStyle := lipgloss.NewStyle()
+	if colorEnabled {
+		promptStyle = chatPromptSymbolStyle
+	}
+	styles := ti.Styles()
+	styles.Focused.Prompt = promptStyle
+	styles.Blurred.Prompt = promptStyle
+	ti.SetStyles(styles)
 }
 
 // View renders the scrollback, an in-flight "thinking…" spinner line

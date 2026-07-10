@@ -337,9 +337,9 @@ func helpTranslatorAndConfig(newLoader loaderFactory) (i18n.Translator, config.C
 // they stay legible on both a light and a dark 256-color terminal without
 // needing any runtime background detection at all.
 var (
-	helpHeaderStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("183"))
-	helpCommandNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("115"))
-	helpFlagNameStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("216"))
+	helpHeaderStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(paletteLavender))
+	helpCommandNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(paletteCyan))
+	helpFlagNameStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color(palettePeach))
 )
 
 // helpCommandRowPattern matches a command-list row exactly as cobra's own

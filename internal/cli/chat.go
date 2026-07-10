@@ -167,6 +167,7 @@ func runChat(cmd *cobra.Command, newLoader loaderFactory) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
-	m := newChatModel(cfg, tr, client, newChatSession(initialMode))
+	colorEnabled := resolveColorEnabled(cfg, os.Environ(), cmd.OutOrStdout())
+	m := newChatModel(cfg, tr, client, newChatSession(initialMode), colorEnabled)
 	return runChatProgram(ctx, m, cmd.InOrStdin(), cmd.OutOrStdout())
 }

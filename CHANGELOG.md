@@ -181,6 +181,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`comrade chat`'s transcript now has pastel styling, gated by the
+  same single color decision every other command uses**
+  (`resolveColorEnabled`, `internal/cli/color.go`): the user's own
+  echoed lines render in a muted pastel gray (ANSI256 `245`); `/help`'s
+  own slash-command tokens (`/mode`, `/do`, `/clear`, `/save`, `/help`,
+  `/exit`) render in a pastel blue (`111`); the input prompt's `>`
+  symbol — both the live input and the transcript's own echoed `"> "`
+  prefix — renders in a pastel yellow (`222`). Assistant replies are
+  deliberately left completely unstyled (no markdown/backtick parsing —
+  out of scope). Fixes a genuine pre-existing gap found while
+  implementing this: `bubbles/v2/textinput`'s own default styles
+  colored the prompt symbol unconditionally (`Foreground(Color("7"))`),
+  with no `NO_COLOR`/TTY/`colorEnabled` awareness at all — the chat
+  input's prompt is now the same, single-decision-point-gated surface
+  as everything else, genuinely byte-clean when color is disabled
+  rather than just "not yellow yet still colored". The five pastel
+  ANSI256 codes `--help`/the spinner already used (`183`/`115`/`216`)
+  plus these three new ones are now all named constants in one place
+  (`internal/cli/color.go`) instead of bare literals scattered across
+  `help.go`/`spinner.go`/`chatmodel.go`. The identical unconditional-color
+  gap existed in `internal/tui/confirm.go`'s ask-mode edit textinput too
+  (same bare `textinput.New()` + `Prompt = "> "` shape) — a cross-surface
+  review finding closed in the same pass: the edit prompt now renders the
+  same pastel yellow when enabled (`internal/tui/styles.go`'s new
+  `editPromptStyle`, mirroring this package's existing `riskBadgeStyle`/
+  `warningStyle`/`commandStyle` pattern) and is genuinely byte-clean when
+  disabled. `internal/tui` cannot import `internal/cli` (the reverse is
+  already the correct dependency direction), so the shared `"222"` value
+  is a small, explicitly-commented, guarded duplication — `internal/tui`
+  exports it as `PromptYellow`, and `internal/cli`'s own test suite pins
+  `paletteYellow == tui.PromptYellow` so the two can never silently drift.
+  Both surfaces still share one separate, still-open, equally
+  unconditional leak — the virtual cursor's own reverse-video rendering —
+  deliberately out of scope for both fixes.
 - **`llm.idle_timeout_seconds` config key** (default `0` = disabled):
   bounds the gap between two consecutive chunks of a `Stream`, separately
   from `llm.timeout_seconds`'s whole-stream deadline. Enforced centrally

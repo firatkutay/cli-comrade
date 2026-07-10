@@ -15,21 +15,8 @@ set -eu
 REPO="firatkutay/cli-comrade"
 BIN_NAME="comrade"
 
-# fetch_url downloads $1 to stdout using whichever of curl/wget
-# require_downloader already confirmed is available, so every download
-# in this script (the version lookup, the archive, checksums.txt) goes
-# through one code path instead of two parallel curl-only/wget-only
-# copies that could silently drift.
-fetch_url() {
-  if [ "$DOWNLOADER" = curl ]; then
-    curl -fsSL "$1"
-  else
-    wget -qO- "$1"
-  fi
-}
-
-# fetch_url_to_file downloads $1 to the file path $2, using the same
-# resolved downloader as fetch_url.
+# fetch_url_to_file downloads $1 to the file path $2, using whichever
+# downloader require_downloader resolved.
 fetch_url_to_file() {
   if [ "$DOWNLOADER" = curl ]; then
     curl -fsSL -o "$2" "$1"
@@ -41,8 +28,8 @@ fetch_url_to_file() {
 # require_downloader picks curl or wget (in that order) and fails with a
 # friendly, actionable message if neither is on PATH — this is the FAZ 4
 # reviewer finding this script only ever had a hard curl dependency;
-# every download in this script now goes through fetch_url/
-# fetch_url_to_file, which dispatch on whichever was actually found.
+# every download in this script now goes through fetch_url_to_file, which
+# dispatches on whichever was actually found.
 require_downloader() {
   if command -v curl >/dev/null 2>&1; then
     DOWNLOADER=curl
@@ -54,14 +41,23 @@ require_downloader() {
   fi
 }
 
-resolve_version() {
+# resolve_base_url returns the release download base URL to use.
+#
+# Deliberately does NOT call api.github.com/repos/.../releases/latest: that
+# endpoint is unauthenticated and rate-limited to 60 req/hr per source IP,
+# which is hostile to a curl|sh one-liner shared publicly (a handful of
+# installs from behind the same NAT/CI runner exhausts it). GitHub's
+# no-API "latest/download/<asset>" redirect has no such limit, so the
+# default (unpinned) path resolves to that; a pinned COMRADE_VERSION uses
+# the equivalent tag-scoped download URL. Either way, the actual version
+# number is read back out of checksums.txt's matched filename, never out
+# of a separate API/version-lookup call.
+resolve_base_url() {
   if [ -n "${COMRADE_VERSION:-}" ]; then
-    printf '%s\n' "$COMRADE_VERSION"
-    return 0
+    printf 'https://github.com/%s/releases/download/%s\n' "$REPO" "$COMRADE_VERSION"
+  else
+    printf 'https://github.com/%s/releases/latest/download\n' "$REPO"
   fi
-  fetch_url "https://api.github.com/repos/${REPO}/releases/latest" \
-    | grep -m1 '"tag_name"' \
-    | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
 }
 
 detect_os() {
@@ -88,29 +84,39 @@ detect_arch() {
 
 main() {
   require_downloader
-  version="$(resolve_version)"
-  if [ -z "$version" ]; then
-    echo "install.sh: could not resolve a version to install (set COMRADE_VERSION to override)" >&2
-    exit 1
-  fi
-  version_number="${version#v}"
   os="$(detect_os)"
   arch="$(detect_arch)"
-
-  archive="${BIN_NAME}_${version_number}_${os}_${arch}.tar.gz"
-  base_url="https://github.com/${REPO}/releases/download/${version}"
+  base_url="$(resolve_base_url)"
+  archive_suffix="_${os}_${arch}.tar.gz"
 
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' EXIT INT TERM
 
-  echo "install.sh: downloading ${archive} (${version})..."
-  fetch_url_to_file "${base_url}/${archive}" "${workdir}/${archive}"
+  echo "install.sh: fetching checksums..."
   fetch_url_to_file "${base_url}/checksums.txt" "${workdir}/checksums.txt"
+
+  # Find the checksums.txt line for our os/arch by exact filename suffix
+  # match (avoids regex-metachar escaping on the dots in ".tar.gz") and
+  # pull the archive's real filename — which embeds the resolved version
+  # — straight out of it, rather than resolving the version separately.
+  checksum_line="$(awk -v suf="$archive_suffix" \
+    '{ if (substr($2, length($2) - length(suf) + 1) == suf) print $0 }' \
+    "${workdir}/checksums.txt")"
+  if [ -z "$checksum_line" ]; then
+    echo "install.sh: no release asset found for os=${os} arch=${arch} (checked ${base_url}/checksums.txt)" >&2
+    exit 1
+  fi
+  archive="$(printf '%s\n' "$checksum_line" | awk '{print $2}')"
+  version_number="${archive%"$archive_suffix"}"
+  version_number="${version_number#"${BIN_NAME}"_}"
+
+  echo "install.sh: downloading ${archive} (v${version_number})..."
+  fetch_url_to_file "${base_url}/${archive}" "${workdir}/${archive}"
 
   echo "install.sh: verifying checksum..."
   (
     cd "$workdir"
-    grep " ${archive}\$" checksums.txt > checksum.line
+    printf '%s\n' "$checksum_line" > checksum.line
     sha256sum -c checksum.line
   )
 
@@ -152,7 +158,12 @@ main() {
       ;;
   esac
 
-  echo "install.sh: run 'comrade init' to set up shell integration."
+  shell_name="$(basename "${SHELL:-sh}")"
+  case "$shell_name" in
+    bash | zsh | fish) ;;
+    *) shell_name="bash|zsh|fish" ;;
+  esac
+  echo "install.sh: run 'comrade init ${shell_name}' to set up shell integration (error capture + completions)."
 }
 
 main "$@"

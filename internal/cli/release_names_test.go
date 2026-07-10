@@ -20,14 +20,18 @@ import (
 // archive naming scheme lives, unavoidably, as FOUR independent copies —
 // .goreleaser.yaml's archives[].name_template (what actually gets built
 // and uploaded), scripts/install.sh's and scripts/install.ps1's own
-// archive-name construction (what the install scripts download), and
-// internal/update's ArchiveName/BinaryName/ChecksumsFileName (what
-// `comrade upgrade` downloads). Each copy is individually valid — every
-// one of the four already has its own passing tests/syntax checks — so
-// no single-file check catches one of them drifting from the other
-// three. This test renders/greps all four and cross-checks them
-// bidirectionally: it fails on ANY of the four changing alone, not just
-// on the install scripts falling behind goreleaser.
+// project-name-prefix + os/arch/extension-suffix pieces (what the install
+// scripts use to pick out and parse the right line of the downloaded
+// checksums.txt — the scripts themselves DERIVE the archive filename from
+// that line rather than hardcoding it, but still hand-maintain those
+// selection pieces), and internal/update's
+// ArchiveName/BinaryName/ChecksumsFileName (what `comrade upgrade`
+// downloads). Each copy is individually valid — every one of the four
+// already has its own passing tests/syntax checks — so no single-file
+// check catches one of them drifting from the other three. This test
+// renders/greps all four and cross-checks them bidirectionally: it fails
+// on ANY of the four changing alone, not just on the install scripts
+// falling behind goreleaser.
 func TestReleaseArchiveNamingIsConsistentAcrossGoreleaserInstallScriptsAndUpdatePackage(t *testing.T) {
 	root := repoRoot(t)
 
@@ -67,6 +71,49 @@ func TestReleaseArchiveNamingIsConsistentAcrossGoreleaserInstallScriptsAndUpdate
 		return buf.String()
 	}
 
+	// scripts/install.sh and scripts/install.ps1 (FAZ-11 rewrite) no
+	// longer CONSTRUCT the archive filename by string interpolation —
+	// they DERIVE it from the matching line of the downloaded
+	// checksums.txt instead (avoids ever hand-duplicating goreleaser's
+	// full name_template). That's a real, deliberate improvement: it
+	// can't drift on the archive name as a whole. But both scripts still
+	// hand-maintain two drift-sensitive pieces used to SELECT the right
+	// checksums.txt line and to split the version back out of it: a
+	// project-name prefix and an os/arch/extension suffix. If
+	// goreleaser's name_template field order, os/arch values, or archive
+	// extension ever changed, these suffixes would silently stop
+	// matching any checksums.txt line — this guard reconstructs each
+	// script's expected archive name from its own prefix+suffix pieces
+	// and cross-checks it against goreleaser's own rendered template
+	// below (per-case, in the cases loop), so it still fails on that
+	// drift even though the scripts no longer hardcode the full name.
+
+	// scripts/install.sh: BIN_NAME (project prefix) + the
+	// archive_suffix="_${os}_${arch}.tar.gz" grep suffix used to pick
+	// the checksums.txt line.
+	shBinName := extractOne(t, installSh, `(?m)^BIN_NAME="([^"]+)"$`, "scripts/install.sh BIN_NAME")
+	assert.Equal(t, projectName, shBinName, "install.sh's BIN_NAME must match goreleaser's project_name")
+
+	shSuffixExpr := extractOne(t, installSh, `(?m)^\s*archive_suffix="(.+)"$`, "scripts/install.sh archive_suffix= line")
+	shSuffixFields := parseShellSuffixFields(t, shSuffixExpr)
+	assert.Equal(t, []string{"os", "arch"}, shSuffixFields.vars,
+		"install.sh's archive_suffix var order must match goreleaser's trailing Os_Arch template fields")
+	assert.Equal(t, defaultFormat, shSuffixFields.ext, "install.sh must grep for the same default extension goreleaser produces")
+	assert.Contains(t, installSh, checksumsName, "install.sh must download the same checksums file name goreleaser produces")
+
+	// scripts/install.ps1: the $archiveSuffix = "_windows_${arch}.zip"
+	// grep suffix, and the literal "comrade_" project-name prefix baked
+	// into the -replace pattern that strips the version number back out
+	// of the matched filename.
+	ps1SuffixExpr := extractOne(t, installPs1, `(?m)^\$archiveSuffix\s*=\s*"(.+)"$`, "scripts/install.ps1 $archiveSuffix= line")
+	ps1SuffixFields := parsePowerShellSuffixFields(t, ps1SuffixExpr)
+	assert.Equal(t, "windows", ps1SuffixFields.goos, "install.ps1 only ever builds the windows archive name")
+	assert.Equal(t, windowsFormat, ps1SuffixFields.ext, "install.ps1 must grep for the same windows-override extension goreleaser uses")
+
+	ps1ProjectPrefix := extractOne(t, installPs1, `\$archive -replace '\^(\w+)_'`, "scripts/install.ps1 version-strip project-name prefix")
+	assert.Equal(t, projectName, ps1ProjectPrefix, "install.ps1's version-strip prefix must match goreleaser's project_name")
+	assert.Contains(t, installPs1, checksumsName, "install.ps1 must download the same checksums file name goreleaser produces")
+
 	cases := []struct {
 		goos, goarch, format string
 	}{
@@ -82,29 +129,27 @@ func TestReleaseArchiveNamingIsConsistentAcrossGoreleaserInstallScriptsAndUpdate
 			gotFromUpdatePkg := update.ArchiveName(projectName, "9.9.9", tc.goos, tc.goarch)
 			assert.Equal(t, wantFromGoreleaser, gotFromUpdatePkg,
 				"internal/update.ArchiveName must render the exact same name as .goreleaser.yaml's own template")
+
+			switch tc.goos {
+			case "windows":
+				// install.ps1 never constructs this string itself (it reads
+				// the real filename out of checksums.txt) — this
+				// reconstructs what it EXPECTS that filename to look like
+				// from its own project-prefix + archiveSuffix pieces, and
+				// checks that still matches goreleaser's real output.
+				gotFromInstallPs1 := ps1ProjectPrefix + "_9.9.9_windows_" + tc.goarch + "." + ps1SuffixFields.ext
+				assert.Equal(t, wantFromGoreleaser, gotFromInstallPs1,
+					"install.ps1's project-prefix + archiveSuffix must reconstruct the exact same archive name goreleaser produces")
+			default:
+				// install.sh likewise never constructs the archive name
+				// itself anymore — reconstruct what it EXPECTS via
+				// BIN_NAME + archive_suffix and check it still matches.
+				gotFromInstallSh := shBinName + "_9.9.9_" + tc.goos + "_" + tc.goarch + "." + shSuffixFields.ext
+				assert.Equal(t, wantFromGoreleaser, gotFromInstallSh,
+					"install.sh's BIN_NAME + archive_suffix must reconstruct the exact same archive name goreleaser produces")
+			}
 		})
 	}
-
-	// scripts/install.sh: BIN_NAME + the archive="${BIN_NAME}_${version_number}_${os}_${arch}.tar.gz" line.
-	shBinName := extractOne(t, installSh, `(?m)^BIN_NAME="([^"]+)"$`, "scripts/install.sh BIN_NAME")
-	assert.Equal(t, projectName, shBinName, "install.sh's BIN_NAME must match goreleaser's project_name")
-
-	shArchiveExpr := extractOne(t, installSh, `(?m)^\s*archive="(.+)"$`, "scripts/install.sh archive= line")
-	shFields := parseShellInterpolationFields(t, shArchiveExpr)
-	assert.Equal(t, []string{"BIN_NAME", "version_number", "os", "arch"}, shFields.vars,
-		"install.sh's archive name field order/count must match goreleaser's ProjectName_Version_Os_Arch template")
-	assert.Equal(t, defaultFormat, shFields.ext, "install.sh must build the same default extension goreleaser uses")
-	assert.Contains(t, installSh, checksumsName, "install.sh must download the same checksums file name goreleaser produces")
-
-	// scripts/install.ps1: $archive = "comrade_${versionNumber}_windows_${arch}.zip"
-	ps1ArchiveExpr := extractOne(t, installPs1, `(?m)^\$archive\s*=\s*"(.+)"$`, "scripts/install.ps1 $archive= line")
-	ps1Literal, ps1Fields := parsePowerShellInterpolationFields(t, ps1ArchiveExpr)
-	assert.Equal(t, projectName, ps1Literal.project, "install.ps1 must build the archive name from goreleaser's own project_name")
-	assert.Equal(t, "windows", ps1Literal.goos, "install.ps1 only ever builds the windows archive name")
-	assert.Equal(t, windowsFormat, ps1Fields.ext, "install.ps1 must build the same windows-override extension goreleaser uses")
-	assert.Equal(t, []string{"versionNumber", "arch"}, ps1Fields.vars,
-		"install.ps1's archive name field order/count (version, arch) must match goreleaser's template")
-	assert.Contains(t, installPs1, checksumsName, "install.ps1 must download the same checksums file name goreleaser produces")
 
 	// internal/update.BinaryName must agree with goreleaser's builds[].binary
 	// (plus the universal ".exe" Windows convention, which goreleaser applies
@@ -144,41 +189,42 @@ func extractOne(t *testing.T, text, pattern, what string) string {
 	return matches[0][1]
 }
 
-// shellArchiveFields is parseShellInterpolationFields's result: the
-// ordered list of shell variable names interpolated into the archive
-// name, and the trailing literal file extension.
+// shellArchiveFields is parseShellSuffixFields's result: the ordered
+// list of shell variable names interpolated into the archive-selection
+// suffix, and the trailing literal file extension.
 type shellArchiveFields struct {
 	vars []string
 	ext  string
 }
 
-// parseShellInterpolationFields parses an sh archive-name expression of
-// the form `${A}_${B}_${C}_${D}.ext` into its ordered variable names and
-// trailing extension.
-func parseShellInterpolationFields(t *testing.T, expr string) shellArchiveFields {
+// parseShellSuffixFields parses install.sh's archive_suffix expression
+// (the checksums.txt line-selection suffix, of the form `_${A}_${B}.ext`)
+// into its ordered variable names and trailing literal extension.
+func parseShellSuffixFields(t *testing.T, expr string) shellArchiveFields {
 	t.Helper()
-	re := regexp.MustCompile(`^\$\{(\w+)\}_\$\{(\w+)\}_\$\{(\w+)\}_\$\{(\w+)\}\.(.+)$`)
+	re := regexp.MustCompile(`^_\$\{(\w+)\}_\$\{(\w+)\}\.(.+)$`)
 	m := re.FindStringSubmatch(expr)
-	require.NotNil(t, m, "install.sh archive expression %q does not match the expected ${A}_${B}_${C}_${D}.ext shape", expr)
-	return shellArchiveFields{vars: m[1:5], ext: m[5]}
+	require.NotNil(t, m, "install.sh archive_suffix expression %q does not match the expected _${A}_${B}.ext shape", expr)
+	return shellArchiveFields{vars: m[1:3], ext: m[3]}
 }
 
-// powerShellArchiveLiteral is the literal (non-interpolated) segments of
-// install.ps1's archive-name expression.
-type powerShellArchiveLiteral struct {
-	project string
-	goos    string
+// powerShellSuffixFields is parsePowerShellSuffixFields's result:
+// install.ps1's literal goos segment plus its interpolated arch variable
+// and trailing extension, from its own checksums.txt line-selection
+// suffix.
+type powerShellSuffixFields struct {
+	goos string
+	arch string
+	ext  string
 }
 
-// parsePowerShellInterpolationFields parses a PowerShell double-quoted
-// archive-name expression of the form
-// `comrade_${versionNumber}_windows_${arch}.zip` into its literal
-// project/goos segments and its interpolated variable names + extension.
-func parsePowerShellInterpolationFields(t *testing.T, expr string) (powerShellArchiveLiteral, shellArchiveFields) {
+// parsePowerShellSuffixFields parses install.ps1's $archiveSuffix
+// expression of the form `_windows_${arch}.zip` into its literal goos
+// segment, interpolated arch variable name, and trailing extension.
+func parsePowerShellSuffixFields(t *testing.T, expr string) powerShellSuffixFields {
 	t.Helper()
-	re := regexp.MustCompile(`^(\w+)_\$\{(\w+)\}_(\w+)_\$\{(\w+)\}\.(.+)$`)
+	re := regexp.MustCompile(`^_(\w+)_\$\{(\w+)\}\.(.+)$`)
 	m := re.FindStringSubmatch(expr)
-	require.NotNil(t, m, "install.ps1 archive expression %q does not match the expected literal_${A}_literal_${B}.ext shape", expr)
-	return powerShellArchiveLiteral{project: m[1], goos: m[3]},
-		shellArchiveFields{vars: []string{m[2], m[4]}, ext: m[5]}
+	require.NotNil(t, m, "install.ps1 archiveSuffix expression %q does not match the expected _literal_${A}.ext shape", expr)
+	return powerShellSuffixFields{goos: m[1], arch: m[2], ext: m[3]}
 }

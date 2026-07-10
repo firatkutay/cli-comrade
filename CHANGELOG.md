@@ -59,6 +59,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   error — only having neither is. Non-Windows behavior is unchanged
   (`pwsh` is still the only candidate there, exactly as before). All new
   report/error strings are routed through `internal/i18n` (TR+EN).
+- **PowerShell hook recorded a failed command as exit 0** (found via a
+  real live-Windows test, immediately after the multi-variant fix above
+  shipped: `pyton --version` — a typo — then `comrade fix` reported
+  "the last recorded command exited successfully"): the snippet's prompt
+  function read only `$global:LASTEXITCODE`, which PowerShell sets
+  **exclusively** for native (external) programs — a
+  `CommandNotFoundException` (or any other cmdlet/parse error) never
+  touches it, so it stayed at its stale prior value (`$null` → mapped to
+  `0`) even though the command genuinely failed. The correct signal is
+  the automatic `$?` variable, which PowerShell sets correctly for
+  *every* command, native or not — but it MUST be read as the prompt
+  function's literal first statement, since any earlier statement
+  (even a plain assignment) resets it. The fixed snippet now captures
+  `$success = $?` first, then computes the recorded exit code as: success
+  → `0`; failure → `$LASTEXITCODE`'s own value when it's a nonzero
+  number (preserving a real native command's actual exit code), else a
+  generic `1`. This also fixes the mirror bug: a stale nonzero
+  `$LASTEXITCODE` left over from an earlier native failure could
+  previously make a later, genuinely successful cmdlet-only command
+  record as failed too — now `$?` alone decides success, regardless of
+  `$LASTEXITCODE`'s staleness. Verified live on both Windows PowerShell
+  5.1 and PowerShell 7 on the real host across three scenarios (command
+  not found, the stale-`$LASTEXITCODE` mirror case, and a real native
+  failure's exact code being preserved) — old logic wrong in all the
+  ways described, new logic correct, on both PowerShell editions. bash,
+  zsh, and fish were checked too: each already captures its own single,
+  unified `$?`/`$status` as its hook's literal first statement, and each
+  shell's own convention already reports "command not found" as a
+  nonzero status (127) — no equivalent bug exists there. `comrade init`'s
+  existing block-marker upgrade machinery rolls this out automatically:
+  re-running `comrade init powershell` on an already-hooked profile
+  reports `StatusUpgraded` and replaces the old snippet in place.
+
+### Added
 
 - **`llm.idle_timeout_seconds` config key** (default `0` = disabled):
   bounds the gap between two consecutive chunks of a `Stream`, separately

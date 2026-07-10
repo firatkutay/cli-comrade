@@ -63,6 +63,56 @@ func TestApplyBlockUpgradesChangedContentInPlace(t *testing.T) {
 	assert.Equal(t, want, updated)
 }
 
+// TestApplyBlockUpgradesRealPreExitCodeFixPowerShellSnippet is the
+// concrete regression proof (not a generic placeholder-body upgrade like
+// TestApplyBlockUpgradesChangedContentInPlace above) that a user who
+// already ran "comrade init powershell" before the $?/$LASTEXITCODE
+// exit-code fix gets the fix automatically, correctly, and in place the
+// next time they re-run "comrade init powershell" — no manual --remove/
+// reinstall needed. oldRealSnippet is the EXACT pre-fix
+// internal/shellinit/snippets/powershell.ps1 content (the one that
+// recorded a CommandNotFoundException, e.g. a typo'd command, as exit 0
+// — see docs/PROGRESS.md for the live bug report this fixes).
+func TestApplyBlockUpgradesRealPreExitCodeFixPowerShellSnippet(t *testing.T) {
+	oldRealSnippet := `if (Get-Command comrade -ErrorAction SilentlyContinue) {
+    $global:__ComradeOriginalPrompt = $function:prompt
+    $global:__ComradeLastCommand = $null
+    function global:prompt {
+        $ec = $global:LASTEXITCODE
+        if ($null -eq $ec) { $ec = 0 }
+        try {
+            $last = Get-History -Count 1
+            if ($last) {
+                $cmd = $last.CommandLine
+                if ($cmd -and $cmd -ne $global:__ComradeLastCommand) {
+                    $global:__ComradeLastCommand = $cmd
+                    comrade hook record --shell powershell --exit $ec --command $cmd 2>$null | Out-Null
+                }
+            }
+        } catch {
+        }
+        if ($global:__ComradeOriginalPrompt) {
+            & $global:__ComradeOriginalPrompt
+        } else {
+            "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
+        }
+    }
+}`
+	oldBlock := shellinit.MarkerBegin + "\n" + oldRealSnippet + "\n" + shellinit.MarkerEnd
+	original := oldBlock + "\n"
+
+	updated, status, err := shellinit.ApplyBlock(original, shellinit.PowerShell)
+	require.NoError(t, err)
+	assert.Equal(t, shellinit.StatusUpgraded, status, "a user's existing pre-fix profile must be reported as upgraded, not silently left alone")
+	assert.Equal(t, 1, strings.Count(updated, shellinit.MarkerBegin), "upgrade must not leave a duplicate block")
+
+	newBlock, err := shellinit.Block(shellinit.PowerShell)
+	require.NoError(t, err)
+	assert.Equal(t, newBlock+"\n", updated)
+	assert.Contains(t, updated, "$success = $?", "the upgraded profile must contain the fixed $?-first-statement logic")
+	assert.NotContains(t, updated, "$ec = $global:LASTEXITCODE\n        if ($null -eq $ec) { $ec = 0 }", "the upgraded profile must no longer contain the buggy LASTEXITCODE-only logic")
+}
+
 func TestApplyBlockUnsupportedShellErrors(t *testing.T) {
 	_, _, err := shellinit.ApplyBlock("", shellinit.Shell("tcsh"))
 	assert.Error(t, err)

@@ -313,23 +313,23 @@ goes through this same function, so there is exactly one place that
 ever decides whether ANSI gets written.
 
 **A waiting spinner** (`internal/cli/spinner.go`) animates on stderr
-during each blocking LLM call (`do`/`fix`'s planning and diagnosis,
-`explain`, chat's `/do`) — a braille frame set borrowed from
-`bubbles/v2/spinner`'s frame data (not its full `tea.Model`, since none
-of these call sites run inside an active bubbletea program at that
-point), labeled with the i18n'd "thinking…" text
-(`i18n.MsgSpinnerThinking`). It is driven by the same
+during each blocking LLM call outside a live bubbletea program
+(`do`/`fix`'s planning and diagnosis, `explain`) — a braille frame set
+borrowed from `bubbles/v2/spinner`'s frame data (not its full
+`tea.Model`, since none of these call sites run inside an active
+bubbletea program at that point), labeled with the i18n'd "thinking…"
+text (`i18n.MsgSpinnerThinking`). It is driven by the same
 `resolveColorEnabled` decision (evaluated against stderr), so it is a
 complete no-op — no goroutine started, nothing written — whenever
 color is off (non-TTY, `general.color=false`, `NO_COLOR`, or
 `CLICOLOR_FORCE` needed but absent). Its stop function always blocks
 until the spinner line is fully cleared (an ANSI erase-in-line, not a
 fixed-width overwrite) before returning, guaranteeing nothing the
-caller prints next ever lands on the same line. Chat's ordinary
-plain-text turn is deliberately excluded from this spinner — it runs
-while a live bubbletea program owns the terminal, which renders its
-own UI state instead; only chat's `/do` (which releases the terminal
-back to a plain synchronous call first) uses it.
+caller prints next ever lands on the same line.
+
+Chat is the one exception: it already owns a live bubbletea program, so
+it renders its own in-model spinner instead of this stderr one — see
+"Inside `comrade chat`" below.
 
 ### `comrade` (bare, no subcommand)
 
@@ -415,6 +415,26 @@ Inside the session (per `internal/cli/chatdispatch.go`'s slash-style
 commands — see `chat_help`'s catalog entry for the authoritative list):
 mode switching, clearing context, saving the transcript, and issuing a
 `do`-style request without leaving the session.
+
+**Dispatch is async, never inline in `Update`.** Pressing Enter
+(`internal/cli/chatmodel.go`) echoes the line immediately, then hands it
+to `chatController.dispatchChatLine` — the pure logic behind both a
+plain-text turn and `/do` alike — via `runChatTurnCmd`, a `tea.Cmd` that
+runs on bubbletea's own command goroutine and reports back through a
+`chatTurnDoneMsg`. This is true for `/do` too: it is not a second,
+parallel mechanism, just the same dispatch call with a heavier body
+(the whole safety-gated plan+execute pipeline, releasing/restoring the
+terminal around its own nested confirm program exactly as before).
+While a turn is in flight, an in-model spinner
+(`charm.land/bubbles/v2/spinner`, styled identically to the stderr
+spinner above — same frame set, same color) renders below the
+transcript and above the input line, labeled with the same
+`i18n.MsgSpinnerThinking` text; a second Enter is ignored until the
+current turn resolves, but Ctrl-C always quits immediately regardless.
+`chatTurn`'s `CompletionRequest` carries `cfg.LLM.MaxTokens` — every
+`Complete` call site in this codebase sets it (a required field for the
+Anthropic Messages API in particular; a `0`/unset value is rejected by
+the real API with a 400).
 
 ### `comrade config <subcommand>`
 

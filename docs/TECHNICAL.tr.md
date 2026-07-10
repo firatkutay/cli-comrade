@@ -328,26 +328,26 @@ yeteneği olan her çağrı noktası (help, aşağıdaki spinner, chat,
 yüzden ANSI'nin yazılıp yazılmayacağına karar veren tam olarak tek bir
 yer vardır.
 
-**Bir bekleme spinner'ı** (`internal/cli/spinner.go`), her bloklayan
-LLM çağrısı sırasında (`do`/`fix`'in planlama ve tanı adımları,
-`explain`, chat'in `/do`'su) stderr üzerinde animasyon yapar —
-`bubbles/v2/spinner`'ın frame verisinden ödünç alınan bir braille
-frame seti (tam `tea.Model`'i değil, çünkü bu çağrı noktalarının
-hiçbiri o anda aktif bir bubbletea programı içinde çalışmaz), i18n'li
-"düşünüyor…" metniyle etiketlenir (`i18n.MsgSpinnerThinking`). Aynı
-`resolveColorEnabled` kararıyla (stderr'e karşı değerlendirilir)
-yönlendirilir, bu yüzden renk kapalıyken (TTY değil,
-`general.color=false`, `NO_COLOR`, veya `CLICOLOR_FORCE` gerekli ama
-yoksa) tamamen bir no-op'tur — hiçbir goroutine başlatılmaz, hiçbir
-şey yazılmaz. Durdurma fonksiyonu, dönmeden önce spinner satırının
-tamamen temizlendiğinden (sabit genişlikte bir üstüne-yazma değil, bir
-ANSI erase-in-line) her zaman emin olur, bu da çağıranın bir sonraki
-yazdırdığı şeyin asla aynı satıra denk gelmemesini garanti eder.
-Chat'in sıradan düz-metin turu bu spinner'dan bilinçli olarak hariç
-tutulmuştur — canlı bir bubbletea programı terminali sahiplenirken
-çalışır, ki bu da kendi UI durumunu render eder; yalnızca chat'in
-`/do`'su (terminali önce düz senkron bir çağrıya geri bırakan) bunu
-kullanır.
+**Bir bekleme spinner'ı** (`internal/cli/spinner.go`), canlı bir
+bubbletea programının DIŞINDAKİ her bloklayan LLM çağrısı sırasında
+(`do`/`fix`'in planlama ve tanı adımları, `explain`) stderr üzerinde
+animasyon yapar — `bubbles/v2/spinner`'ın frame verisinden ödünç
+alınan bir braille frame seti (tam `tea.Model`'i değil, çünkü bu çağrı
+noktalarının hiçbiri o anda aktif bir bubbletea programı içinde
+çalışmaz), i18n'li "düşünüyor…" metniyle etiketlenir
+(`i18n.MsgSpinnerThinking`). Aynı `resolveColorEnabled` kararıyla
+(stderr'e karşı değerlendirilir) yönlendirilir, bu yüzden renk
+kapalıyken (TTY değil, `general.color=false`, `NO_COLOR`, veya
+`CLICOLOR_FORCE` gerekli ama yoksa) tamamen bir no-op'tur — hiçbir
+goroutine başlatılmaz, hiçbir şey yazılmaz. Durdurma fonksiyonu,
+dönmeden önce spinner satırının tamamen temizlendiğinden (sabit
+genişlikte bir üstüne-yazma değil, bir ANSI erase-in-line) her zaman
+emin olur, bu da çağıranın bir sonraki yazdırdığı şeyin asla aynı
+satıra denk gelmemesini garanti eder.
+
+Chat tek istisnadır: zaten canlı bir bubbletea programı sahipliğinde
+olduğundan, bu stderr spinner'ı yerine kendi model-içi spinner'ını
+render eder — aşağıdaki "`comrade chat` içinde" bölümüne bakın.
 
 ### `comrade` (çıplak, alt komutsuz)
 
@@ -434,6 +434,26 @@ Oturum içinde (`internal/cli/chatdispatch.go`'nun slash-tarzı komutlarına
 göre — otoriter liste için kataloğun `chat_help` girdisine bakın): mod
 değiştirme, bağlamı temizleme, transkripti kaydetme, ve oturumdan
 çıkmadan `do`-tarzı bir istek gönderme.
+
+**Gönderim asenkron, hiçbir zaman `Update` içinde senkron değil.**
+Enter'a basmak (`internal/cli/chatmodel.go`) satırı hemen ekrana yansıtır,
+ardından `chatController.dispatchChatLine`'a — hem düz-metin turunun hem
+`/do`'nun ardındaki AYNI saf mantık — `runChatTurnCmd` üzerinden verir:
+bubbletea'nın kendi komut goroutine'inde çalışan ve sonucu bir
+`chatTurnDoneMsg` ile geri bildiren bir `tea.Cmd`. Bu `/do` için de
+geçerli: ikinci, paralel bir mekanizma DEĞİL, yalnızca daha ağır bir
+gövdeli (tüm güvenlik-kapılı plan+execute pipeline'ı, terminali kendi iç
+içe onay programının etrafında öncekiyle birebir aynı şekilde bırakıp
+geri alarak) aynı gönderim çağrısı. Bir tur beklerken, model-içi bir
+spinner (`charm.land/bubbles/v2/spinner`, yukarıdaki stderr spinner'ıyla
+birebir aynı stilde — aynı frame seti, aynı renk) transkriptin altında ve
+girdi satırının üstünde render edilir, aynı `i18n.MsgSpinnerThinking`
+metniyle etiketlenir; mevcut tur sonuçlanana kadar ikinci bir Enter yok
+sayılır, ama Ctrl-C her zaman koşulsuz anında çıkar. `chatTurn`'ün
+`CompletionRequest`'i `cfg.LLM.MaxTokens`'ı taşır — bu kod tabanındaki
+HER `Complete` çağrı noktası bunu ayarlar (özellikle Anthropic Messages
+API'de zorunlu bir alan; `0`/ayarsız bir değer gerçek API tarafından 400
+ile reddedilir).
 
 ### `comrade config <alt komut>`
 

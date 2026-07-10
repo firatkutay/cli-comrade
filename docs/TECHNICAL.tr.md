@@ -192,7 +192,7 @@ flowchart TD
 ```
 cmd/comrade/            main() — internal/cli.NewRootCmd'i kurar ve Execute'u çağırır
 internal/
-  cli/                  cobra alt komutları, flag bağlama, config/runtime bağlama, i18n-help bağlama, renk kararı (color.go), bekleme spinner'ı (spinner.go)
+  cli/                  cobra alt komutları, flag bağlama, config/runtime bağlama, i18n-help bağlama, renk kararı (color.go), bekleme spinner'ı (spinner.go), çevrilmiş argüman-sayısı/bilinmeyen-alt-komut doğrulayıcıları (argvalidation.go), shell-tamamlama ValidArgsFunction kablolaması (completion.go)
   config/                viper yükleme, şema, OS'e özel yol çözümleme, doğrulama
   context/               ortam/son-komut/geçmiş/paket-yöneticisi toplama
   redact/                sır maskeleme regex boru hattı, her giden LLM payload'ına uygulanır
@@ -511,6 +511,21 @@ ile reddedilir).
 | `path` | Config dosyasının çözümlenmiş yolunu yazdır |
 | `models` | **O an yapılandırılmış** provider için mevcut modelleri listele ve etkileşimli olarak birini seç, seçimi `llm.model`'e kalıcı hale getir |
 
+`config` (üst komut) Runnable'dır — `RunE: cmd.Help()` — YALNIZCA kendi
+`translatedUnknownSubcommand` `Args` doğrulayıcısının çalışabilmesi için
+(cobra'nın `execute()`'u, `Args` hiç kontrol edilmeden önce, Runnable
+OLMAYAN bir komutun HERHANGİ bir çağrısı için `flag.ErrHelp` döner);
+dürüst yan etki: `comrade config --help` artık öncekinden farklı olarak
+bir `comrade config [flags]` "Usage:" satırı da gösteriyor (cobra'nın
+şablonu Runnable HERHANGİ bir komut için bunu render eder — kozmetik,
+davranış değişikliği değil). Fonksiyonel kazanç: `comrade config bogus`
+eskiden sessizce help yazdırıp `0` ile çıkıyordu; artık çevrilmiş,
+eyleme geçirilebilir bir `MsgUnknownSubcommandError` (gerçek her alt
+komutu, `cmd.Commands()`'tan CANLI olarak adlandırarak) sıfır olmayan
+bir çıkış koduyla dönüyor. Tam mekanizma için §10'un "Çevrilmiş
+argüman-sayısı ve bilinmeyen-alt-komut kullanım hataları" bölümüne
+bakın.
+
 `config set`, `explain` gibi `DisableFlagParsing: true` ayarını
 kullanır (bir değer kendisi bir flag gibi görünebilir, ör. `comrade
 config set safety.denylist_extra --foo`) ve bu yüzden benzer şekilde
@@ -537,7 +552,11 @@ Tam anahtar referansı: [CONFIGURATION.md](CONFIGURATION.md).
 ### `comrade auth <alt komut>`
 
 Saklanan provider API key'lerini yönetir (keychain öncelikli, dosya
-fallback'i — §7).
+fallback'i — §7). Yukarıdaki `config` gibi, `auth` (üst komut) da
+YALNIZCA kendi `translatedUnknownSubcommand` doğrulayıcısının
+çalışabilmesi için Runnable'dır — aynı kozmetik `comrade auth [flags]`
+"Usage:" satırı eklemesi, aynı `comrade auth bogus`
+sessizce-help-0-ile-çık → çevrilmiş-hata düzeltmesi; bkz. §10.
 
 | Alt komut | Amaç |
 |---|---|
@@ -619,6 +638,12 @@ comrade init bash
 comrade init --print zsh
 comrade init --remove powershell
 ```
+
+**`comrade init <shell>` shell tamamlamasını da kurar**, hook bloğuna ek
+olarak — tam mekanizma (shell-başına kayıt satırları, fish'in kendi ayrı
+tamamlama dosyası, ve bu özellikten önceki bir kurulumda neden
+`comrade init <shell>`'in bir kez yeniden çalıştırılması gerektiği) için
+§9'un "Shell tamamlama" alt bölümüne bakın.
 
 ### `comrade upgrade`
 
@@ -886,6 +911,113 @@ kullanıcıdan hatayı yapıştırmasını ister, veya başarısız komutu
 doğrudan `comrade fix -- <komut>` ile kabul eder, bu da komutu yeniden
 çalıştırır ve kendisi gözlemler.
 
+### Shell tamamlama
+
+`comrade init <shell>`, yukarıdaki hook bloğuna ek olarak Tab-tamamlama
+da kurar — cobra'nın kendi yerleşik `__complete` istek protokolü artı
+her komuta `ValidArgsFunction` üzerinden kablolanan shell-başına bir
+kayıt satırı (`internal/cli/completion.go`).
+
+**Cobra'nın `__complete` protokolü.** `comrade __complete <args...>`,
+cobra'nın kendi gizli tamamlama-istek alt komutudur: son argüman
+tamamlanmakta olan kısmi kelimedir, ondan önceki her şey satırda zaten
+yazılmış olandır. Cobra, aday adlarla (her biri isteğe bağlı olarak
+tab ile ayrılmış bir açıklamayla) artı sondaki bir `:<directive>`
+satırıyla yanıt verir — comrade yalnızca her komuta bir
+`ValidArgsFunction` sağlamak zorunda, istek/yanıt biçiminin kendisini
+hiç uygulamıyor.
+
+**`ValidArgsFunction` haritası**, ağaçtaki her komuta kablolanmış:
+
+| Komut / argüman | Adaylar | Kaynak |
+|---|---|---|
+| kök komut | üst-düzey komut adları | cobra, otomatik (yerleşik, `ValidArgsFunction` gerekmiyor) |
+| `auth login`/`logout <provider>` | `secrets.KnownProviders` | `completeFirstArgFromList` |
+| `init <shell>` | `bash`, `zsh`, `fish`, `powershell` | `shellinitShellNames()` → `shellinit.All` |
+| `config get`/`set <anahtar>` | her gerçek config anahtarı | `config.Keys()` — şemanın kendi listesi, elle kopyalanmış ikinci bir liste değil |
+| serbest-metin komutları (`do`, `explain`, `fix`, `chat`, kökün serbest-metin fallback kuyruğu) | yok | `cobra.NoFileCompletions` |
+| argümansız her komut (`history`, `upgrade`, `config list/edit/path/models`, `auth status`, ...) | yok | `cobra.NoFileCompletions` |
+
+`completeFirstArgFromList` (completion.go) yalnızca *ilk* pozisyonel
+argüman için aday sunar — bir kelime zaten yazılmışsa, (var olmayan)
+ikinci argüman hiçbir aday döndürmez, ama dönen directive yine de
+`ShellCompDirectiveNoFileComp`'tur, asla cobra'nın dosya-tamamlama-
+fallback `Default` directive'i değil. Gizli komutlar (`hook`, ve
+`completion`'ın kendisi) de alt-komut-adı adayı olarak hiç görünmez.
+
+**Tamamlama istekleri asla config yüklemez veya ekstra çıktı
+yazmaz.** `TestCompletionRequestNeverLoadsConfigOrTouchesStderr`
+(completion_test.go) ikisini de doğrudan kontrol eder — diskte hiçbir
+config dosyası oluşturulmaz, ve stderr, cobra'nın kendi tek, koşulsuz
+`Completion ended with directive: ...` protokol satırının ötesinde
+hiçbir şey taşımaz — bu, `comrade __complete ...`'i etkileşimli bir
+shell'de her tuş vuruşunda çalışacak kadar hızlı ve sessiz tutar.
+
+**Shell-başına kayıt**, `comrade init <shell>`'in zaten yazdığı aynı
+yönetilen marker bloğunun içine eklenir (yukarıda) — asla ayrı, opt-in
+bir adım değil:
+
+- **bash** (`internal/shellinit/snippets/bash.sh`):
+  `command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)`
+- **zsh** (`internal/shellinit/snippets/zsh.sh`):
+  `command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)`
+  — `whence compdef` koruması, `compinit` hiç çalıştırılmamışken bile
+  bunu güvenli kılar (zsh'nin tamamlama sistemi, bash'ninkinin aksine,
+  opt-in'dir).
+- **PowerShell** (`internal/shellinit/snippets/powershell.ps1`):
+  `comrade completion powershell | Out-String | Invoke-Expression`,
+  snippet'in mevcut `if (Get-Command comrade ...)` koruması içinde —
+  ikisi de mevcutken her iki PowerShell varyantının profiline aynı
+  şekilde kurulur (yukarıda anlatılan çoklu-profil kurulum).
+- **fish**: yönetilen rc bloğunun içinde bir satır DEĞİL — fish, bir
+  komutun adını tamamlaması gerektiği ilk anda kendi tamamlama
+  dizinine yerleştirilmiş herhangi bir dosyayı otomatik olarak
+  kaynaklar, bu yüzden `comrade init fish` bunun yerine küçük,
+  comrade'a-ait bir dosyayı (`internal/shellinit/snippets/fish-completions.fish`)
+  doğrudan o konuma yazar:
+  ```fish
+  if command -v comrade >/dev/null
+      comrade completion fish | source
+  end
+  ```
+  Yolu (`shellinit.FishCompletionsPath`), `RCPath`'in kendi fish
+  dalının `config.fish` için zaten kullandığı aynı
+  `XDG_CONFIG_HOME`-ya-da-`HOME` zincirinden, bir dizin seviyesi daha
+  derinden çözülür: `.../fish/completions/comrade.fish`. Diğer üç
+  shell'in paylaştığı marker-sınırlı rc bloklarının aksine, bu dosya
+  yalnızca comrade'a aittir, bu yüzden birleştirme/diff mekanizması
+  yoktur: kurulum düz bir üzerine-yazmadır, kaldırma düz bir silmedir
+  (`shellinit.FishCompletionsScript`/`FishCompletionsPath`). Her iki
+  yön de kendi onayını yazdırır
+  (`MsgInitFishCompletionsInstalled`/`MsgInitFishCompletionsRemoved`),
+  hook-bloğu mesajına EK olarak — asla onun yerine; reddedilen bir
+  kurulum onayı ne hook bloğunu ne tamamlama dosyasını yazar.
+
+Her kayıt satırı, `comrade completion <shell>`'e **shell-başlangıç
+zamanında** başvurur, `comrade init` zamanında değil — bu yüzden
+sonraki bir `comrade upgrade`, `PATH`'teki hangi binary olursa olsun
+tamamlamaları otomatik olarak onunla senkron tutar, her upgrade'den
+sonra `comrade init`'i yeniden çalıştırmaya gerek kalmadan.
+
+**Gizli `completion` komutu.** Altta yatan `comrade completion
+<shell>` komutu (cobra'nın kendi otomatik ürettiği) `--help`'ten gizli
+kalır (`root.CompletionOptions.HiddenDefaultCmd = true`) — hiçbir i18n
+kancası olmayan, birkaç KB'lık cobra-üretimi, çevrilmemiş yardım metni
+— bu projenin teknik olmayan hedef kitlesine göstermeye değmediğine
+karar verildi (QA kararı D4b, §10). Tamamen işlevsel kalır; kullanıcılar
+tamamlamaları yalnızca `comrade init <shell>` üzerinden alır, asla
+`comrade completion`'ı kendileri yazarak değil.
+
+**Mevcut kurulumlar bir kez yeniden çalıştırma gerektirir.** `comrade
+init <shell>` idempotenttir — değişmemiş bir hook bloğu olduğu gibi
+bırakılır — ama tamamlamalar yeni içeriktir: bu özellikten önceki bir
+kurulumda rc dosyasında hiçbir tamamlama satırı yoktur (bash/zsh/
+PowerShell) ve hiç tamamlama dosyası yoktur (fish). `comrade init
+<shell>`'i bir kez yeniden çalıştırmak, mevcut hook'un üzerine
+tamamlamaları da ekler — başka herhangi bir snippet-içeriği
+değişikliğinin zaten kullandığı aynı "eski snippet yeniden yazılır"
+yolu.
+
 ## 10. i18n mimarisi
 
 Kullanıcıya görünen her metin, bir `Translator.T()` çağrısı üzerinden
@@ -977,9 +1109,13 @@ silinmesini zorunlu kılar:
 
 Sonraki bir QA turu (D4b), iki gerçek "usage erişilemez" hatasını
 düzeltti (`explain`/`config set`'in `-h`/`--help` ele alışı, yukarıda)
-ve cobra'nın kendi yapısal şablon etiketlerini çevirdi, ama beş kalıntı
-çevrilmemiş İngilizce metin kaynağını bilinçli olarak kapsam dışı
-bıraktı — `docs/PROGRESS.md`'de belgelendi, sessizce atlanmadı:
+ve cobra'nın kendi yapısal şablon etiketlerini çevirdi, ama o sırada beş
+kalıntı çevrilmemiş İngilizce metin kaynağını bilinçli olarak kapsam
+dışı bıraktı — `docs/PROGRESS.md`'de belgelendi, sessizce atlanmadı.
+Sonraki bir değişiklik bu beşten birini (argüman-sayısı/bilinmeyen-alt-
+komut mesajları, önceki madde 2) tamamen kapattı — bkz. aşağıdaki
+"Çevrilmiş argüman-sayısı ve bilinmeyen-alt-komut kullanım hataları" —
+geriye dört tanesi kaldı:
 
 1. pflag'in kendi flag-ayrıştırma hataları (`"unknown flag: --x"`,
    `"unknown shorthand flag"`) — pflag bunlar için hiçbir
@@ -988,27 +1124,72 @@ bıraktı — `docs/PROGRESS.md`'de belgelendi, sessizce atlanmadı:
    string-eşleştirmeyle ayrıştırmayı gerektirir, pflag sürüm
    güncellemelerinde kırılgan ve bu projenin "ham metin ayrıştırma"
    karşıtı duruşuyla çelişir.
-2. `explain`/`config set` **dışındaki** her komutta cobra'nın kendi
-   `Args` doğrulayıcı mesajları (`"accepts N arg(s), received M"`,
-   `"unknown command %q for %q"`) — bu ikisi, gerçek hatanın
-   `--help`'in kendisinin erişilemez olması olduğu tek komutlardı;
-   başka her yerde (`auth login`, `chat`, `history`, ...) `--help`
-   zaten doğru çalışıyor, bu yüzden yalnızca bir argüman-sayısı *yazım
-   hatası mesajı* ham İngilizce kalıyor, "usage keşfedilemez" hatası
-   değil.
-3. gizli `completion`'ın kendi üretilen yardım metni (hâlâ İngilizce,
+2. gizli `completion`'ın kendi üretilen yardım metni (hâlâ İngilizce,
    i18n kancası olmayan birkaç KB'lık cobra-üretimi içerik — yalnızca
    *görünürlüğü* değişti, yukarıdaki "Help çıktısı gruplanmıştır..."
    notuna bakın).
-4. cobra'nın otomatik üretilen `help` komutunun kendi `Short`/`Long`
+3. cobra'nın otomatik üretilen `help` komutunun kendi `Short`/`Long`
    metni ("Help about any command...") — tek satır, düşük etki, ve
    geç/tembel başlatma zamanlamasının `applyTranslatedHelp`'in
    ağaç-yürüyüşüyle güvenilir şekilde kesiştiği doğrulanmadı.
-5. cobra'nın otomatik `-h, --help` flag'inin kendi dinamik
+4. cobra'nın otomatik `-h, --help` flag'inin kendi dinamik
    `"help for <command-name>"` açıklaması — `flagUsageByName`, sabit,
    tek-katalog-girdili metinler için tasarlandı, komut adına göre
    değişen bir metin için değil; bu tek flag açıklaması için
    genişletmek, katılan karmaşıklığa değer görülmedi.
+
+**Çevrilmiş argüman-sayısı ve bilinmeyen-alt-komut kullanım hataları**,
+yukarıdaki eski madde 2'yi, `explain`/`config set` (farklı, daha
+kapsamlı `--help`'in-kendisinin-erişilemez-olması düzeltmesini
+gerektirmişlerdi, yukarıda ele alındı) HARİÇ ağaçtaki her komut için
+kapatır. `internal/cli/argvalidation.go`'nun `translatedExactArgs`/
+`translatedMinArgs`/`translatedMaxArgs`/`translatedNoArgs`/
+`translatedUnknownSubcommand`'ı, tek bir paylaşılan
+`cobra.PositionalArgs` fabrikası (`translatedPositionalArgs`)
+etrafındaki beş ince sarmalayıcıdır; kalan her komutun `Args` alanı
+artık `cobra.ExactArgs`/`MinimumNArgs`/`MaximumNArgs`/`NoArgs`'ı
+doğrudan kullanmak yerine bunlardan birini kullanıyor — cobra'nın ham
+İngilizce `"accepts N arg(s), received M"` / `"unknown command %q for
+%q"`'sunu, `bestEffortTranslator(cmd, newLoader)` üzerinden render
+edilen dostane bir mesajla değiştiriyor — bu ağaçtaki her diğer
+kullanım-hatası yolunun zaten kullandığı aynı `general.language`-öncelikli
+çözümleme. Yedi yeni MessageID bunu kapsıyor: beşi komuta-özel
+(`MsgAuthLoginUsageError`, `MsgAuthLogoutUsageError`, `MsgDoUsageError`,
+`MsgInitUsageError`, `MsgConfigGetUsageError`) artı birçok komut arasında
+paylaşılan ikisi — `MsgUsageNoArgsError` (her argümansız yaprak komut,
+çözümlenen `cmd.CommandPath()`'e göre parametrelenmiş tek bir mesaj) ve
+`MsgUnknownSubcommandError` (uyuşmayan bir alt komut adı verilen bir üst
+komut, ör. `comrade auth bogus`, aday listesi elle kopyalanmak yerine
+`cmd.Commands()`'tan canlı olarak kaynaklanır).
+
+**Yan etki: `auth`/`config` Runnable oldu.** cobra'nın `execute()`'u,
+`Args` doğrulayıcısı hiç çalışmadan önce, Runnable OLMAYAN herhangi bir
+komutun HERHANGİ bir çağrısı için `flag.ErrHelp` döner — bu yüzden
+`translatedUnknownSubcommand`'ı `auth`/`config`'e kablolamak, her
+ikisine de (`hook.go`'nun önceden var olan desenini yansıtan) basit bir
+`RunE: func(cmd, _) error { return cmd.Help() }` vermeyi de gerektirdi,
+yalnızca `Runnable()`'ı doğru yapmak için. Dürüstçe belgelendi: her iki
+üst komutun kendi `--help`'i artık öncekinden farklı olarak bir
+`comrade auth [flags]`/`comrade config [flags]` "Usage:" satırı da
+render ediyor (cobra'nın şablonu Runnable HERHANGİ bir komut için bunu
+render eder) — kozmetik, davranış regresyonu değil. Fonksiyonel kazanç:
+`comrade auth bogus`/`comrade config bogus` eskiden sessizce help
+yazdırıp `0` ile çıkıyordu; ikisi de artık gerçek her alt komutu
+adlandıran, çevrilmiş, sıfır olmayan çıkış kodlu bir hata döndürüyor.
+
+**`hook`'un `Args` düzeltmesi daha hafif, ayrı bir boşluktur**, aynı
+hata sınıfı değil: `hook` (ve çocuğu `hook record`) zaten `RunE`'a
+sahipti (Runnable), bu yüzden bir nil/`cobra.NoArgs` `Args` alanı
+cobra'nın ham "unknown command" metnini hiçbir zaman tetiklemedi —
+zaten-Runnable bir komutta nil `Args`, `cobra.ArbitraryArgs`'a
+varsayılan olur, bu yüzden `comrade hook bogus` sessizce help yazdırıp
+`0` ile çıkıyordu, herhangi bir dilde şikayet etmeden yazım hatasını
+yutuyordu. İkisi de artık `translatedNoArgs(newLoader)` kullanıyor, ki
+bu yalnızca o (gerçek bir shell hook'unun asla almadığı) hata yolunda
+bir çevirmen çözer — her gerçek çağrı, `hook record`'u tanınan
+flag'lerle ve sıfır başıboş pozisyonel argümanla çağırır, bu yüzden bu,
+`hook record`'un kendi belgelenmiş `COMRADE_DEBUG`-kapılı sıcak-yol
+performans ödünleşimine (yukarıdaki allowlist girdisi) dokunmaz.
 
 **İkinci, ayrı bir i18n mekanizması yapılandırılmış hataları ele alır**,
 ham string literal'ları değil: `internal/config`'in

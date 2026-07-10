@@ -114,6 +114,29 @@ comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
 
+### Shell completion
+
+`comrade init <shell>` installs Tab-completion automatically alongside
+the shell hook — no separate step. Once installed:
+
+| Shell | How suggestions appear |
+|---|---|
+| bash | Press Tab after `comrade <partial>` |
+| zsh | Press Tab after `comrade <partial>` |
+| PowerShell | Press Tab after `comrade <partial>` |
+| fish | Suggestions appear as you type (fish's native as-you-type completion) |
+
+`comrade <Tab>` lists every visible command; `comrade auth <Tab>` lists
+`login`/`logout`/`status`; `comrade auth login <Tab>` lists the known
+providers; `comrade config get <Tab>` lists every real config key;
+`comrade init <Tab>` lists the supported shells.
+
+**Already have `comrade init` installed?** Completions are new content
+added on top of the existing hook — re-run `comrade init <shell>` once
+to pick them up (it's idempotent: your existing hook is left untouched,
+completions are simply added alongside it). Details:
+[docs/TECHNICAL.md §9](docs/TECHNICAL.md#9-shell-integration).
+
 ### Docs
 
 - [docs/INSTALL.md](docs/INSTALL.md) — every install channel, in detail.
@@ -239,6 +262,30 @@ comrade fix                 # başarısız bir komuttan sonra
 comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
+
+### Kabuk (shell) tamamlama
+
+`comrade init <shell>`, shell kancasıyla birlikte Tab-tamamlamayı da
+otomatik olarak kurar — ayrı bir adım yok. Kurulduktan sonra:
+
+| Shell | Öneriler nasıl görünür |
+|---|---|
+| bash | `comrade <kısmi>` sonrası Tab'a basın |
+| zsh | `comrade <kısmi>` sonrası Tab'a basın |
+| PowerShell | `comrade <kısmi>` sonrası Tab'a basın |
+| fish | Öneriler yazarken kendiliğinden görünür (fish'in doğal yazarken-tamamlama özelliği) |
+
+`comrade <Tab>` görünür her komutu listeler; `comrade auth <Tab>`
+`login`/`logout`/`status`'u listeler; `comrade auth login <Tab>` bilinen
+sağlayıcıları listeler; `comrade config get <Tab>` her gerçek config
+anahtarını listeler; `comrade init <Tab>` desteklenen shell'leri
+listeler.
+
+**`comrade init` zaten kurulu mu?** Tamamlamalar, mevcut hook'un üzerine
+eklenen yeni içeriktir — bunları almak için `comrade init <shell>`'i bir
+kez yeniden çalıştırın (idempotenttir: mevcut hook'unuza dokunulmaz,
+tamamlamalar yalnızca onun yanına eklenir). Ayrıntılar:
+[docs/TECHNICAL.tr.md §9](docs/TECHNICAL.tr.md#9-shell-entegrasyonu).
 
 ### Dokümanlar
 

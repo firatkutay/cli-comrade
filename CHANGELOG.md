@@ -7,7 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Shell command completion for bash/zsh/PowerShell/fish.**
+  `comrade init <shell>` now also installs Tab-completion, alongside the
+  existing shell hook: `comrade <Tab>` lists every visible command;
+  `comrade auth <Tab>` lists `login`/`logout`/`status`;
+  `comrade auth login <Tab>` lists the known providers; `comrade init
+  <Tab>` lists the supported shells; `comrade config get`/`set <Tab>`
+  lists every real config key (sourced from the config schema itself).
+  Free-text commands (`do`, `explain`, `fix`, `chat`) never fall back to
+  filename completion. bash/zsh/PowerShell get one added registration
+  line inside the existing managed hook block; fish gets its own
+  comrade-owned completions file at its native lazy-load location
+  (`~/.config/fish/completions/comrade.fish`, XDG-aware). `comrade init
+  --remove` removes completions along with the hook; `--print` and a
+  declined confirmation write nothing. The underlying `comrade
+  completion <shell>` command stays hidden from `--help` (still fully
+  functional) — completions are meant to be picked up purely via
+  `comrade init`. Existing installs need `comrade init <shell>` re-run
+  once (idempotent) to pick up completions on top of an already-installed
+  hook.
+
 ### Fixed
+
+- **`comrade` gave raw, untranslated, cobra-generated errors for
+  wrong-arity invocations and unknown `auth`/`config` subcommands.**
+  Every `cobra.ExactArgs`/`MinimumNArgs`/`MaximumNArgs`/`NoArgs`
+  validator in the command tree (`auth login`/`logout` needing exactly
+  one provider, `do` needing at least one request word, `init` allowing
+  at most one shell name, every no-arg leaf command) is now replaced by
+  a shared, translated helper family, so a wrong-arity invocation (e.g.
+  `comrade auth login` with no provider, `comrade do` with no request, a
+  stray argument to a no-arg command) renders a friendly usage error in
+  the resolved interface language instead of cobra's raw English
+  "accepts N arg(s), received M". `comrade auth bogus`/`comrade config
+  bogus` (an unmatched subcommand name) now also return a real,
+  translated, non-zero-exit error naming every real subcommand — instead
+  of silently printing help and exiting `0` as before. Documented side
+  effect: `auth`/`config`'s own `--help` output now additionally shows a
+  `comrade auth [flags]`/`comrade config [flags]` "Usage:" line (a
+  cosmetic consequence of making both commands Runnable, required for
+  their new Args validator to run at all).
 
 - **No-API-key error was a novice-hostile internal wrap-chain, always in
   English** (Linux QA MAJOR-1): `comrade do`/`fix`/`explain`/`chat` used

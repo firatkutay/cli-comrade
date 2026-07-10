@@ -184,7 +184,7 @@ flowchart TD
 ```
 cmd/comrade/            main() — builds internal/cli.NewRootCmd and calls Execute
 internal/
-  cli/                  cobra subcommands, flag wiring, config/runtime glue, i18n-help wiring, color decision (color.go), wait spinner (spinner.go)
+  cli/                  cobra subcommands, flag wiring, config/runtime glue, i18n-help wiring, color decision (color.go), wait spinner (spinner.go), translated arg-count/unknown-subcommand validators (argvalidation.go), shell-completion ValidArgsFunction wiring (completion.go)
   config/                viper loading, schema, OS-specific path resolution, validation
   context/               environment/last-command/history/package-manager collection
   redact/                secret-masking Regexp pipeline, applied to every outbound LLM payload
@@ -492,6 +492,19 @@ the real API with a 400).
 | `path` | Print the config file's resolved path |
 | `models` | List models available for the *currently configured* provider and interactively select one, persisting the choice to `llm.model` |
 
+`config` (the parent command) is Runnable — `RunE: cmd.Help()` — purely
+so its own `translatedUnknownSubcommand` `Args` validator ever runs at
+all (cobra's `execute()` returns `flag.ErrHelp` for any invocation of a
+non-Runnable command before `Args` is checked); the honest side effect
+is that `comrade config --help` now also shows a `comrade config
+[flags]` "Usage:" line it didn't before (cobra's template renders one
+for any Runnable command — cosmetic, not a behavior change). The
+functional win: `comrade config bogus` used to silently print help and
+exit `0`; it now returns a translated, actionable
+`MsgUnknownSubcommandError` naming every real subcommand (sourced live
+from `cmd.Commands()`) with a non-zero exit code. See §10's "Translated
+arg-count and unknown-subcommand usage errors" for the full mechanism.
+
 `config set`, like `explain`, sets `DisableFlagParsing: true` (a value
 can itself look like a flag, e.g. `comrade config set safety.
 denylist_extra --foo`) and so likewise handles `-h`/`--help` and a
@@ -517,6 +530,10 @@ Full key reference: [CONFIGURATION.md](CONFIGURATION.md).
 ### `comrade auth <subcommand>`
 
 Manages stored provider API keys (keychain-first, file fallback — §7).
+Like `config` above, `auth` (the parent command) is Runnable purely to
+make its own `translatedUnknownSubcommand` validator run — same
+cosmetic `comrade auth [flags]` "Usage:" line addition, same
+`comrade auth bogus` silent-help-exit-0 → translated-error fix; see §10.
 
 | Subcommand | Purpose |
 |---|---|
@@ -596,6 +613,12 @@ comrade init bash
 comrade init --print zsh
 comrade init --remove powershell
 ```
+
+**`comrade init <shell>` also installs shell completions**, in addition
+to the hook block — see §9's "Shell completion" subsection for the full
+mechanism (per-shell registration lines, fish's dedicated completions
+file, and why re-running `comrade init <shell>` once is needed on an
+install from before this feature).
 
 ### `comrade upgrade`
 
@@ -853,6 +876,112 @@ missing block — delimited by fixed marker lines
 the user to paste the error, or accepts the failing command directly via
 `comrade fix -- <command>`, which re-runs and observes it itself.
 
+### Shell completion
+
+`comrade init <shell>` also installs Tab-completion, alongside the hook
+block above — cobra's built-in `__complete` request protocol plus one
+line of shell registration per shell, wired via `ValidArgsFunction` on
+every command (`internal/cli/completion.go`).
+
+**Cobra's `__complete` protocol.** `comrade __complete <args...>` is
+cobra's own hidden completion-request subcommand: the last argument is
+the partial word being completed, everything before it is what's
+already typed on the line. Cobra answers with candidate names (each
+optionally followed by a tab-separated description) plus a trailing
+`:<directive>` line — comrade only ever has to supply a
+`ValidArgsFunction` per command, never implement the request/response
+format itself.
+
+**`ValidArgsFunction` map**, wired on every command in the tree:
+
+| Command / argument | Candidates | Source |
+|---|---|---|
+| root command | top-level command names | cobra, automatic (built in, no `ValidArgsFunction` needed) |
+| `auth login`/`logout <provider>` | `secrets.KnownProviders` | `completeFirstArgFromList` |
+| `init <shell>` | `bash`, `zsh`, `fish`, `powershell` | `shellinitShellNames()` → `shellinit.All` |
+| `config get`/`set <key>` | every real config key | `config.Keys()` — the schema's own list, never a second hand-copied one |
+| free-text commands (`do`, `explain`, `fix`, `chat`, root's free-text fallback tail) | none | `cobra.NoFileCompletions` |
+| every no-arg command (`history`, `upgrade`, `config list/edit/path/models`, `auth status`, ...) | none | `cobra.NoFileCompletions` |
+
+`completeFirstArgFromList` (completion.go) offers candidates only for
+the *first* positional argument — once one word is already typed, the
+(non-existent) second argument returns no candidates, but the directive
+returned is still `ShellCompDirectiveNoFileComp`, never cobra's
+file-completion-fallback `Default` directive. Hidden commands (`hook`,
+and `completion` itself) never appear as subcommand-name candidates
+either.
+
+**Completion requests never load config or write extra output.**
+`TestCompletionRequestNeverLoadsConfigOrTouchesStderr`
+(completion_test.go) checks both directly — no config file is created on
+disk, and stderr carries nothing beyond cobra's own single, unconditional
+`Completion ended with directive: ...` protocol line — keeping
+`comrade __complete ...` fast and silent enough to run on every
+keystroke in an interactive shell.
+
+**Per-shell registration**, added inside the same managed marker block
+`comrade init <shell>` already writes (above) — never a separate,
+opt-in step:
+
+- **bash** (`internal/shellinit/snippets/bash.sh`):
+  `command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)`
+- **zsh** (`internal/shellinit/snippets/zsh.sh`):
+  `command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)`
+  — the `whence compdef` guard makes this safe even when `compinit` was
+  never run (zsh's completion system, unlike bash's, is opt-in).
+- **PowerShell** (`internal/shellinit/snippets/powershell.ps1`):
+  `comrade completion powershell | Out-String | Invoke-Expression`,
+  inside the snippet's existing `if (Get-Command comrade ...)` guard —
+  installed identically into both PowerShell variants' profiles when
+  both are present (the multi-profile install described above).
+- **fish**: *not* a line inside the managed rc block at all — fish
+  auto-sources any file placed in its own completions directory the
+  first time it needs to complete that command's name, so
+  `comrade init fish` instead writes a small, comrade-owned file
+  (`internal/shellinit/snippets/fish-completions.fish`) directly to that
+  location:
+  ```fish
+  if command -v comrade >/dev/null
+      comrade completion fish | source
+  end
+  ```
+  Its path (`shellinit.FishCompletionsPath`) is resolved from the exact
+  same `XDG_CONFIG_HOME`-or-`HOME` chain `RCPath`'s own fish branch
+  already uses for `config.fish`, one directory level deeper:
+  `.../fish/completions/comrade.fish`. Unlike the marker-delimited rc
+  blocks the other three shells share, this file belongs to comrade
+  alone, so there is no merge/diff machinery: install is a plain
+  overwrite, remove is a plain delete
+  (`shellinit.FishCompletionsScript`/`FishCompletionsPath`). Both
+  directions print their own confirmation
+  (`MsgInitFishCompletionsInstalled`/`MsgInitFishCompletionsRemoved`), in
+  addition to — never instead of — the hook-block message; a declined
+  install confirmation writes neither the hook block nor the completions
+  file.
+
+Every registration line defers to `comrade completion <shell>` at
+**shell-startup time**, not at `comrade init` time — so a later
+`comrade upgrade` automatically keeps completions in sync with whatever
+binary is on `PATH`, with no need to re-run `comrade init` after every
+upgrade.
+
+**Hidden `completion` command.** The underlying `comrade completion
+<shell>` command (cobra's own auto-generated one) stays hidden from
+`--help` (`root.CompletionOptions.HiddenDefaultCmd = true`) — several KB
+of cobra-generated, untranslated help text with no i18n hook, judged not
+worth exposing to this project's non-technical target audience (QA
+decision D4b, §10). It remains fully functional; users get completions
+purely through `comrade init <shell>`, never by typing
+`comrade completion` themselves.
+
+**Existing installs need one re-run.** `comrade init <shell>` is
+idempotent — an unchanged hook block is left alone — but completions are
+new content: an install from before this feature has no completion line
+in its rc file (bash/zsh/PowerShell) and no completions file at all
+(fish). Re-running `comrade init <shell>` once picks up completions on
+top of the existing hook, the same "outdated snippet gets rewritten"
+path any other snippet-content change already uses.
+
 ## 10. i18n architecture
 
 Every user-facing string routes through `internal/i18n`'s
@@ -938,9 +1067,12 @@ deleted:
 
 A later QA round (D4b) fixed the two genuine "usage is unreachable"
 bugs (`explain`/`config set`'s `-h`/`--help` handling, above) and
-translated cobra's own structural template labels, but deliberately
-left five residual sources of untranslated English text out of scope
-— documented in `docs/PROGRESS.md`, not silently dropped:
+translated cobra's own structural template labels, but at the time
+deliberately left five residual sources of untranslated English text
+out of scope — documented in `docs/PROGRESS.md`, not silently dropped.
+A subsequent change closed one of those five in full (arg-count/
+unknown-subcommand messages, formerly item 2 below) — see "Translated
+arg-count and unknown-subcommand usage errors" below — leaving four:
 
 1. pflag's own flag-parse errors (`"unknown flag: --x"`, `"unknown
    shorthand flag"`) — pflag exposes no structured error type/sentinel
@@ -948,26 +1080,70 @@ left five residual sources of untranslated English text out of scope
    them would mean regex/string-matching that raw text, fragile across
    pflag version bumps and against this project's own stance against
    parsing raw text for meaning.
-2. cobra's own `Args` validator messages (`"accepts N arg(s), received
-   M"`, `"unknown command %q for %q"`) on every command **other than**
-   `explain`/`config set` — those two are the only ones where the real
-   bug was `--help` itself being unreachable; everywhere else
-   (`auth login`, `chat`, `history`, ...) `--help` already works fine,
-   so only an argument-count *typo message* stays raw English, not a
-   "usage is undiscoverable" defect.
-3. hidden `completion`'s own generated help text (still English,
+2. hidden `completion`'s own generated help text (still English,
    several KB of cobra-generated content with no i18n hook — only its
    *visibility* changed, per the "Help output is grouped..." note
    above).
-4. cobra's auto-generated `help` command's own `Short`/`Long` text
+3. cobra's auto-generated `help` command's own `Short`/`Long` text
    ("Help about any command...") — one line, low impact, and its
    late/lazy initialization timing wasn't verified to reliably
    intersect `applyTranslatedHelp`'s tree-walk.
-5. cobra's automatic `-h, --help` flag's own dynamic
+4. cobra's automatic `-h, --help` flag's own dynamic
    `"help for <command-name>"` description — `flagUsageByName` is built
    for fixed, single-catalog-entry text, not one that varies by command
    name; extending it for this single flag description wasn't judged
    worth the added complexity.
+
+**Translated arg-count and unknown-subcommand usage errors** close the
+above's former item 2 for every command in the tree except `explain`/
+`config set` (which needed the different, more involved
+`--help`-itself-unreachable fix already covered above).
+`internal/cli/argvalidation.go`'s `translatedExactArgs`/
+`translatedMinArgs`/`translatedMaxArgs`/`translatedNoArgs`/
+`translatedUnknownSubcommand` are five thin wrappers around one shared
+`cobra.PositionalArgs` factory (`translatedPositionalArgs`); every
+remaining command's `Args` field now uses one of them instead of
+`cobra.ExactArgs`/`MinimumNArgs`/`MaximumNArgs`/`NoArgs` directly,
+replacing cobra's raw English `"accepts N arg(s), received M"` /
+`"unknown command %q for %q"` with a friendly message rendered through
+`bestEffortTranslator(cmd, newLoader)` — the same `general.language`-
+first resolution every other usage-error path in this tree already
+uses. Seven new MessageIDs cover it: five command-specific
+(`MsgAuthLoginUsageError`, `MsgAuthLogoutUsageError`, `MsgDoUsageError`,
+`MsgInitUsageError`, `MsgConfigGetUsageError`) plus two shared across
+many commands — `MsgUsageNoArgsError` (every no-arg leaf command, one
+message parameterized by the resolved `cmd.CommandPath()`) and
+`MsgUnknownSubcommandError` (a parent command given an unmatched
+subcommand name, e.g. `comrade auth bogus`, its candidate list sourced
+live from `cmd.Commands()` rather than hand-copied).
+
+**Side effect: `auth`/`config` became Runnable.** cobra's `execute()`
+returns `flag.ErrHelp` for *any* invocation of a non-Runnable command
+before its `Args` validator ever runs — so wiring
+`translatedUnknownSubcommand` onto `auth`/`config` required also giving
+each a trivial `RunE: func(cmd, _) error { return cmd.Help() }`
+(mirroring `hook.go`'s pre-existing pattern), purely to make
+`Runnable()` true. Documented honestly: both parents' own `--help` now
+also renders a `comrade auth [flags]`/`comrade config [flags]` "Usage:"
+line it didn't before (cobra's template renders one for any Runnable
+command) — cosmetic, not a behavior regression. The functional win:
+`comrade auth bogus`/`comrade config bogus` used to silently print help
+and exit `0`; both now return a real, translated, non-zero-exit error
+naming every real subcommand.
+
+**`hook`'s `Args` correction is a milder, separate gap**, not the same
+class of bug: `hook` (and its child `hook record`) already had `RunE`
+(Runnable), so a nil/`cobra.NoArgs` `Args` field never triggered cobra's
+raw "unknown command" text at all — a nil `Args` on an already-Runnable
+command defaults to `cobra.ArbitraryArgs`, so `comrade hook bogus`
+silently printed help and exited `0`, swallowing the typo rather than
+complaining about it in any language. Both now use
+`translatedNoArgs(newLoader)`, which only resolves a translator on that
+(never-taken-by-a-real-shell-hook) error path — every real invocation
+calls `hook record` with recognized flags and zero stray positional
+args, so this does not touch `hook record`'s own documented
+`COMRADE_DEBUG`-gated hot-path performance tradeoff (allowlist entry
+above).
 
 **A second, separate i18n mechanism handles structured errors**, not
 raw string literals: `internal/config`'s `Validate`/`Loader.Get`/

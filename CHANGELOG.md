@@ -98,6 +98,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (case-insensitive); every other language → `y`/`yes`. Anything else,
   including a bare Enter, still defaults to no — same fail-closed default
   as before, just per-language now instead of English-only.
+- **`comrade explain --help` made a real LLM call** instead of showing
+  help: `DisableFlagParsing` (needed so a command starting with a flag,
+  e.g. `explain -rf`, can be explained at all) also disabled cobra's own
+  `-h`/`--help` interception, so `"--help"` reached the LLM as literal
+  command text — silently spending the user's tokens, with `explain`'s
+  own usage completely unreachable. `explain` now recognizes `-h`/
+  `--help` (as the sole argument) and a bare no-args invocation itself,
+  neither of which ever reaches the LLM; a documented escape hatch
+  (`comrade explain -- --help`) still explains a literal `--help` string
+  when that's genuinely what's wanted.
+- **`comrade config set --help` failed with cobra's raw "accepts 2
+  arg(s), received 1"** instead of showing help (`config get --help`
+  already worked correctly) — the same `DisableFlagParsing` root cause as
+  the `explain --help` fix above. `config set` now handles `-h`/`--help`
+  and the wrong-arg-count case itself, with a translated usage message.
+- **`comrade upgrade --check` dumped GitHub's raw English 404 JSON
+  response body to stderr** when this repository has no published
+  release yet. `update.LatestRelease` now classifies that case as a
+  dedicated `ErrReleaseNotFound` sentinel (and every other HTTP/network
+  failure as the broader `ErrFetchFailed`), never including the response
+  body in what the user sees; `comrade upgrade`/`--check` render a clean,
+  i18n'd message for both, with the underlying detail reachable only
+  behind `COMRADE_DEBUG`.
+- **Several user-facing error/usage strings stayed English regardless of
+  `general.language`**: `internal/config`'s own validation errors
+  (`unknown config key ...`, `invalid value ... must be one of ...`, and
+  four similar cases) bypassed i18n entirely — they're the one class of
+  user-facing message in this tree that had never been routed through a
+  `Translator`. `internal/config` gained structured
+  `UnknownKeyError`/`InvalidValueError` types (unchanged default English
+  text, for backward compatibility) that `internal/cli` now re-renders
+  through the resolved language via `errors.As`. Separately, cobra's own
+  eight hardcoded structural `--help` section labels (`Usage:`,
+  `Flags:`, `Examples:`, `Available Commands:`, etc.) are now translated
+  too, via a language-aware usage template; `completion` (several KB of
+  its own un-translatable generated help text) is hidden from `--help`
+  output but still fully functional. And `comrade fix`'s post-diagnosis
+  "Suggested verification: ..." line — plus its sibling "verification:
+  ... succeeded"/"still fails" lines — were raw, un-routed English Go
+  format strings (not LLM output), now catalog-driven like everything
+  else `comrade fix` prints.
+- **`comrade hook --help` rendered a completely empty "Usage:" line**:
+  `hook` (Hidden, a pure command-group namespace) had no `RunE` of its
+  own, and its only child, `hook record`, is also Hidden — so neither of
+  cobra's two conditions for a non-empty Usage line (`Runnable` or
+  `HasAvailableSubCommands`) ever held. `hook` now renders a sane
+  `Usage:` line; it stays completely hidden from root's own `--help`.
 
 ### Added
 

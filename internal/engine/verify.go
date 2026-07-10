@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/firatkutay/cli-comrade/internal/executor"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 	"github.com/firatkutay/cli-comrade/internal/tui"
 )
@@ -65,7 +66,7 @@ func OfferVerification(ctx context.Context, deps RunDeps, mode Mode, originalCom
 // single copyable line, matching executeInfo's own numbered-step
 // rendering style.
 func printVerificationSuggestion(deps RunDeps, command string) {
-	fmt.Fprintf(deps.Stdout, "\nSuggested verification: %s\n", command) //nolint:errcheck // best-effort stdout write; see executeInfo's identical rationale.
+	fmt.Fprint(deps.Stdout, deps.tr().T(i18n.MsgVerificationSuggestion, command)) //nolint:errcheck // best-effort stdout write; see executeInfo's identical rationale.
 }
 
 // offerVerificationInteractive drives the interactive confirm loop for
@@ -109,9 +110,9 @@ func runVerification(ctx context.Context, deps RunDeps, mode Mode, command strin
 	appendAudit(deps, mode, command, risk, res)
 
 	if res.ExitCode == 0 && !res.Canceled && !res.TimedOut {
-		tui.PrintStatus(deps.Stdout, fmt.Sprintf("verification: %s succeeded", command), deps.ColorEnabled) //nolint:errcheck,gosec // stdout print failure is never actionable here (G104: unhandled error)
+		tui.PrintStatus(deps.Stdout, deps.tr().T(i18n.MsgVerificationSucceeded, command), deps.ColorEnabled) //nolint:errcheck,gosec // stdout print failure is never actionable here (G104: unhandled error)
 	} else {
-		tui.PrintWarning(deps.Stdout, fmt.Sprintf("verification: %s still fails (exit %d)", command, res.ExitCode), deps.ColorEnabled) //nolint:errcheck,gosec // stdout print failure is never actionable here (G104: unhandled error)
+		tui.PrintWarning(deps.Stdout, deps.tr().T(i18n.MsgVerificationStillFails, command, res.ExitCode), deps.ColorEnabled) //nolint:errcheck,gosec // stdout print failure is never actionable here (G104: unhandled error)
 	}
 	return nil
 }

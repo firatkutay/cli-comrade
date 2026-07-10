@@ -14,11 +14,31 @@ import (
 // newHookCmd builds the hidden "comrade hook" command group: internal
 // entry points shell hooks invoke, never meant for direct interactive
 // use (Hidden, so it never appears in --help output).
+//
+// RunE is set (rather than left nil) purely so `comrade hook --help`
+// (and a bare `comrade hook`) render a sane, non-empty "Usage:" line
+// (QA D5): cobra's default usage template only ever prints "Usage:\n
+// {{.UseLine}}" when the command is Runnable (c.Run/c.RunE set) OR
+// "Usage:\n  {{.CommandPath}} [command]" when it HasAvailableSubCommands
+// — and hook's only child, "hook record", is ALSO Hidden (see
+// newHookRecordCmd — deliberately, TestHookRecordIsHiddenFromHelp pins
+// that), so neither branch fired and both lines rendered blank. Un-
+// hiding "hook record" instead was considered and rejected: it is
+// invoked only by generated shell snippets, never meant to be
+// discoverable even by someone deliberately probing "comrade hook
+// --help". This RunE is never reached in real shell-hook usage (every
+// snippet always calls "comrade hook record ...", never bare "comrade
+// hook") — it exists solely to make Runnable() true; its body is
+// identical to what cobra already does automatically for a bare
+// invocation of a command WITH visible subcommands (print help, exit 0).
 func newHookCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "hook",
 		Short:  "Internal hooks invoked by shell integration (not for direct use)",
 		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
 	}
 	cmd.AddCommand(newHookRecordCmd())
 	return cmd

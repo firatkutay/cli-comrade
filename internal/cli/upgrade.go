@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -83,14 +84,14 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 			if checkOnly {
 				result, err := u.Check(cmd.Context(), deps.version)
 				if err != nil {
-					return fmt.Errorf("upgrade --check: %w", err)
+					return translateUpgradeFetchError(cmd, tr, "upgrade --check", err)
 				}
 				return printUpgradeCheckResult(cmd, tr, result)
 			}
 
 			result, binary, err := u.Apply(cmd.Context(), deps.version)
 			if err != nil {
-				return fmt.Errorf("upgrade: %w", err)
+				return translateUpgradeFetchError(cmd, tr, "upgrade", err)
 			}
 			if !result.UpdateAvailable {
 				_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgUpgradeUpToDate, result.CurrentVersion))
@@ -116,6 +117,39 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 
 	cmd.Flags().BoolVar(&checkOnly, "check", false, enUsageDefault(i18n.MsgFlagCheck))
 	return cmd
+}
+
+// translateUpgradeFetchError re-renders a failure from u.Check/u.Apply's
+// very first step (fetching the latest release from GitHub) into a
+// clean, i18n'd message instead of surfacing GitHub's own raw response
+// detail to the user (QA D3): update.ErrReleaseNotFound (this repository
+// has no published release yet — a 404, GitHub's own actual response for
+// that case) gets its own dedicated message; any OTHER
+// update.ErrFetchFailed (network unreachable, a non-200/non-404 status,
+// a malformed response body) gets one concise, generic wrapper — the
+// underlying Go error's full text (which may include a short truncated
+// response-body snippet; see update/github.go) is never shown to the
+// user, only written to cmd's stderr when COMRADE_DEBUG is set, matching
+// hook.go's own established COMRADE_DEBUG-gated-detail convention
+// elsewhere in this tree.
+//
+// Any error that is NEITHER of those two (e.g. a later Apply-specific
+// failure — no matching release asset for this platform, a checksum
+// mismatch, a failed binary replace, or resultFor's version-string parse
+// error) falls through unchanged, wrapped with prefix exactly like
+// before this fix — those already carry their own reasonably specific
+// detail and are unrelated to D3's fetch-step bug.
+func translateUpgradeFetchError(cmd *cobra.Command, tr i18n.Translator, prefix string, err error) error {
+	if errors.Is(err, update.ErrReleaseNotFound) {
+		return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeNoReleaseFound))
+	}
+	if errors.Is(err, update.ErrFetchFailed) {
+		if os.Getenv("COMRADE_DEBUG") != "" {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", prefix, err)
+		}
+		return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeFetchFailed))
+	}
+	return fmt.Errorf("%s: %w", prefix, err)
 }
 
 // printUpgradeCheckResult renders `comrade upgrade --check`'s one-line

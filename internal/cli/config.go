@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -111,10 +112,15 @@ func newConfigGetCmd(newLoader loaderFactory) *cobra.Command {
 			if err := ensureLoaded(loader, cmd.ErrOrStderr()); err != nil {
 				return err
 			}
+			cfg, _, err := loader.Load()
+			if err != nil {
+				return err
+			}
+			tr := newTranslator(*cfg)
 
 			value, err := loader.Get(args[0])
 			if err != nil {
-				return err
+				return translateConfigError(tr, err)
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), formatValue(value))
 			return err
@@ -126,7 +132,16 @@ func newConfigSetCmd(newLoader loaderFactory) *cobra.Command {
 	return &cobra.Command{
 		Use:   "set <key> <value>",
 		Short: "Validate and persist a config key's value",
-		Args:  cobra.ExactArgs(2),
+		// Args is deliberately NOT cobra.ExactArgs(2): DisableFlagParsing
+		// (below) means cobra's own flag parser never runs, which is what
+		// normally intercepts -h/--help BEFORE any Args validator even
+		// sees the args — with ExactArgs(2) in place, "comrade config set
+		// --help" (one arg) failed Args validation with cobra's raw
+		// English "accepts 2 arg(s), received 1" and RunE was never even
+		// reached, so this subcommand's own --help was completely
+		// unreachable (QA D2). RunE below does its own -h/--help and
+		// arg-count handling instead, translated per general.language.
+		Args: cobra.ArbitraryArgs,
 		// Config values can legitimately start with "-" (e.g. a bug in a
 		// negative-int value that Validate should reject with a clear
 		// message, not one pflag silently reinterprets as an unknown
@@ -135,11 +150,28 @@ func newConfigSetCmd(newLoader loaderFactory) *cobra.Command {
 		// parsing here is safe and lets any raw value through untouched.
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+				return cmd.Help()
+			}
+			if len(args) != 2 {
+				return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgConfigSetUsageError))
+			}
 			key, raw := args[0], args[1]
 
 			parsed, err := config.Validate(key, raw)
 			if err != nil {
-				return err
+				// Deliberately NOT loadConfigWithNotice/newLoader().Load()
+				// here: validation must reject a bad key/value before any
+				// filesystem side effect (a first-run config file being
+				// created) — envOnlyTranslator (the same
+				// COMRADE_LANG/LANG/LC_ALL/Windows-locale-only resolution
+				// every other "must report before config is ever loaded"
+				// path in this tree already uses — see its own doc
+				// comment in runtime.go) is what every other such path
+				// already resolves language from, so this is one more
+				// call site of an existing, documented pattern, not a new
+				// one.
+				return translateConfigError(envOnlyTranslator(), err)
 			}
 
 			loader, err := newLoader()
@@ -157,6 +189,39 @@ func newConfigSetCmd(newLoader loaderFactory) *cobra.Command {
 			return err
 		},
 	}
+}
+
+// translateConfigError re-renders a config.UnknownKeyError/
+// config.InvalidValueError (from config.Validate/Loader.Get/Source/Set)
+// through tr, via errors.As rather than parsing config's own English
+// Error() text — the QA-found fix for `comrade config set`/`get`'s
+// validation errors bypassing i18n entirely. Any OTHER error (a
+// filesystem/decode failure from loader.Load itself, already covered by
+// this tree's existing, documented "~40 wrap-chain" i18n exception) is
+// returned unchanged.
+func translateConfigError(tr i18n.Translator, err error) error {
+	var unknownKey *config.UnknownKeyError
+	if errors.As(err, &unknownKey) {
+		return fmt.Errorf("%s", tr.T(i18n.MsgConfigUnknownKey, unknownKey.Key, strings.Join(unknownKey.ValidKeys, ", ")))
+	}
+
+	var invalid *config.InvalidValueError
+	if errors.As(err, &invalid) {
+		switch invalid.Reason {
+		case config.ReasonInvalidEnum:
+			return fmt.Errorf("%s", tr.T(i18n.MsgConfigInvalidEnum, invalid.Raw, invalid.Key, strings.Join(invalid.Enum, ", ")))
+		case config.ReasonNotBoolean:
+			return fmt.Errorf("%s", tr.T(i18n.MsgConfigInvalidBool, invalid.Raw, invalid.Key))
+		case config.ReasonNotInteger:
+			return fmt.Errorf("%s", tr.T(i18n.MsgConfigInvalidInt, invalid.Raw, invalid.Key))
+		case config.ReasonNotPositive:
+			return fmt.Errorf("%s", tr.T(i18n.MsgConfigNotPositive, invalid.Raw, invalid.Key))
+		case config.ReasonNotNonNegative:
+			return fmt.Errorf("%s", tr.T(i18n.MsgConfigNotNonNegative, invalid.Raw, invalid.Key))
+		}
+	}
+
+	return err
 }
 
 func newConfigListCmd(newLoader loaderFactory) *cobra.Command {

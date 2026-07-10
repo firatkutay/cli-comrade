@@ -8,6 +8,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,6 +135,91 @@ func TestUpgradeCheckPropagatesFetchError(t *testing.T) {
 	_, err := execUpgradeCmd(t, deps, "--check")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "network down")
+}
+
+// TestUpgradeCheckReleaseNotFoundRendersCleanMessage is QA D3's core
+// regression guard: update.ErrReleaseNotFound (GitHub's actual 404 for a
+// repo with no published release) must render as the clean, translated
+// MsgUpgradeNoReleaseFound message — an EXACT match, not a substring
+// check, so nothing else (a status code, a body fragment) can ever sneak
+// back into this text unnoticed.
+func TestUpgradeCheckReleaseNotFoundRendersCleanMessage(t *testing.T) {
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{err: fmt.Errorf("%w", update.ErrReleaseNotFound)}, fakeDownloader{}, nil)
+
+	_, err := execUpgradeCmd(t, deps, "--check")
+	require.Error(t, err)
+	assert.Equal(t, "no published release of comrade is available yet — check back later", err.Error())
+}
+
+// TestUpgradeCheckReleaseNotFoundRendersInTurkish is the same case under
+// COMRADE_LANG=tr, proving the message is genuinely translated (this
+// project's established TR-smoke-test convention), not just routed
+// through a Translator that happens to fall back to English.
+func TestUpgradeCheckReleaseNotFoundRendersInTurkish(t *testing.T) {
+	t.Setenv("COMRADE_LANG", "tr")
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{err: fmt.Errorf("%w", update.ErrReleaseNotFound)}, fakeDownloader{}, nil)
+
+	_, err := execUpgradeCmd(t, deps, "--check")
+	require.Error(t, err)
+	assert.Equal(t, "henüz yayımlanmış bir comrade sürümü yok — daha sonra tekrar kontrol edin", err.Error())
+}
+
+// TestUpgradeCheckFetchFailedRendersCleanMessageWithoutRawDetail proves
+// an update.ErrFetchFailed-classified error (any OTHER GitHub HTTP
+// failure — rate limit, 5xx, a malformed body) renders the SAME concise,
+// generic message regardless of what raw detail the underlying error
+// carried, and that raw detail (here, a fake "unexpected status 500:
+// <internal server meltdown JSON>" — standing in for what
+// update/github.go's own truncated-body detail would look like) never
+// leaks into what the user sees.
+func TestUpgradeCheckFetchFailedRendersCleanMessageWithoutRawDetail(t *testing.T) {
+	rawDetail := fmt.Errorf("update: fetch latest release: %w: unexpected status 500: {\"message\":\"internal server meltdown\"}", update.ErrFetchFailed)
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{err: rawDetail}, fakeDownloader{}, nil)
+
+	_, err := execUpgradeCmd(t, deps, "--check")
+	require.Error(t, err)
+	assert.Equal(t, "could not reach GitHub to check for a newer version — try again later", err.Error())
+	assert.NotContains(t, err.Error(), "500")
+	assert.NotContains(t, err.Error(), "meltdown")
+}
+
+// TestUpgradeCheckFetchFailedDebugDetailOnlyWhenComradeDebugSet proves
+// the raw underlying detail is reachable ONLY behind COMRADE_DEBUG (this
+// tree's established debug-gated-detail convention, see hook.go), never
+// by default.
+func TestUpgradeCheckFetchFailedDebugDetailOnlyWhenComradeDebugSet(t *testing.T) {
+	rawDetail := fmt.Errorf("update: fetch latest release: %w: unexpected status 500: {\"message\":\"internal server meltdown\"}", update.ErrFetchFailed)
+
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{err: rawDetail}, fakeDownloader{}, nil)
+	outWithoutDebug, _ := execUpgradeCmd(t, deps, "--check")
+	assert.NotContains(t, outWithoutDebug, "meltdown", "no COMRADE_DEBUG: raw detail must not appear anywhere, including stderr")
+
+	t.Setenv("COMRADE_DEBUG", "1")
+	outWithDebug, _ := execUpgradeCmd(t, deps, "--check")
+	assert.Contains(t, outWithDebug, "meltdown", "COMRADE_DEBUG=1: raw detail must be reachable for diagnosis")
+}
+
+// TestUpgradeCheckAgainstRealGitHubClient404NeverLeaksRawJSONBody is the
+// most faithful reproduction of the actual QA-reported bug: the REAL
+// update.GitHubClient (not a fake ReleaseFetcher) pointed at an
+// httptest.Server that returns GitHub's OWN actual 404 response shape,
+// driven all the way through `comrade upgrade --check`'s real RunE.
+func TestUpgradeCheckAgainstRealGitHubClient404NeverLeaksRawJSONBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Not Found","documentation_url":"https://docs.github.com/rest/releases/releases#get-the-latest-release","status":"404"}`))
+	}))
+	defer srv.Close()
+
+	fetcher := &update.GitHubClient{APIBaseURL: srv.URL, HTTPClient: srv.Client()}
+	deps := testUpgradeDeps("v0.1.0", fetcher, fakeDownloader{}, nil)
+
+	_, err := execUpgradeCmd(t, deps, "--check")
+	require.Error(t, err)
+	assert.Equal(t, "no published release of comrade is available yet — check back later", err.Error())
+	assert.NotContains(t, err.Error(), "Not Found")
+	assert.NotContains(t, err.Error(), "documentation_url")
+	assert.NotContains(t, err.Error(), "404")
 }
 
 func TestUpgradeApplyNoOpWhenUpToDate(t *testing.T) {

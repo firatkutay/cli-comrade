@@ -247,6 +247,59 @@ func TestConfigSetUnknownKeyRejected(t *testing.T) {
 	assert.ErrorContains(t, err, "unknown config key")
 }
 
+// TestConfigSetUnknownKeyRejectedInTurkish is QA D4a's core regression
+// guard: `comrade config set`'s validation errors used to surface
+// internal/config.Validate's own hardcoded English text VERBATIM,
+// bypassing i18n entirely, unlike every other user-facing message in
+// this tree (QA found this specifically via "unknown config key ...
+// valid keys are ..." staying English under general.language=tr).
+// config.Validate/Loader now return structured
+// UnknownKeyError/InvalidValueError values that internal/cli/config.go's
+// translateConfigError re-renders through i18n via errors.As — this is
+// the exact-match TR smoke test for that path, using envOnlyTranslator
+// (COMRADE_LANG, since "set" validates before ever loading config).
+func TestConfigSetUnknownKeyRejectedInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "general.bogus", "x")
+
+	require.Error(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), "bilinmeyen config anahtarı"), "got: %s", err.Error())
+	assert.NotContains(t, err.Error(), "unknown config key")
+}
+
+// TestConfigSetInvalidEnumRejectedInTurkish is
+// TestConfigSetUnknownKeyRejectedInTurkish's counterpart for
+// InvalidValueError{Reason: ReasonInvalidEnum} — exact match, pinning
+// the full translated sentence, not just a substring.
+func TestConfigSetInvalidEnumRejectedInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "general.mode", "hizli")
+
+	require.Error(t, err)
+	assert.Equal(t, `"hizli" değeri general.mode için geçersiz; şunlardan biri olmalı: auto, ask, info`, err.Error())
+}
+
+// TestConfigGetUnknownKeyRejectedInTurkish proves `config get`'s SAME
+// error class — reached through a different call path (Loader.Get,
+// after config IS loaded, so via the real resolved general.language, not
+// envOnlyTranslator) — is translated too, not just "set"'s.
+func TestConfigGetUnknownKeyRejectedInTurkish(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cli-comrade"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "cli-comrade", "config.toml"),
+		[]byte("[general]\nlanguage = \"tr\"\n"), 0o600))
+
+	_, _, err := execRootSplit(t, "dev", "config", "get", "general.bogus")
+
+	require.Error(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), "bilinmeyen config anahtarı"), "got: %s", err.Error())
+}
+
 func TestConfigSetDoesNotPersistInvalidValue(t *testing.T) {
 	withIsolatedConfigDir(t)
 
@@ -255,6 +308,53 @@ func TestConfigSetDoesNotPersistInvalidValue(t *testing.T) {
 	stdout, _, err := execRootSplit(t, "dev", "config", "get", "general.mode")
 	require.NoError(t, err)
 	assert.Equal(t, "ask\n", stdout, "an invalid set must leave the default untouched")
+}
+
+// TestConfigSetHelpFlagExitsZeroWithUsage is QA D2's core regression
+// guard: "comrade config set --help" (and "-h") used to fail with
+// cobra's own raw "accepts 2 arg(s), received 1" error and never show
+// help at all — newConfigSetCmd's DisableFlagParsing meant cobra's own
+// automatic -h/--help interception never ran, and cobra.ExactArgs(2)
+// rejected the single "--help" argument before RunE was ever reached.
+func TestConfigSetHelpFlagExitsZeroWithUsage(t *testing.T) {
+	for _, helpArg := range []string{"--help", "-h"} {
+		t.Run(helpArg, func(t *testing.T) {
+			withIsolatedConfigDir(t)
+
+			stdout, _, err := execRootSplit(t, "dev", "config", "set", helpArg)
+
+			require.NoError(t, err)
+			assert.Contains(t, stdout, "Usage:")
+			assert.Contains(t, stdout, "comrade config set")
+			assert.Contains(t, stdout, "Validate and persist a config key's value")
+		})
+	}
+}
+
+// TestConfigSetWrongArgCountShowsTranslatedUsageError proves the
+// (now-mandatory, since Args is cobra.ArbitraryArgs) manual arg-count
+// check RunE performs itself renders a translated usage error rather
+// than either cobra's own raw English message or an out-of-range panic
+// from indexing args[0]/args[1] directly.
+func TestConfigSetWrongArgCountShowsTranslatedUsageError(t *testing.T) {
+	for _, extraArgs := range [][]string{{"onlykey"}, {"a", "b", "c"}, {}} {
+		withIsolatedConfigDir(t)
+		args := append([]string{"config", "set"}, extraArgs...)
+		_, _, err := execRootSplit(t, "dev", args...)
+		require.Error(t, err)
+		assert.Equal(t, "usage: comrade config set <key> <value>", err.Error())
+	}
+}
+
+// TestConfigSetWrongArgCountShowsTranslatedUsageErrorInTurkish is the
+// same case under COMRADE_LANG=tr.
+func TestConfigSetWrongArgCountShowsTranslatedUsageErrorInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "onlykey")
+	require.Error(t, err)
+	assert.Equal(t, "kullanım: comrade config set <anahtar> <değer>", err.Error())
 }
 
 func TestConfigEditOpensEditorOnConfigFile(t *testing.T) {

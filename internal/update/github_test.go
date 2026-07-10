@@ -2,8 +2,10 @@ package update
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,17 +37,49 @@ func TestGitHubClientLatestReleaseParsesResponse(t *testing.T) {
 	assert.Equal(t, "comrade_0.2.0_linux_amd64.tar.gz", rel.Assets[0].Name)
 }
 
-func TestGitHubClientLatestReleaseNonOKStatus(t *testing.T) {
+// TestGitHubClientLatestRelease404IsErrReleaseNotFound is QA D3's
+// regression guard at LatestRelease's own layer: a 404 (GitHub's actual
+// response for a repo with zero published releases) must classify as
+// ErrReleaseNotFound (errors.Is), NOT a generic "unexpected status"
+// error — and GitHub's raw response body must never appear anywhere in
+// the returned error's text.
+func TestGitHubClientLatestRelease404IsErrReleaseNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"message": "Not Found"}`))
+		_, _ = w.Write([]byte(`{"message": "Not Found", "documentation_url": "https://docs.github.com/rest/releases/releases#get-the-latest-release"}`))
 	}))
 	defer srv.Close()
 
 	client := &GitHubClient{APIBaseURL: srv.URL, HTTPClient: srv.Client()}
 	_, err := client.LatestRelease(context.Background())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "404")
+	assert.ErrorIs(t, err, ErrReleaseNotFound)
+	assert.ErrorIs(t, err, ErrFetchFailed, "a 404 is also a fetch failure, for callers that only care about that broader family")
+	assert.NotContains(t, err.Error(), "Not Found")
+	assert.NotContains(t, err.Error(), "documentation_url")
+}
+
+// TestGitHubClientLatestReleaseOtherNonOKStatusNeverIncludesFullRawBody
+// proves a non-404 HTTP failure (rate limit, auth, 5xx, ...) still
+// distinguishes itself from ErrReleaseNotFound (errors.Is must be
+// false) AND never leaks GitHub's full raw response body into the
+// returned error — only a short (<=200-byte) diagnostic snippet, never
+// the multi-KB body this endpoint could return.
+func TestGitHubClientLatestReleaseOtherNonOKStatusNeverIncludesFullRawBody(t *testing.T) {
+	longBody := strings.Repeat("x", 5000)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(longBody))
+	}))
+	defer srv.Close()
+
+	client := &GitHubClient{APIBaseURL: srv.URL, HTTPClient: srv.Client()}
+	_, err := client.LatestRelease(context.Background())
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, ErrReleaseNotFound), "a 500 must not classify as ErrReleaseNotFound")
+	assert.ErrorIs(t, err, ErrFetchFailed)
+	assert.ErrorContains(t, err, "500")
+	assert.Less(t, len(err.Error()), 300, "the full 5000-byte body must never be included verbatim")
 }
 
 func TestReleaseAssetByName(t *testing.T) {

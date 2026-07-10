@@ -87,6 +87,16 @@ const (
 	// it — see docs/phases/FAZ-09.md).
 	MsgExplainRiskHeading MessageID = "explain_risk_heading"
 
+	// MsgExplainUsageError is printed when `comrade explain` is given no
+	// command text at all (QA D1: explain.go sets DisableFlagParsing so
+	// it can accept a command starting with a flag, e.g. "explain -rf",
+	// which also means cobra's own automatic -h/--help interception and
+	// its own "requires at least 1 arg(s)" MinimumNArgs message never
+	// fire — explain.go's RunE now checks for both cases itself, and
+	// this is the no-args one's own translated usage error instead of
+	// silently treating "" as a command or forwarding to the LLM).
+	MsgExplainUsageError MessageID = "explain_usage_error"
+
 	// -- chat (comrade chat) ------------------------------------------
 
 	// MsgChatWelcome is the one-line banner chat prints when the session
@@ -148,6 +158,55 @@ const (
 
 	// MsgConfigListHeader is `comrade config list`'s table header row.
 	MsgConfigListHeader MessageID = "config_list_header"
+
+	// MsgConfigSetUsageError is printed when `comrade config set` is
+	// given a number of arguments other than exactly 2 (QA D2:
+	// newConfigSetCmd sets DisableFlagParsing so a value starting with
+	// "-" is never misread as one of comrade's own flags, which also
+	// means cobra's own automatic -h/--help interception and its
+	// cobra.ExactArgs(2) validator never run — "comrade config set
+	// --help" used to fail with cobra's raw English "accepts 2 arg(s),
+	// received 1" instead of ever showing help. RunE now handles both
+	// -h/--help and the wrong-arg-count case itself.)
+	MsgConfigSetUsageError MessageID = "config_set_usage_error"
+
+	// -- config.Validate/Loader error re-rendering (QA D4a) --------------
+	//
+	// internal/config.Validate/Loader.Get/Source/Set return structured
+	// errors (config.UnknownKeyError/config.InvalidValueError) rather
+	// than plain fmt.Errorf specifically so internal/cli's config.go can
+	// re-render them through these MessageIDs via errors.As, instead of
+	// surfacing config's own English-only Error() text verbatim (a QA-
+	// found gap: `comrade config set`'s validation errors were the one
+	// user-facing error class in this tree that bypassed i18n entirely).
+	// Every EN value below is byte-identical to config.Validate's own
+	// previous hardcoded English text, so no existing English-language
+	// assertion changes.
+
+	// MsgConfigUnknownKey is config.UnknownKeyError's translated
+	// rendering. Two args: the unrecognized key, the comma-joined list of
+	// valid keys.
+	MsgConfigUnknownKey MessageID = "config_unknown_key"
+	// MsgConfigInvalidEnum is config.InvalidValueError{Reason:
+	// ReasonInvalidEnum}'s translated rendering. Three args: the rejected
+	// raw value, the key, the comma-joined list of allowed values.
+	MsgConfigInvalidEnum MessageID = "config_invalid_enum"
+	// MsgConfigInvalidBool is config.InvalidValueError{Reason:
+	// ReasonNotBoolean}'s translated rendering. Two args: the rejected
+	// raw value, the key.
+	MsgConfigInvalidBool MessageID = "config_invalid_bool"
+	// MsgConfigInvalidInt is config.InvalidValueError{Reason:
+	// ReasonNotInteger}'s translated rendering. Two args: the rejected
+	// raw value, the key.
+	MsgConfigInvalidInt MessageID = "config_invalid_int"
+	// MsgConfigNotPositive is config.InvalidValueError{Reason:
+	// ReasonNotPositive}'s translated rendering. Two args: the rejected
+	// raw value, the key.
+	MsgConfigNotPositive MessageID = "config_not_positive"
+	// MsgConfigNotNonNegative is config.InvalidValueError{Reason:
+	// ReasonNotNonNegative}'s translated rendering. Two args: the
+	// rejected raw value, the key.
+	MsgConfigNotNonNegative MessageID = "config_not_non_negative"
 
 	// MsgModelsDocsNote is printed after `comrade config models`'s numbered
 	// list for a provider with only a static model snapshot (anthropic/
@@ -229,6 +288,27 @@ const (
 	// MsgFixExplanationHeading labels `comrade fix`'s printed plain-
 	// language explanation, matching `comrade explain`'s heading style.
 	MsgFixExplanationHeading MessageID = "fix_explanation_heading"
+
+	// MsgVerificationSuggestion is internal/engine.OfferVerification's
+	// info-mode rendering of the offered post-fix verification command
+	// (QA D6: this was a raw hardcoded English "Suggested verification:
+	// %s" literal, the one stray-English label QA found in an otherwise
+	// fully-translated `comrade fix` TR run — not LLM-generated text,
+	// just a Go format string that had never been routed through i18n
+	// like every other engine-printed string RunDeps.Translator already
+	// covers). One arg: the command being suggested.
+	MsgVerificationSuggestion MessageID = "verification_suggestion"
+
+	// MsgVerificationSucceeded is ask/auto mode's one-line report after
+	// actually re-running the verification command and it exiting 0
+	// (same QA D6 sweep — found alongside MsgVerificationSuggestion,
+	// same file, same previously-unrouted pattern). One arg: the command.
+	MsgVerificationSucceeded MessageID = "verification_succeeded"
+
+	// MsgVerificationStillFails is ask/auto mode's one-line report when
+	// the re-run verification command still fails. Two args: the
+	// command, its exit code.
+	MsgVerificationStillFails MessageID = "verification_still_fails"
 
 	// -- comrade auth ----------------------------------------------------
 
@@ -454,6 +534,66 @@ const (
 	// ".Example" is rendered verbatim, with no added indentation).
 	MsgHelpExamplesRoot MessageID = "help_examples_root"
 
+	// -- --help/usage structural section labels (QA D4b) ------------------
+	//
+	// cobra's own defaultUsageTemplate hardcodes these eight section
+	// labels as literal English text with no per-command override point
+	// — internal/cli/help.go's usageTemplateFor builds a full
+	// SetUsageTemplate() replacement from these MessageIDs, structurally
+	// IDENTICAL to cobra's own template (same fields, same control flow,
+	// copied verbatim from spf13/cobra v1.10.2's command.go
+	// defaultUsageTemplate — see usageTemplateFor's own doc comment for
+	// the version-drift caveat this implies) with only the label text
+	// itself swapped for these. colorizeHelpText's header-recognizer maps
+	// (help.go) key off the CURRENT resolved Translator's rendering of
+	// these same IDs, so both stay in sync by construction rather than by
+	// two separately-maintained literal-string lists.
+
+	// MsgHelpLabelUsage labels the "Usage:" section.
+	MsgHelpLabelUsage MessageID = "help_label_usage"
+	// MsgHelpLabelAliases labels a command's Aliases: block. No command
+	// in this tree currently HAS an alias, so this is unreached today —
+	// included for completeness/correctness, not because it currently
+	// renders anywhere.
+	MsgHelpLabelAliases MessageID = "help_label_aliases"
+	// MsgHelpLabelExamples labels the "Examples:" section.
+	MsgHelpLabelExamples MessageID = "help_label_examples"
+	// MsgHelpLabelAvailableCommands labels the "Available Commands:"
+	// section — rendered only for a command tree with no cobra Groups
+	// registered (this tree's root DOES register Groups, so this is
+	// reached by every non-root command with subcommands, e.g. `comrade
+	// config --help`, not by root itself).
+	MsgHelpLabelAvailableCommands MessageID = "help_label_available_commands"
+	// MsgHelpLabelAdditionalCommands labels the "Additional Commands:"
+	// section (any subcommand not assigned to one of root's own Groups
+	// — "help" itself, plus any future ungrouped addition).
+	MsgHelpLabelAdditionalCommands MessageID = "help_label_additional_commands"
+	// MsgHelpLabelFlags labels the "Flags:" (local flags) section.
+	MsgHelpLabelFlags MessageID = "help_label_flags"
+	// MsgHelpLabelGlobalFlags labels the "Global Flags:" (inherited
+	// persistent flags) section.
+	MsgHelpLabelGlobalFlags MessageID = "help_label_global_flags"
+	// MsgHelpLabelAdditionalHelpTopics labels cobra's "additional help
+	// topic" pseudo-commands (a command with no Run/RunE and no
+	// subcommands of its own, used for a documentation-only entry) — this
+	// tree defines none, so also unreached today; included for the same
+	// completeness reason as MsgHelpLabelAliases.
+	MsgHelpLabelAdditionalHelpTopics MessageID = "help_label_additional_help_topics"
+	// MsgHelpMoreInfo is the trailing "Use "<path> [command] --help" for
+	// more information about a command." line — used as raw TEMPLATE
+	// SOURCE (usageTemplateFor, help.go), not ordinary rendered text: its
+	// catalog value embeds cobra's own literal "{{.CommandPath}}" template
+	// syntax and MUST be resolved via a zero-arg Translator.T(id) call
+	// (Translator.T's own contract: a zero-arg call returns the catalog
+	// string completely unchanged, never run through fmt.Sprintf) so that
+	// literal "{{.CommandPath}}" survives intact into the built template
+	// string for cobra's own template engine to substitute per-command,
+	// per-render — every command's help uses the SAME one template
+	// (root.SetUsageTemplate, inherited tree-wide), so this cannot be a
+	// pre-filled %s value the way every OTHER MessageID's dynamic args
+	// are; it has to stay a live template reference.
+	MsgHelpMoreInfo MessageID = "help_more_info"
+
 	// -- per-flag --help descriptions ------------------------------------
 	//
 	// Exactly like Short text above, a flag's description (pflag's
@@ -572,6 +712,21 @@ const (
 	// newly installed version.
 	MsgUpgradeInstalled MessageID = "upgrade_installed"
 
+	// MsgUpgradeNoReleaseFound is printed for update.ErrReleaseNotFound
+	// (QA D3): GitHub's "latest release" endpoint 404s when this
+	// repository has no published release yet. No args — replaces what
+	// used to be GitHub's own raw, English 404 JSON response body
+	// dumped straight to stderr.
+	MsgUpgradeNoReleaseFound MessageID = "upgrade_no_release_found"
+
+	// MsgUpgradeFetchFailed is printed for any OTHER update.ErrFetchFailed
+	// (QA D3's "other HTTP errors" case: network unreachable, a non-200/
+	// non-404 status, a malformed response body) — a concise, i18n'd
+	// wrapper; no args, deliberately: the underlying detail (status code,
+	// truncated response body) never reaches this message, only
+	// COMRADE_DEBUG-gated stderr output (see upgrade.go).
+	MsgUpgradeFetchFailed MessageID = "upgrade_fetch_failed"
+
 	// -- per-flag --help descriptions (comrade upgrade) -------------------
 
 	// MsgFlagCheck is --check's --help description.
@@ -638,9 +793,18 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgExplainSummaryHeading: "Summary:",
 	MsgExplainPartsHeading:   "Breakdown:",
 	MsgExplainRiskHeading:    "Risk note:",
+	MsgExplainUsageError:     `usage: comrade explain <command...> (to explain a command that starts with a flag, e.g. --help, use "comrade explain -- <command>")`,
 
-	MsgTestLLMResult:    "provider=%s model=%s latency=%s\n",
-	MsgConfigListHeader: "KEY\tVALUE\tSOURCE",
+	MsgTestLLMResult:       "provider=%s model=%s latency=%s\n",
+	MsgConfigListHeader:    "KEY\tVALUE\tSOURCE",
+	MsgConfigSetUsageError: "usage: comrade config set <key> <value>",
+
+	MsgConfigUnknownKey:     "unknown config key %q; valid keys are: %s",
+	MsgConfigInvalidEnum:    "invalid value %q for %s; must be one of: %s",
+	MsgConfigInvalidBool:    "invalid value %q for %s: must be a boolean (true/false)",
+	MsgConfigInvalidInt:     "invalid value %q for %s: must be an integer",
+	MsgConfigNotPositive:    "invalid value %q for %s: must be greater than 0",
+	MsgConfigNotNonNegative: "invalid value %q for %s: must be 0 or greater",
 
 	MsgModelsDocsNote:     "(static snapshot — see %s for the current list)\n",
 	MsgModelsSelectPrompt: "Select a model number: ",
@@ -682,6 +846,9 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgFixPasteErrorPrompt:      "Error output (end with a blank line):",
 	MsgFixRootCauseHeading:      "Root cause:",
 	MsgFixExplanationHeading:    "Explanation:",
+	MsgVerificationSuggestion:   "\nSuggested verification: %s\n",
+	MsgVerificationSucceeded:    "verification: %s succeeded",
+	MsgVerificationStillFails:   "verification: %s still fails (exit %d)",
 
 	MsgAuthEnterKeyPrompt:         "Enter API key for %s: ",
 	MsgAuthStoredKeyPingFailed:    "Stored key for %s. Test request failed (%v) — the key may still be correct; this can also mean the network or provider is unreachable right now.\n",
@@ -767,6 +934,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUpgradeNewerAvailable: "a newer version is available: %s (you have %s) — %s\n",
 	MsgUpgradeDownloading:    "downloading comrade %s...\n",
 	MsgUpgradeInstalled:      "updated to %s. Restart any running comrade session to pick it up.\n",
+	MsgUpgradeNoReleaseFound: "no published release of comrade is available yet — check back later",
+	MsgUpgradeFetchFailed:    "could not reach GitHub to check for a newer version — try again later",
 
 	MsgHelpShortUpgrade: "Check for or install a newer released version of comrade",
 	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
@@ -778,6 +947,16 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 		"  comrade fix                      # diagnose the last failed command\n" +
 		"  comrade explain \"git rebase -i HEAD~5\"\n" +
 		"  comrade chat                     # start an interactive session",
+
+	MsgHelpLabelUsage:                "Usage:",
+	MsgHelpLabelAliases:              "Aliases:",
+	MsgHelpLabelExamples:             "Examples:",
+	MsgHelpLabelAvailableCommands:    "Available Commands:",
+	MsgHelpLabelAdditionalCommands:   "Additional Commands:",
+	MsgHelpLabelFlags:                "Flags:",
+	MsgHelpLabelGlobalFlags:          "Global Flags:",
+	MsgHelpLabelAdditionalHelpTopics: "Additional help topics:",
+	MsgHelpMoreInfo:                  `Use "{{.CommandPath}} [command] --help" for more information about a command.`,
 
 	MsgUpdateAvailableNotice: "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
 
@@ -810,9 +989,18 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgExplainSummaryHeading: "Özet:",
 	MsgExplainPartsHeading:   "Parça parça açıklama:",
 	MsgExplainRiskHeading:    "Risk notu:",
+	MsgExplainUsageError:     `kullanım: comrade explain <komut...> (--help gibi bayrakla başlayan bir komutu açıklamak için "comrade explain -- <komut>" kullanın)`,
 
-	MsgTestLLMResult:    "sağlayıcı=%s model=%s gecikme=%s\n",
-	MsgConfigListHeader: "ANAHTAR\tDEĞER\tKAYNAK",
+	MsgTestLLMResult:       "sağlayıcı=%s model=%s gecikme=%s\n",
+	MsgConfigListHeader:    "ANAHTAR\tDEĞER\tKAYNAK",
+	MsgConfigSetUsageError: "kullanım: comrade config set <anahtar> <değer>",
+
+	MsgConfigUnknownKey:     "bilinmeyen config anahtarı %q; geçerli anahtarlar: %s",
+	MsgConfigInvalidEnum:    "%q değeri %s için geçersiz; şunlardan biri olmalı: %s",
+	MsgConfigInvalidBool:    "%q değeri %s için geçersiz: bir boolean olmalı (true/false)",
+	MsgConfigInvalidInt:     "%q değeri %s için geçersiz: bir tam sayı olmalı",
+	MsgConfigNotPositive:    "%q değeri %s için geçersiz: 0'dan büyük olmalı",
+	MsgConfigNotNonNegative: "%q değeri %s için geçersiz: 0 veya daha büyük olmalı",
 
 	MsgModelsDocsNote:     "(sabit bir liste — güncel liste için: %s)\n",
 	MsgModelsSelectPrompt: "Bir model numarası seçin: ",
@@ -854,6 +1042,9 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgFixPasteErrorPrompt:      "Hata çıktısı (boş bir satırla bitirin):",
 	MsgFixRootCauseHeading:      "Kök neden:",
 	MsgFixExplanationHeading:    "Açıklama:",
+	MsgVerificationSuggestion:   "\nÖnerilen doğrulama: %s\n",
+	MsgVerificationSucceeded:    "doğrulama: %s başarılı oldu",
+	MsgVerificationStillFails:   "doğrulama: %s hâlâ başarısız (çıkış %d)",
 
 	MsgAuthEnterKeyPrompt:         "%s için API anahtarını girin: ",
 	MsgAuthStoredKeyPingFailed:    "%s için anahtar kaydedildi. Test isteği başarısız oldu (%v) — anahtar yine de doğru olabilir; bu, ağın veya sağlayıcının şu an erişilemez olduğu anlamına da gelebilir.\n",
@@ -939,6 +1130,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUpgradeNewerAvailable: "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s) — %s\n",
 	MsgUpgradeDownloading:    "comrade %s indiriliyor...\n",
 	MsgUpgradeInstalled:      "%s sürümüne güncellendi. Çalışan bir comrade oturumu varsa bunu yansıtması için yeniden başlatın.\n",
+	MsgUpgradeNoReleaseFound: "henüz yayımlanmış bir comrade sürümü yok — daha sonra tekrar kontrol edin",
+	MsgUpgradeFetchFailed:    "daha yeni bir sürüm kontrol edilirken GitHub'a ulaşılamadı — daha sonra tekrar deneyin",
 
 	MsgHelpShortUpgrade: "comrade'in daha yeni bir yayımlanmış sürümünü denetler veya kurar",
 	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",
@@ -950,6 +1143,16 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 		"  comrade fix                       # son başarısız komutu teşhis et\n" +
 		"  comrade explain \"git rebase -i HEAD~5\"\n" +
 		"  comrade chat                      # etkileşimli oturum başlat",
+
+	MsgHelpLabelUsage:                "Kullanım:",
+	MsgHelpLabelAliases:              "Takma adlar:",
+	MsgHelpLabelExamples:             "Örnekler:",
+	MsgHelpLabelAvailableCommands:    "Kullanılabilir Komutlar:",
+	MsgHelpLabelAdditionalCommands:   "Ek Komutlar:",
+	MsgHelpLabelFlags:                "Bayraklar:",
+	MsgHelpLabelGlobalFlags:          "Genel Bayraklar:",
+	MsgHelpLabelAdditionalHelpTopics: "Ek yardım konuları:",
+	MsgHelpMoreInfo:                  `Bir komut hakkında daha fazla bilgi için "{{.CommandPath}} [command] --help" kullanın.`,
 
 	MsgUpdateAvailableNotice: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
 

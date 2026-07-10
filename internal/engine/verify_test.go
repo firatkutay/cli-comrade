@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/firatkutay/cli-comrade/internal/executor"
+	"github.com/firatkutay/cli-comrade/internal/i18n"
 )
 
 func TestOfferVerificationSkipsEmptyCommand(t *testing.T) {
@@ -52,6 +53,63 @@ func TestOfferVerificationInfoModePrintsSuggestionWithoutExecuting(t *testing.T)
 
 	assert.Equal(t, 0, exec.callCount())
 	assert.Contains(t, stdout.String(), "Suggested verification: echo ok")
+}
+
+// TestOfferVerificationInfoModePrintsSuggestionInTurkish is QA D6's
+// regression guard: the "Suggested verification: ..." line was a raw
+// hardcoded English literal that never routed through
+// RunDeps.Translator like every other engine-printed string, so it
+// stayed English even in an otherwise fully-Turkish `comrade fix` run.
+// This project's established TR-smoke-test convention: exact match, not
+// just a substring check that could pass on a fallback-to-English catalog
+// lookup.
+func TestOfferVerificationInfoModePrintsSuggestionInTurkish(t *testing.T) {
+	exec := &fakeExecutor{}
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.Translator = i18n.NewTranslator(i18n.LangTR)
+
+	err := OfferVerification(context.Background(), deps, ModeInfo, "echo ok")
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, exec.callCount())
+	assert.Equal(t, "\nÖnerilen doğrulama: echo ok\n", stdout.String())
+	assert.NotContains(t, stdout.String(), "Suggested verification")
+}
+
+// TestOfferVerificationAutoModeReportsSuccessInTurkish is D6's sweep
+// extending to runVerification's own two sibling strings (found in the
+// same file, same previously-unrouted pattern, while fixing the
+// QA-reported one) — the "verification: ... succeeded" line ask/auto
+// mode prints after actually re-running the command.
+func TestOfferVerificationAutoModeReportsSuccessInTurkish(t *testing.T) {
+	exec := &fakeExecutor{respond: func(int, string) (executor.Result, error) {
+		return executor.Result{ExitCode: 0}, nil
+	}}
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.Translator = i18n.NewTranslator(i18n.LangTR)
+
+	err := OfferVerification(context.Background(), deps, ModeAuto, "echo ok")
+	require.NoError(t, err)
+
+	assert.Contains(t, stdout.String(), "doğrulama: echo ok başarılı oldu")
+	assert.NotContains(t, stdout.String(), "verification:")
+}
+
+// TestOfferVerificationAutoModeReportsFailureInTurkish is
+// TestOfferVerificationAutoModeReportsSuccessInTurkish's failure-path
+// counterpart, for MsgVerificationStillFails.
+func TestOfferVerificationAutoModeReportsFailureInTurkish(t *testing.T) {
+	exec := &fakeExecutor{respond: func(int, string) (executor.Result, error) {
+		return executor.Result{ExitCode: 3}, nil
+	}}
+	deps, stdout := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.Translator = i18n.NewTranslator(i18n.LangTR)
+
+	err := OfferVerification(context.Background(), deps, ModeAuto, "echo fail")
+	require.NoError(t, err)
+
+	assert.Contains(t, stdout.String(), "doğrulama: echo fail hâlâ başarısız (çıkış 3)")
+	assert.NotContains(t, stdout.String(), "verification:")
 }
 
 // TestOfferVerificationAutoModeRunsNonElevatedCommandDirectly is FAZ 7

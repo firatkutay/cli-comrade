@@ -66,6 +66,20 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		// which is this UX pattern's deliberate, documented tradeoff
 		// (see docs/phases/FAZ-06.md).
 		Args: cobra.ArbitraryArgs,
+		// QA D4b: cobra's own auto-added "completion" command generates
+		// several KB of its own internal help text (per-shell usage,
+		// eval/source instructions, flag descriptions) with no i18n hook
+		// of any kind — genuinely impractical to translate, unlike the
+		// eight structural section labels (help.go's usageTemplateFor)
+		// this same QA round DID translate. HiddenDefaultCmd (not
+		// DisableDefaultCmd) is the judgment call this task explicitly
+		// allows: it stays fully FUNCTIONAL for a power user who already
+		// knows to type "comrade completion bash" — it simply never
+		// appears in --help output, decluttering the tree for this
+		// project's actual (non-technical, terminal-averse) target
+		// audience. Documented in docs/PROGRESS.md's i18n-exceptions
+		// note alongside every other residual, judgment-based exception.
+		CompletionOptions: cobra.CompletionOptions{HiddenDefaultCmd: true},
 	}
 	root.SetVersionTemplate("comrade version {{.Version}}\n")
 

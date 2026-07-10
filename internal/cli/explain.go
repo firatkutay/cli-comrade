@@ -32,7 +32,18 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "explain <command...>",
 		Short: "Explain what a command does, flag by flag, without running it",
-		Args:  cobra.MinimumNArgs(1),
+		// Args is deliberately NOT cobra.MinimumNArgs(1): DisableFlagParsing
+		// (below) means cobra's own flag parser — which is what normally
+		// intercepts -h/--help and enforces an Args validator — never
+		// runs at all, so a MinimumNArgs(1) check here would still let a
+		// literal "--help" argument through (it counts as one non-empty
+		// arg) straight to runExplain, which is exactly QA D1's bug (a
+		// real LLM call for "--help" as if it were a command to explain,
+		// silently spending tokens, with explain's own usage completely
+		// unreachable). RunE below does its own, explicit -h/--help and
+		// no-args handling instead, translated per general.language
+		// rather than cobra's generic English MinimumNArgs message.
+		Args: cobra.ArbitraryArgs,
 		// The command being explained is itself arbitrary shell text and
 		// routinely starts with a dash (`-rf`, `-la`, ...): without this,
 		// cobra/pflag would try to parse those tokens as comrade's OWN
@@ -41,6 +52,27 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 		DisableFlagParsing: true,
 	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		// Escape hatch (documented in MsgExplainUsageError/--help itself):
+		// "comrade explain -- <command>" always explains <command>
+		// literally, even if it's exactly "-h"/"--help" — DisableFlagParsing
+		// means cobra never strips a leading "--" itself (see cobra's own
+		// Command.execute: argWoFlags = a, unmodified, when
+		// DisableFlagParsing is set), so explain.go strips it here.
+		if len(args) > 0 && args[0] == "--" {
+			args = args[1:]
+			if len(args) == 0 {
+				return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgExplainUsageError))
+			}
+			return runExplain(cmd, newLoader, strings.Join(args, " "))
+		}
+
+		if len(args) == 0 {
+			return fmt.Errorf("%s", envOnlyTranslator().T(i18n.MsgExplainUsageError))
+		}
+		if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+			return cmd.Help()
+		}
+
 		return runExplain(cmd, newLoader, strings.Join(args, " "))
 	}
 	return cmd

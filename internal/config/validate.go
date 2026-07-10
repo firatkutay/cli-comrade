@@ -119,11 +119,92 @@ func IsValidKey(key string) bool {
 	return ok
 }
 
+// UnknownKeyError is Validate/Loader.Get/Loader.Source/Loader.Set's
+// structured error for an unrecognized config key. Its own Error() text
+// is exactly the plain-English sentence this package has always
+// returned (so any pre-existing caller/test asserting on that text is
+// unaffected); internal/cli's config.go additionally uses errors.As to
+// pull Key/ValidKeys back out and re-render the SAME information through
+// an i18n.Translator, instead of parsing this string — a QA-found gap
+// (`comrade config set`'s validation errors bypassed i18n entirely,
+// unlike every other user-facing message in this tree).
+type UnknownKeyError struct {
+	Key       string
+	ValidKeys []string
+}
+
+func (e *UnknownKeyError) Error() string {
+	return fmt.Sprintf("unknown config key %q; valid keys are: %s", e.Key, strings.Join(e.ValidKeys, ", "))
+}
+
 // unknownKeyError builds the "helpful message listing valid keys" required
 // for a rejected `comrade config set`/`get` on an unrecognized key.
 func unknownKeyError(key string) error {
-	return fmt.Errorf("unknown config key %q; valid keys are: %s", key, strings.Join(Keys(), ", "))
+	return &UnknownKeyError{Key: key, ValidKeys: Keys()}
 }
+
+// InvalidValueReason classifies why Validate rejected a value that DID
+// name a known key — internal/cli's config.go switches on this (via
+// errors.As on *InvalidValueError) to pick the matching i18n message,
+// rather than parsing English error text.
+type InvalidValueReason int
+
+const (
+	// ReasonInvalidEnum means raw isn't one of Key's Enum values.
+	ReasonInvalidEnum InvalidValueReason = iota
+	// ReasonNotBoolean means raw doesn't parse as a bool (KindBool).
+	ReasonNotBoolean
+	// ReasonNotInteger means raw doesn't parse as an integer at all
+	// (KindPositiveInt/KindNonNegativeInt).
+	ReasonNotInteger
+	// ReasonNotPositive means raw parsed as an integer but is <= 0
+	// (KindPositiveInt).
+	ReasonNotPositive
+	// ReasonNotNonNegative means raw parsed as an integer but is < 0
+	// (KindNonNegativeInt).
+	ReasonNotNonNegative
+)
+
+// InvalidValueError is Validate's structured error for every rejection
+// that follows a successful key lookup (Key is always valid; UnknownKeyError
+// is the separate, earlier failure mode). Error() renders the exact same
+// plain-English sentence this package always has, MINUS the raw wrapped
+// strconv error `fmt.Errorf`'s old `: %w` tail used to append (e.g.
+// `strconv.ParseBool: parsing "x": invalid syntax`) — that internal
+// detail is dropped from the rendered text (Key/Raw/Reason already say
+// everything a user needs), matching this task's "never surface raw
+// internal/library detail in a user-facing message" rule; the original
+// strconv error is still reachable via Unwrap() for any caller that wants
+// it.
+type InvalidValueError struct {
+	Key    string
+	Raw    string
+	Reason InvalidValueReason
+	Enum   []string // populated only for ReasonInvalidEnum
+	err    error    // wrapped strconv.ParseBool/Atoi error, if any; see Unwrap
+}
+
+func (e *InvalidValueError) Error() string {
+	switch e.Reason {
+	case ReasonInvalidEnum:
+		return fmt.Sprintf("invalid value %q for %s; must be one of: %s", e.Raw, e.Key, strings.Join(e.Enum, ", "))
+	case ReasonNotBoolean:
+		return fmt.Sprintf("invalid value %q for %s: must be a boolean (true/false)", e.Raw, e.Key)
+	case ReasonNotInteger:
+		return fmt.Sprintf("invalid value %q for %s: must be an integer", e.Raw, e.Key)
+	case ReasonNotPositive:
+		return fmt.Sprintf("invalid value %q for %s: must be greater than 0", e.Raw, e.Key)
+	case ReasonNotNonNegative:
+		return fmt.Sprintf("invalid value %q for %s: must be 0 or greater", e.Raw, e.Key)
+	default:
+		return fmt.Sprintf("invalid value %q for %s", e.Raw, e.Key)
+	}
+}
+
+// Unwrap exposes the wrapped strconv.ParseBool/Atoi error (nil for
+// ReasonInvalidEnum/ReasonNotPositive/ReasonNotNonNegative, which never
+// wrap one), so errors.Is/As still reaches it if a caller needs to.
+func (e *InvalidValueError) Unwrap() error { return e.err }
 
 // Validate parses raw (as given on the command line) into the Go value
 // appropriate for key's Kind, applying enum/positivity checks. It returns
@@ -137,34 +218,34 @@ func Validate(key, raw string) (any, error) {
 	switch kd.Kind {
 	case KindString:
 		if kd.Enum != nil && !contains(kd.Enum, raw) {
-			return nil, fmt.Errorf("invalid value %q for %s; must be one of: %s", raw, key, strings.Join(kd.Enum, ", "))
+			return nil, &InvalidValueError{Key: key, Raw: raw, Reason: ReasonInvalidEnum, Enum: kd.Enum}
 		}
 		return raw, nil
 
 	case KindBool:
 		b, err := strconv.ParseBool(raw)
 		if err != nil {
-			return nil, fmt.Errorf("invalid value %q for %s: must be a boolean (true/false): %w", raw, key, err)
+			return nil, &InvalidValueError{Key: key, Raw: raw, Reason: ReasonNotBoolean, err: err}
 		}
 		return b, nil
 
 	case KindPositiveInt:
 		n, err := strconv.Atoi(raw)
 		if err != nil {
-			return nil, fmt.Errorf("invalid value %q for %s: must be an integer: %w", raw, key, err)
+			return nil, &InvalidValueError{Key: key, Raw: raw, Reason: ReasonNotInteger, err: err}
 		}
 		if n <= 0 {
-			return nil, fmt.Errorf("invalid value %q for %s: must be greater than 0", raw, key)
+			return nil, &InvalidValueError{Key: key, Raw: raw, Reason: ReasonNotPositive}
 		}
 		return n, nil
 
 	case KindNonNegativeInt:
 		n, err := strconv.Atoi(raw)
 		if err != nil {
-			return nil, fmt.Errorf("invalid value %q for %s: must be an integer: %w", raw, key, err)
+			return nil, &InvalidValueError{Key: key, Raw: raw, Reason: ReasonNotInteger, err: err}
 		}
 		if n < 0 {
-			return nil, fmt.Errorf("invalid value %q for %s: must be 0 or greater", raw, key)
+			return nil, &InvalidValueError{Key: key, Raw: raw, Reason: ReasonNotNonNegative}
 		}
 		return n, nil
 

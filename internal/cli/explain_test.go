@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -122,4 +126,103 @@ func TestExplainTurkishLanguageProducesTurkishSafetyWarning(t *testing.T) {
 
 	assert.True(t, strings.Contains(stdout, "güvenlik kontrolüne göre"),
 		"expected the Turkish safety-warning text, got: %s", stdout)
+}
+
+// countingServer starts an httptest server that counts every request it
+// receives and answers with planJSON exactly like newMockPlanServer, so
+// QA D1's regression test can assert the LLM was (or, for --help/no-args,
+// was NOT) actually called — the bug's whole harm was a real network
+// call being made silently.
+func countingServer(t *testing.T, planJSON string) (srv *httptest.Server, requestCount *int32) {
+	t.Helper()
+	var count int32
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&count, 1)
+		resp := openAICompatResponse{
+			Model: "mock-model",
+			Choices: []openAICompatChoice{
+				{Message: openAICompatMessage{Role: "assistant", Content: planJSON}, FinishReason: "stop"},
+			},
+		}
+		w.Header().Set("content-type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	return srv, &count
+}
+
+// TestExplainHelpFlagNeverCallsTheProvider is QA D1's core regression
+// guard: "comrade explain --help" (and "-h") must show help and make
+// ZERO requests to the LLM provider — the actual reported bug was
+// DisableFlagParsing letting "--help" reach runExplain as literal
+// command text to explain, silently spending the user's tokens.
+func TestExplainHelpFlagNeverCallsTheProvider(t *testing.T) {
+	for _, helpArg := range []string{"--help", "-h"} {
+		t.Run(helpArg, func(t *testing.T) {
+			withIsolatedConfigDir(t)
+			server, requests := countingServer(t, lsExplanationJSON)
+			defer server.Close()
+
+			t.Setenv("COMRADE_PROVIDER", "openai_compat")
+			t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+			t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+			stdout, _, err := execRootSplit(t, "dev", "explain", helpArg)
+			require.NoError(t, err)
+
+			assert.Equal(t, int32(0), atomic.LoadInt32(requests), "explain --help must never call the LLM provider")
+			assert.Contains(t, stdout, "Usage:")
+			assert.Contains(t, stdout, "comrade explain")
+		})
+	}
+}
+
+// TestExplainNoArgsShowsUsageErrorWithoutCallingProvider is
+// TestExplainHelpFlagNeverCallsTheProvider's no-args counterpart: a bare
+// "comrade explain" must fail with a clear usage error, not attempt to
+// explain an empty string via the LLM.
+func TestExplainNoArgsShowsUsageErrorWithoutCallingProvider(t *testing.T) {
+	withIsolatedConfigDir(t)
+	server, requests := countingServer(t, lsExplanationJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	_, _, err := execRootSplit(t, "dev", "explain")
+	require.Error(t, err)
+	assert.Equal(t, int32(0), atomic.LoadInt32(requests))
+	assert.Equal(t, `usage: comrade explain <command...> (to explain a command that starts with a flag, e.g. --help, use "comrade explain -- <command>")`, err.Error())
+}
+
+// TestExplainNoArgsShowsUsageErrorInTurkish is the same case under
+// COMRADE_LANG=tr, this project's established TR-smoke-test convention.
+func TestExplainNoArgsShowsUsageErrorInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "explain")
+	require.Error(t, err)
+	assert.Equal(t, `kullanım: comrade explain <komut...> (--help gibi bayrakla başlayan bir komutu açıklamak için "comrade explain -- <komut>" kullanın)`, err.Error())
+}
+
+// TestExplainDoubleDashEscapeHatchExplainsLiteralHelpFlag proves the
+// documented escape hatch (MsgExplainUsageError's own text): "comrade
+// explain -- --help" always explains "--help" literally — including
+// actually reaching the LLM provider — rather than showing comrade's own
+// help, even though "--help" alone (without "--") would.
+func TestExplainDoubleDashEscapeHatchExplainsLiteralHelpFlag(t *testing.T) {
+	withIsolatedConfigDir(t)
+	server, requests := countingServer(t, lsExplanationJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	stdout, stderr, err := execRootSplit(t, "dev", "explain", "--", "--help")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(requests), "the escape hatch must actually reach the LLM provider")
+	assert.Contains(t, stdout, "Lists the files in the current directory")
 }

@@ -191,6 +191,7 @@ func applyTranslatedHelp(root *cobra.Command, newLoader loaderFactory) (i18n.Tra
 	tr, cfg := helpTranslatorAndConfig(newLoader)
 
 	root.Example = tr.T(i18n.MsgHelpExamplesRoot)
+	root.SetUsageTemplate(usageTemplateFor(tr))
 	for _, group := range root.Groups() {
 		if id, ok := groupTitleByID[group.ID]; ok {
 			group.Title = tr.T(id)
@@ -213,6 +214,86 @@ func applyTranslatedHelp(root *cobra.Command, newLoader loaderFactory) (i18n.Tra
 	}
 	walk(root)
 	return tr, cfg
+}
+
+// usageTemplateFor builds a full cobra usage-template replacement
+// (root.SetUsageTemplate — inherited tree-wide, exactly like
+// SetHelpFunc/SetUsageFunc) translating cobra's own eight hardcoded
+// structural section labels (QA D4b: "Usage:"/"Aliases:"/"Examples:"/
+// "Available Commands:"/"Additional Commands:"/"Flags:"/"Global Flags:"/
+// "Additional help topics:", plus the trailing "Use \"...\" for more
+// information..." line) into tr's resolved language.
+//
+// This is a byte-for-byte structural COPY of spf13/cobra v1.10.2's own
+// unexported defaultUsageTemplate (command.go) — same fields, same
+// control flow, same whitespace/newline placement — with ONLY the eight
+// literal English labels swapped for tr.T(...) calls. This is a
+// deliberate, KNOWN version-drift risk (Derive-or-Guard): if a future
+// cobra upgrade changes defaultUsageTemplate's shape (a new section, a
+// reordered field, a different padding rule), this copy will silently
+// stop matching it and must be manually re-synced by diffing this
+// function against cobra's own defaultUsageTemplate at that version —
+// there is no way to programmatically derive this from cobra itself
+// (defaultUsageTemplate is unexported, and cobra provides no
+// label-override hook, only whole-template replacement). Mitigated by:
+// (1) go.mod pins cobra to an EXACT version (supply-chain-pinning), so
+// this can only go stale on a deliberate, reviewable version bump, never
+// silently at build time; (2) TestUsageTemplateForMatchesCobraDefaultShape
+// (help_test.go) renders a representative command tree through BOTH this
+// template and cobra's own untouched default and asserts they produce
+// IDENTICAL structure (line count, section order) once labels are
+// stripped back out — a real guard that fails loudly if this copy ever
+// drifts from upstream, not just a comment promising it won't.
+//
+// tr.T is called with ZERO args for every one of these IDs — including
+// MsgHelpMoreInfo, whose catalog value embeds cobra's own literal
+// "{{.CommandPath}}" template syntax — because Translator.T's own
+// contract is that a zero-arg call returns the catalog string completely
+// unchanged (never run through fmt.Sprintf), which is exactly what's
+// needed here: this function is producing raw TEMPLATE SOURCE for cobra
+// to parse and re-execute per-command, per-render, not a one-shot
+// rendered string.
+func usageTemplateFor(tr i18n.Translator) string {
+	usage := tr.T(i18n.MsgHelpLabelUsage)
+	aliases := tr.T(i18n.MsgHelpLabelAliases)
+	examples := tr.T(i18n.MsgHelpLabelExamples)
+	availableCommands := tr.T(i18n.MsgHelpLabelAvailableCommands)
+	additionalCommands := tr.T(i18n.MsgHelpLabelAdditionalCommands)
+	flags := tr.T(i18n.MsgHelpLabelFlags)
+	globalFlags := tr.T(i18n.MsgHelpLabelGlobalFlags)
+	additionalHelpTopics := tr.T(i18n.MsgHelpLabelAdditionalHelpTopics)
+	moreInfo := tr.T(i18n.MsgHelpMoreInfo)
+
+	return usage + `{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+` + aliases + `
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+` + examples + `
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+` + availableCommands + `{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
+
+{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+
+` + additionalCommands + `{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+` + flags + `
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+` + globalFlags + `
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+` + additionalHelpTopics + `{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+` + moreInfo + `{{end}}
+`
 }
 
 // helpTranslatorAndConfig resolves both the Translator help text uses AND
@@ -295,27 +376,30 @@ var helpFlagRowPattern = regexp.MustCompile(`^(\s*)(-\w, --[\w-]+|--[\w-]+)(.*)$
 //
 // tr is the same resolved Translator applyTranslatedHelp already used, so
 // this recognizes the CURRENT language's own group titles (Core:/Temel:
-// etc.) as headers in addition to cobra's own English-only, hardcoded
-// section labels (Usage:/Flags:/etc. — baked into cobra's own template
-// string, never run through internal/i18n, so always English regardless
-// of general.language; unrelated to and unaffected by this task).
+// etc.) AND (QA D4b) cobra's own eight structural section labels — both
+// are rendered through usageTemplateFor's translated template now, so
+// both must be recognized in the SAME resolved language, never a fixed
+// English literal, or a TR render's headers would simply never match and
+// silently stay unstyled (exactly the bug this fixes: colorizeHelpText
+// used to hardcode the English label text directly, which broke the
+// moment usageTemplateFor started rendering translated ones).
 func colorizeHelpText(text string, tr i18n.Translator) string {
 	commandSectionHeaders := map[string]bool{
-		"Available Commands:":        true,
-		"Additional Commands:":       true,
-		"Additional help topics:":    true,
-		tr.T(i18n.MsgHelpGroupCore):  true,
-		tr.T(i18n.MsgHelpGroupSetup): true,
-		tr.T(i18n.MsgHelpGroupInfo):  true,
+		tr.T(i18n.MsgHelpLabelAvailableCommands):    true,
+		tr.T(i18n.MsgHelpLabelAdditionalCommands):   true,
+		tr.T(i18n.MsgHelpLabelAdditionalHelpTopics): true,
+		tr.T(i18n.MsgHelpGroupCore):                 true,
+		tr.T(i18n.MsgHelpGroupSetup):                true,
+		tr.T(i18n.MsgHelpGroupInfo):                 true,
 	}
 	flagSectionHeaders := map[string]bool{
-		"Flags:":        true,
-		"Global Flags:": true,
+		tr.T(i18n.MsgHelpLabelFlags):       true,
+		tr.T(i18n.MsgHelpLabelGlobalFlags): true,
 	}
 	plainHeaders := map[string]bool{
-		"Usage:":    true,
-		"Aliases:":  true,
-		"Examples:": true,
+		tr.T(i18n.MsgHelpLabelUsage):    true,
+		tr.T(i18n.MsgHelpLabelAliases):  true,
+		tr.T(i18n.MsgHelpLabelExamples): true,
 	}
 
 	type section int

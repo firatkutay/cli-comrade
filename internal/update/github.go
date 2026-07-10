@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,6 +47,31 @@ func (r Release) AssetByName(name string) (Asset, bool) {
 	return Asset{}, false
 }
 
+// ErrReleaseNotFound is LatestRelease's sentinel for a 404 from GitHub's
+// "latest release" endpoint — meaning this repository has no published
+// release yet (GitHub's API returns 404 for that endpoint specifically
+// when a repo exists but has zero releases; it does not mean the
+// repository itself is missing). internal/cli's upgrade.go checks this
+// via errors.Is and renders a clean, i18n'd message instead of surfacing
+// GitHub's own raw English 404 JSON body to the user (QA D3) — see
+// LatestRelease's own doc comment for why the body is never included in
+// the returned error at all, for ANY status code, not just 404.
+var ErrReleaseNotFound = errors.New("update: no published release found")
+
+// ErrFetchFailed is LatestRelease's sentinel for EVERY failure mode of
+// the fetch step itself (request build, network Do, any non-200-non-404
+// status, response decode) — ErrReleaseNotFound also always wraps this
+// (a 404 IS a fetch failure, just a specific/expected one), so
+// `errors.Is(err, ErrFetchFailed)` is the one check internal/cli's
+// upgrade.go needs to classify "something went wrong reaching/reading
+// GitHub" as a single family, distinct from Updater.Apply's OWN,
+// separate failure modes further down the pipeline (no matching release
+// asset for this platform, a checksum mismatch, a failed binary
+// replace) — those keep their own, already-reasonably-specific existing
+// messages untouched; only the fetch step's raw HTTP/body detail was
+// QA D3's actual bug.
+var ErrFetchFailed = errors.New("update: fetch latest release failed")
+
 // ReleaseFetcher resolves the latest published GitHub release for
 // cli-comrade. Production code uses GitHubClient; tests inject a fake
 // implementation returning a canned Release so the self-update flow
@@ -78,24 +104,46 @@ func (c *GitHubClient) LatestRelease(ctx context.Context) (Release, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", base, RepoOwner, RepoName)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return Release{}, fmt.Errorf("update: build latest-release request: %w", err)
+		return Release{}, fmt.Errorf("update: build latest-release request: %w: %w", ErrFetchFailed, err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return Release{}, fmt.Errorf("update: fetch latest release: %w", err)
+		return Release{}, fmt.Errorf("update: fetch latest release: %w: %w", ErrFetchFailed, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusNotFound {
+		// GitHub's "latest release" endpoint 404s specifically when the
+		// repository exists but has no published release at all — the
+		// one case internal/cli/upgrade.go renders as a clean, expected,
+		// i18n'd outcome rather than a failure. errors.Is (not a raw
+		// status-code comparison at the call site) is what lets that
+		// caller recognize this case; drain+discard the body without
+		// including it anywhere — GitHub's 404 JSON body is redundant
+		// with the status code here and would only ever end up as
+		// English text a non-English user cannot read (QA D3).
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return Release{}, fmt.Errorf("%w: %w", ErrReleaseNotFound, ErrFetchFailed)
+	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return Release{}, fmt.Errorf("update: fetch latest release: unexpected status %d: %s", resp.StatusCode, string(body))
+		// Every OTHER non-200 status (rate limit, auth, 5xx, ...) also
+		// never surfaces GitHub's raw response body to the end user
+		// (QA D3's "other HTTP errors" case) — only the status code, in
+		// this package's own internal (English) error text, which
+		// upgrade.go re-renders through a concise i18n'd wrapper rather
+		// than passing verbatim; the body is truncated to a small
+		// diagnostic snippet here (not the full 4096-byte dump this used
+		// to keep) purely so a future COMRADE_DEBUG-gated detail path has
+		// something short to show, never as the primary user-facing text.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
+		return Release{}, fmt.Errorf("update: fetch latest release: %w: unexpected status %d: %s", ErrFetchFailed, resp.StatusCode, string(body))
 	}
 
 	var rel Release
 	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return Release{}, fmt.Errorf("update: decode latest release response: %w", err)
+		return Release{}, fmt.Errorf("update: decode latest release response: %w: %w", ErrFetchFailed, err)
 	}
 	return rel, nil
 }

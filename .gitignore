@@ -3,6 +3,15 @@
 /comrade.exe
 /dist/
 
+# CI-generated SBOMs (release.yml's anchore/sbom-action step writes its
+# output to $RUNNER_TEMP, outside this workspace, specifically to avoid
+# this — but this pattern is a belt-and-suspenders guard: if that step's
+# output-file ever gets pointed back into the repo, an untracked SBOM
+# file here would make `git status --porcelain` report "dirty" and fail
+# goreleaser's git-state check before the release even starts, exactly
+# as happened in the v0.1.0 tag's first (failed) run.
+/sbom-*.cdx.json
+
 # Coverage
 *.out
 coverage.txt

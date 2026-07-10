@@ -32,11 +32,23 @@ jobs:
       # there is no separate "container SBOM" to also generate (see
       # security-scanning's SBOM-bundle rule; a source-only SBOM is the
       # right and complete scope for a binary-only Go CLI release).
+      #
+      # output-file MUST resolve outside the checked-out repo — writing
+      # it in-workspace (as a bare "sbom-source.cdx.json" relative path
+      # did previously) leaves an untracked file that fails goreleaser's
+      # `git status --porcelain` cleanliness check ("git is in a dirty
+      # state") before the release even starts (observed on the v0.1.0
+      # tag's first run: https://github.com/firatkutay/cli-comrade/actions/runs/29113017395).
+      # ${{ runner.temp }} is the GitHub Actions-provided scratch
+      # directory, a sibling of (not nested under) github.workspace, so
+      # this file is invisible to git entirely — belt-and-suspenders
+      # with the /sbom-*.cdx.json .gitignore entry, which only matters
+      # if a future edit points output-file back inside the workspace.
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: cyclonedx-json
-          output-file: sbom-source.cdx.json
+          output-file: ${{ runner.temp }}/sbom-source.cdx.json
           upload-release-assets: false
           upload-artifact: false
 

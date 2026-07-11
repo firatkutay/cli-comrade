@@ -173,24 +173,33 @@ comrade chat
 ### Shell completion
 
 `comrade init <shell>` installs Tab-completion automatically alongside
-the shell hook — no separate step. Once installed:
+the shell hook — no separate step. Once installed, pressing space also
+triggers a live next-word hint on the shells that support it, sourced
+from the exact same command tree as Tab-completion (`comrade __hint`,
+hidden, ~4ms, silent on any error) so it can never drift from what Tab
+would offer:
+
+```text
+comrade ▍ [auth|chat|config|do|explain|fix|help|history|init|upgrade]
+```
 
 | Shell | How suggestions appear |
 |---|---|
-| bash | Press Tab after `comrade <partial>` |
-| zsh | Press Tab after `comrade <partial>` |
-| PowerShell | Press Tab after `comrade <partial>` |
-| fish | Suggestions appear as you type (fish's native as-you-type completion) |
+| zsh | Space shows a dim inline ghost hint (e.g. `comrade auth login ` → `[anthropic\|openai_compat\|google]`); Tab-completion menu also works |
+| PowerShell | Space auto-opens the Tab-completion list below the line; Tab also works |
+| fish | Suggestions appear as you type (fish's native as-you-type completion) + Tab |
+| bash | Tab / double-Tab only — readline has no ghost-text mechanism, and rebinding space would break magic-space and paste |
 
 `comrade <Tab>` lists every visible command; `comrade auth <Tab>` lists
 `login`/`logout`/`status`; `comrade auth login <Tab>` lists the known
 providers; `comrade config get <Tab>` lists every real config key;
 `comrade init <Tab>` lists the supported shells.
 
-**Already have `comrade init` installed?** Completions are new content
-added on top of the existing hook — re-run `comrade init <shell>` once
-to pick them up (it's idempotent: your existing hook is left untouched,
-completions are simply added alongside it). Details:
+**Already have `comrade init` installed?** Completions and the space
+hint are new content added on top of the existing hook — re-run
+`comrade init <shell>` once to pick them up (it's idempotent: your
+existing hook is left untouched, the new content is simply added
+alongside it). Details:
 [docs/TECHNICAL.md §9](docs/TECHNICAL.md#9-shell-integration).
 
 ### Docs
@@ -379,24 +388,33 @@ comrade chat
 ### Kabuk (shell) tamamlama
 
 `comrade init <shell>`, shell kancasıyla birlikte Tab-tamamlamayı da
-otomatik olarak kurar — ayrı bir adım yok. Kurulduktan sonra:
+otomatik olarak kurar — ayrı bir adım yok. Kurulduktan sonra, bunu
+destekleyen shell'lerde boşluk tuşu da canlı bir sonraki-kelime ipucu
+tetikler; Tab-tamamlama ile tamamen aynı komut ağacından beslenir
+(`comrade __hint`, gizli, ~4ms, herhangi bir hatada sessiz), bu yüzden
+Tab'ın sunacağından asla sapamaz:
+
+```text
+comrade ▍ [auth|chat|config|do|explain|fix|help|history|init|upgrade]
+```
 
 | Shell | Öneriler nasıl görünür |
 |---|---|
-| bash | `comrade <kısmi>` sonrası Tab'a basın |
-| zsh | `comrade <kısmi>` sonrası Tab'a basın |
-| PowerShell | `comrade <kısmi>` sonrası Tab'a basın |
-| fish | Öneriler yazarken kendiliğinden görünür (fish'in doğal yazarken-tamamlama özelliği) |
+| zsh | Boşluk soluk bir satır-içi hayalet ipucu gösterir (ör. `comrade auth login ` → `[anthropic\|openai_compat\|google]`); Tab-tamamlama menüsü de çalışır |
+| PowerShell | Boşluk, Tab-tamamlama listesini satırın altında otomatik açar; Tab de çalışır |
+| fish | Öneriler yazarken kendiliğinden görünür (fish'in doğal yazarken-tamamlama özelliği) + Tab |
+| bash | Yalnızca Tab / çift-Tab — readline'da hayalet-metin mekanizması yok, ve boşluğu yeniden bağlamak magic-space ve yapıştırmayı bozardı |
 
 `comrade <Tab>` görünür her komutu listeler; `comrade auth <Tab>`
 `login`/`logout`/`status`'u listeler; `comrade auth login <Tab>` bilinen
 sağlayıcıları listeler; `comrade config get <Tab>` her gerçek config
 anahtarını listeler; `comrade init <Tab>` desteklenen shell'leri listeler.
 
-**`comrade init` zaten kurulu mu?** Tamamlamalar, mevcut hook'un üzerine
-eklenen yeni içeriktir — bunları almak için `comrade init <shell>`'i bir
-kez yeniden çalıştırın (idempotenttir: mevcut hook'unuza dokunulmaz,
-tamamlamalar yalnızca onun yanına eklenir). Ayrıntılar:
+**`comrade init` zaten kurulu mu?** Tamamlamalar ve boşluk ipucu, mevcut
+hook'un üzerine eklenen yeni içeriktir — bunları almak için `comrade
+init <shell>`'i bir kez yeniden çalıştırın (idempotenttir: mevcut
+hook'unuza dokunulmaz, yeni içerik yalnızca onun yanına eklenir).
+Ayrıntılar:
 [docs/TECHNICAL.tr.md §9](docs/TECHNICAL.tr.md#9-shell-entegrasyonu).
 
 ### Dokümanlar

@@ -1018,6 +1018,105 @@ tamamlamaları da ekler — başka herhangi bir snippet-içeriği
 değişikliğinin zaten kullandığı aynı "eski snippet yeniden yazılır"
 yolu.
 
+### Boşluk-tetiklemeli komut ipuçları
+
+Tab-tamamlamaya ek olarak, `comrade init <shell>` bunu destekleyen
+shell'lerde boşluk-tetiklemeli bir sonraki-kelime ipucu da kurar —
+zsh (satır-içi hayalet metin) ve PowerShell (otomatik açılan tamamlama
+listesi). Tamamlamalar gibi bu da aynı yönetilen bloğun içine eklenen
+yeni içeriktir; mevcut bir kurulum, yukarıda anlatılan aynı bir-kerelik
+`comrade init <shell>` yeniden çalıştırmasına ihtiyaç duyar.
+
+**`comrade __hint` sözleşmesi** (`internal/cli/hint.go`). Aşağıdaki
+shell widget'ları tarafından her tuş vuruşunda bir kez çağrılan, gizli,
+`DisableFlagParsing` bir komut — bu yüzden cobra'nın kendi
+`__complete`'i kadar anlık kalmak zorunda:
+
+- `root.Traverse`'i, tamamen aynı `ValidArgsFunction`/`ValidArgs`
+  kümesini, ve tamamen aynı alt-komut-görünürlük filtresini
+  (`visibleSubcommandNames`, `argvalidation.go` ile paylaşılır) yeniden
+  kullanır — `comrade __complete`'in kendisinin de kullandığı — bir
+  ipucu Tab-tamamlamanın sunacağından asla sapamaz, çünkü ikisi de aynı
+  canlı komut ağacını okur.
+- `RunE` değil `Run`, `defer func() { _ = recover() }()` ile sarmalı:
+  bu komutun tüm sözleşmesi "asla hata verme, ipucundan başka hiçbir
+  şey yazdırma, koşulsuz exit 0" — üçüncü taraf bir
+  `ValidArgsFunction`'dan dönen bir hata veya panik, her tuş vuruşunda
+  shell'e çıkan etkileşimli bir widget'a asla sızmamalı.
+- Köşeli parantez biçimini (`[a|b|c]`) render eder (`formatHintList`),
+  `hintMaxLen` = 90 karakterle sınırlı — `comrade config get ` tek
+  başına bu bütçeyi zaten aşıyor (20+ config anahtarı) — sığan son
+  isimden sonra kesip `|…]` ekler. İlk isim, uzunluğu ne olursa olsun
+  her zaman tam olarak dahil edilir, bu yüzden patolojik derecede uzun
+  tek bir isim ipucunu boş bir `[|…]`'e çökertemez. Boş adaylar `""`
+  olarak render edilir, asla çıplak bir `[]` değil — bu, hem `Run`'a
+  hem çağıranlarına tek bir "önerilecek bir şey yok" sinyali verir.
+- QA'da çağrı başına ~4ms ölçüldü; çözümleme yolunun herhangi bir
+  yerindeki herhangi bir hata yutulur ve hiçbir çıktı üretilmez, asla
+  yanıltıcı veya yarım bir ipucu değil.
+
+**zsh widget'ı** (`internal/shellinit/snippets/zsh.sh`), `[[ -o
+interactive ]] && zmodload zsh/zle` ile korunur:
+
+- `add-zle-hook-widget line-pre-redraw __comrade_hint_widget` üzerinden
+  bağlanır — bir keybinding değil, her-redraw'da çalışan bir hook, bu
+  yüzden zsh'nin veya bir kullanıcı eklentisinin zaten sahip olabileceği
+  bir tuşu asla talep etmez.
+- Yalnızca buffer `comrade\ *` ile eşleşip sonunda boşlukla bitiyorsa
+  tetiklenir; buffer'ı `"${(@z)BUFFER}"` ile tokenize eder — tırnaklı,
+  `@`-bayraklı biçim, çıplak `${(z)BUFFER}` değil — çünkü tırnaksız
+  `(z)`-bölünmüş kelimeler `setopt GLOB_SUBST` altında glob-uygundur, ve
+  glob metakarakteri içeren bir buffer kelimesi aksi halde redraw
+  sırasında bir `no matches found` hatası sızdırabilir.
+- Çözümlenen ipucunu `POSTDISPLAY`'e (zsh'nin kendi "imleçten sonraki
+  hayalet metin" mekanizması) yazar, ve `__comrade_hint_owns` ile
+  sahipliği takip eder, böylece `POSTDISPLAY`'i yalnızca ya hiçbir şey
+  onu talep etmemişse ya da onu en son comrade'ın kendisi ayarlamışsa
+  üzerine yazar — zsh-autosuggestions ile bu şekilde bir arada var
+  olur: mevcut bir öneriyi ezmek yerine her zaman ona öncelik verir.
+- Kendi `region_highlight` girdisini `memo=comrade` etiketiyle uygular,
+  böylece ipucu soluk/vurgusuz render edilir, ve her yazmadan önce aynı
+  etiket üzerinde dedupe eder
+  (`region_highlight=( ${region_highlight:#*memo=comrade} )`), böylece
+  yeniden render'lar asla yinelenen vurgu aralıkları biriktirmez.
+- Buffer artık sondaki-boşluk desenine uymadığı anda (yani kullanıcı
+  yazmaya devam ettiğinde) — ve yalnızca mevcut display'in sahibi
+  comrade'ın kendisiyse — `POSTDISPLAY`'i ve vurguyu temizler.
+
+**PowerShell işleyicisi** (`internal/shellinit/snippets/powershell.ps1`):
+
+- Yalnızca `SelfInsert` olmayan mevcut bir Boşluk
+  `PSReadLineKeyHandler` kayıtlı DEĞİLSE kurulur — özel bir kullanıcı
+  boşluk bağlaması tamamen dokunulmadan bırakılır.
+- İşleyici boşluğu kendisi ekler (`PSConsoleReadLine::Insert(' ')`),
+  buffer'ı `GetBufferState` ile geri okur, ve — yalnızca buffer `^\s*
+  comrade(\.exe)?(\s+[\w-]+)*\s$` ile eşleşiyorsa —
+  `PSConsoleReadLine::PossibleCompletions()`'ı çağırır, bu da
+  PSReadLine'ın kendi tamamlama listesini satırın altında render eder.
+  Bu bir liste render'ıdır, satır-içi hayalet metin değil: boşlukta
+  gerçek satır-içi hayalet metin, kasıtlı olarak sunulmayan derlenmiş
+  bir PSReadLine `ICommandPredictor` eklentisi gerektirirdi.
+- Kayıt `try`/`catch` içine sarılıdır: herhangi bir başarısızlıkta
+  (ör. eski bir PSReadLine'da `Set-PSReadLineKeyHandler` mevcut
+  değilse) sessizce geriler — kullanıcıya hiçbir hata görünmez, ve
+  yukarıdaki shell kancası ile Tab-tamamlama her durumda etkilenmeden
+  kalır.
+- Hem Windows PowerShell 5.1 hem pwsh 7'de doğrulandı.
+
+**bash**: boşluk-tetiklemeli ipucu yok. bash'in readline'ında,
+comrade'ın boşluk tuşunu yeniden bağlamadan kancalayabileceği bir
+hayalet-metin veya tuş-basımında-otomatik-liste ilkeli yok, ve boşluğu
+yeniden bağlamak güvensiz — magic-space ve yapıştırmayı bozar. bash
+yalnızca Tab / çift-Tab tamamlamasını korur (yukarıda anlatılan
+tamamlama mekanizması), `bash.sh`'nin kendisinde satır-içi
+belgelenmiştir.
+
+**fish**: yeni bir mekanizma eklenmedi. fish'in kendi yerleşik
+yazarken-otomatik-öneri özelliği, `comrade`'ın tamamlamalarını
+(`fish-completions.fish`) `comrade ` sonrası gri satır-içi hayalet
+metin olarak zaten render ediyor, bu yüzden ayrı bir boşluk-tetiklemeli
+ipucu gereksiz olurdu.
+
 ## 10. i18n mimarisi
 
 Kullanıcıya görünen her metin, bir `Translator.T()` çağrısı üzerinden

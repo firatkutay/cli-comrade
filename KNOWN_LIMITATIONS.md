@@ -24,6 +24,15 @@ hidden or downplayed.
   `$PROFILE` entegrasyonu golden testlerle doğrulandı, ancak bakım
   ekibince gerçek bir PowerShell oturumunda (gerçek
   `$?`/`$LASTEXITCODE`/`Get-History` yakalama) henüz çalıştırılmadı.
+- **Boşluk-tetiklemeli komut ipuçlarının görsel render'ı**: zsh hayalet-
+  metin boyaması (Docker zsh 5.9 üzerinde widget-state testleriyle) ve
+  PowerShell tamamlama-listesi render'ı (gerçek 5.1/7.6 üzerinde
+  parse+kayıt+koruma testleriyle) mantıksal olarak doğrulandı, ama
+  tuş-basımından ekrana çizime kadar olan zincir gerçek bir etkileşimli
+  terminal oturumunda henüz ekranda görsel olarak doğrulanmadı; canlı
+  bir macOS (gerçek zsh terminali) testi planlı ve bekliyor. Ayrıca
+  PSReadLine 2.0 (stok 5.1) sessiz-geri çekilme dalı test edilmedi (test
+  makinesinde 2.4.5 vardı).
 - **Gerçek OS keychain**: macOS Keychain, v0.1.3 sürüm QA'sında gerçek
   macOS'ta (Sequoia 15.7, arm64-emu QEMU VM) `comrade auth login` dahil
   uçtan uca canlı doğrulandı. Windows Credential Manager / Linux Secret
@@ -111,6 +120,14 @@ Kalan açık maddeler:
   integration is verified with golden tests, but has not yet been run
   by the maintainer in a real PowerShell session (real
   `$?`/`$LASTEXITCODE`/`Get-History` capture).
+- **Space-triggered command hint rendering**: zsh ghost-text painting
+  (verified via widget-state tests on Docker zsh 5.9) and PowerShell
+  completion-list rendering (verified via parse+registration+guard
+  tests on real 5.1/7.6) were both verified logically, but the actual
+  keypress-to-screen chain has not yet been visually verified in a real
+  interactive terminal session; a live macOS (real zsh terminal) test
+  is planned and pending. The PSReadLine 2.0 (stock 5.1) silent-
+  degradation branch is also untested (the test machine had 2.4.5).
 - **Real OS keychain**: macOS Keychain was live-verified end-to-end
   during v0.1.3 release QA on real macOS (Sequoia 15.7, arm64-emu QEMU
   VM), including `comrade auth login`. Windows Credential Manager /

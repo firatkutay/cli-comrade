@@ -1,3 +1,6 @@
+# fish's own built-in autosuggestions already render comrade's completions
+# (see fish-completions.fish) as gray inline ghost text after "comrade ",
+# with no extra wiring needed here.
 set -g __comrade_last_cmd ""
 function __comrade_postexec --on-event fish_postexec
     set -l ec $status

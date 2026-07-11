@@ -121,16 +121,31 @@ func translatedUnknownSubcommand(newLoader loaderFactory) cobra.PositionalArgs {
 	}
 }
 
-// visibleSubcommandNames returns cmd's own non-Hidden child command
+// visibleSubcommandNames returns cmd's own listable child command
 // names, in cmd.Commands()'s own alphabetical order (cobra sorts by
-// default) — the dynamic, derive-don't-hand-maintain source
-// translatedUnknownSubcommand's error message lists, so a future
-// subcommand added under auth/config is picked up automatically instead
-// of needing a second, hand-copied list kept in sync by hand.
+// default) — the dynamic, derive-don't-hand-maintain source both
+// translatedUnknownSubcommand's error message and newHintCmd's next-word
+// hint (hint.go) list from, so a future subcommand added under
+// auth/config is picked up automatically instead of needing a second,
+// hand-copied list kept in sync by hand.
+//
+// The filter is the EXACT one cobra's own subcommand-name completion
+// uses (spf13/cobra@v1.10.2 completions.go:517-518:
+// "subCmd.IsAvailableCommand() || subCmd == finalCmd.helpCommand") —
+// finalCmd.helpCommand itself is unexported outside package cobra, so
+// this uses the same name-based proxy cobra's OWN usage/help-template
+// code uses for the identical purpose in the same version (command.go's
+// several "subcmd.IsAvailableCommand() || subcmd.Name() ==
+// helpCommandName" comparisons, helpCommandName being the unexported
+// string constant "help"). IsAvailableCommand() alone deliberately
+// excludes a command's own registered help command (see
+// IsAvailableCommand's "c.Parent().helpCommand == c" check) as well as
+// any Deprecated one — both correctly still excluded here, unlike a
+// plain "!sub.Hidden" check.
 func visibleSubcommandNames(cmd *cobra.Command) []string {
 	var names []string
 	for _, sub := range cmd.Commands() {
-		if !sub.Hidden {
+		if sub.IsAvailableCommand() || sub.Name() == "help" {
 			names = append(names, sub.Name())
 		}
 	}

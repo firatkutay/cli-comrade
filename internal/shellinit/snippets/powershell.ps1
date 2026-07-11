@@ -48,4 +48,20 @@ if (Get-Command comrade -ErrorAction SilentlyContinue) {
         }
     }
     comrade completion powershell | Out-String | Invoke-Expression
+    try {
+        $existingSpacebarHandler = Get-PSReadLineKeyHandler -Chord Spacebar -ErrorAction SilentlyContinue | Where-Object { $_.Function -ne 'SelfInsert' -and $_.Function }
+        if ($null -eq $existingSpacebarHandler) {
+            Set-PSReadLineKeyHandler -Chord Spacebar -BriefDescription 'comrade hint' -ScriptBlock {
+                param($key, $arg)
+                [Microsoft.PowerShell.PSConsoleReadLine]::Insert(' ')
+                $line = $null
+                $cursor = 0
+                [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+                if ($line -match '^\s*comrade(\.exe)?(\s+[\w-]+)*\s$') {
+                    [Microsoft.PowerShell.PSConsoleReadLine]::PossibleCompletions()
+                }
+            }
+        }
+    } catch {
+    }
 }

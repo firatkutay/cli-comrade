@@ -34,6 +34,12 @@ case ";${PROMPT_COMMAND:-};" in
   *) PROMPT_COMMAND="__comrade_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
 esac
 command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)
+# bash's readline has no ghost-text/auto-list primitive comrade can hook
+# without rebinding the space key itself (which would break magic-space,
+# multiline editing, and paste) — unlike zsh/PowerShell above, there is
+# no space-triggered hint here. Press Tab twice after "comrade " (or any
+# subcommand) for the same next-word list via the completion sourced on
+# the line above.
 `
 
 const wantZshSnippet = `__comrade_last_cmd=""
@@ -53,9 +59,44 @@ if ! { autoload -Uz add-zsh-hook && add-zsh-hook precmd __comrade_precmd; } 2>/d
   precmd() { __comrade_precmd; }
 fi
 command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)
+if [[ -o interactive ]] && zmodload zsh/zle 2>/dev/null; then
+  typeset -g __comrade_hint_key="" __comrade_hint_text="" __comrade_hint_owns=0
+  __comrade_hint_widget() {
+    if [[ $BUFFER == comrade\ * && $BUFFER == *' ' ]]; then
+      local key="${BUFFER%% }"
+      if [[ $key != $__comrade_hint_key ]]; then
+        __comrade_hint_key=$key
+        # "${(@z)BUFFER}" (quoted, @-flag) rather than ${(z)BUFFER}
+        # (bare): unquoted (z)-split words are glob-eligible under
+        # 'setopt GLOB_SUBST', so a buffer word containing a glob
+        # metacharacter can trigger "no matches found" leaking to the
+        # terminal mid-redraw. The quoted "${(@z)}" form keeps (z)'s own
+        # per-word tokenization (the "@" flag preserves the array split
+        # across the double quotes) while suppressing further glob/
+        # re-splitting of each resulting word.
+        __comrade_hint_text=$(comrade __hint -- "${(@z)BUFFER}" 2>/dev/null)
+      fi
+      if [[ -n $__comrade_hint_text && ( -z $POSTDISPLAY || $__comrade_hint_owns -eq 1 ) ]]; then
+        POSTDISPLAY=" $__comrade_hint_text"
+        __comrade_hint_owns=1
+        region_highlight=( ${region_highlight:#*memo=comrade} )
+        region_highlight+=("$#BUFFER $(($#BUFFER + $#POSTDISPLAY)) fg=8 memo=comrade")
+      fi
+    elif (( __comrade_hint_owns )); then
+      POSTDISPLAY=""
+      __comrade_hint_owns=0
+      __comrade_hint_key=""
+      region_highlight=( ${region_highlight:#*memo=comrade} )
+    fi
+  }
+  autoload -Uz add-zle-hook-widget 2>/dev/null && command -v comrade >/dev/null 2>&1 && add-zle-hook-widget line-pre-redraw __comrade_hint_widget
+fi
 `
 
-const wantFishSnippet = `set -g __comrade_last_cmd ""
+const wantFishSnippet = `# fish's own built-in autosuggestions already render comrade's completions
+# (see fish-completions.fish) as gray inline ghost text after "comrade ",
+# with no extra wiring needed here.
+set -g __comrade_last_cmd ""
 function __comrade_postexec --on-event fish_postexec
     set -l ec $status
     if not command -v comrade >/dev/null 2>&1
@@ -119,6 +160,22 @@ const wantPowerShellSnippet = `if (Get-Command comrade -ErrorAction SilentlyCont
         }
     }
     comrade completion powershell | Out-String | Invoke-Expression
+    try {
+        $existingSpacebarHandler = Get-PSReadLineKeyHandler -Chord Spacebar -ErrorAction SilentlyContinue | Where-Object { $_.Function -ne 'SelfInsert' -and $_.Function }
+        if ($null -eq $existingSpacebarHandler) {
+            Set-PSReadLineKeyHandler -Chord Spacebar -BriefDescription 'comrade hint' -ScriptBlock {
+                param($key, $arg)
+                [Microsoft.PowerShell.PSConsoleReadLine]::Insert(' ')
+                $line = $null
+                $cursor = 0
+                [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+                if ($line -match '^\s*comrade(\.exe)?(\s+[\w-]+)*\s$') {
+                    [Microsoft.PowerShell.PSConsoleReadLine]::PossibleCompletions()
+                }
+            }
+        }
+    } catch {
+    }
 }
 `
 
@@ -180,6 +237,12 @@ func TestBlockWrapsSnippetInExactMarkers(t *testing.T) {
 		"  *) PROMPT_COMMAND=\"__comrade_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\" ;;\n" +
 		"esac\n" +
 		"command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)\n" +
+		"# bash's readline has no ghost-text/auto-list primitive comrade can hook\n" +
+		"# without rebinding the space key itself (which would break magic-space,\n" +
+		"# multiline editing, and paste) — unlike zsh/PowerShell above, there is\n" +
+		"# no space-triggered hint here. Press Tab twice after \"comrade \" (or any\n" +
+		"# subcommand) for the same next-word list via the completion sourced on\n" +
+		"# the line above.\n" +
 		shellinit.MarkerEnd
 	assert.Equal(t, want, got)
 	assert.False(t, strings.HasSuffix(got, "\n"), "Block must not end with a trailing newline")

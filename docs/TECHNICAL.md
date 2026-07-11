@@ -982,6 +982,99 @@ in its rc file (bash/zsh/PowerShell) and no completions file at all
 top of the existing hook, the same "outdated snippet gets rewritten"
 path any other snippet-content change already uses.
 
+### Space-triggered command hints
+
+Alongside Tab-completion, `comrade init <shell>` also wires a
+space-triggered next-word hint on the shells that support it —
+zsh (inline ghost text) and PowerShell (auto-opened completion list).
+Like completions, this is new content added inside the same managed
+block; an existing install needs the same one-time `comrade init
+<shell>` re-run described above.
+
+**`comrade __hint` contract** (`internal/cli/hint.go`). A hidden,
+`DisableFlagParsing` command invoked once per keystroke by the shell
+widgets below, so it must stay as close to instantaneous as cobra's own
+`__complete`:
+
+- Reuses `root.Traverse`, the exact same `ValidArgsFunction`/`ValidArgs`
+  set, and the exact same subcommand-visibility filter
+  (`visibleSubcommandNames`, shared with `argvalidation.go`) that
+  `comrade __complete` itself uses — a hint can never drift from what
+  Tab-completion would offer, because both read the same live command
+  tree.
+- `Run`, not `RunE`, wrapped in `defer func() { _ = recover() }()`: this
+  command's whole contract is "never error, never print anything but
+  the hint itself, exit 0 unconditionally" — a returned error or a panic
+  from a third-party `ValidArgsFunction` must never leak into an
+  interactive shell widget that shells out on every keystroke.
+- Renders the bracketed form `[a|b|c]` (`formatHintList`), capped at
+  `hintMaxLen` = 90 characters — `comrade config get ` alone already
+  exceeds that budget (20+ config keys) — truncating after the last
+  name that still fits and appending `|…]`. The first name is always
+  included in full regardless of length, so one pathologically long
+  name can never collapse the hint to an empty `[|…]`. Empty candidates
+  render as `""`, never a bare `[]`, giving both `Run` and its callers a
+  single "nothing to suggest" signal.
+- Measured at ~4ms per invocation in QA; any error anywhere in the
+  resolution path is swallowed and results in no output at all, never a
+  misleading or partial hint.
+
+**zsh widget** (`internal/shellinit/snippets/zsh.sh`), gated on
+`[[ -o interactive ]] && zmodload zsh/zle`:
+
+- Hooked via `add-zle-hook-widget line-pre-redraw
+  __comrade_hint_widget` — a per-redraw hook, not a keybinding, so it
+  never claims a key zsh or a user plugin might already own.
+- Fires only when the buffer is `comrade\ *` and ends in a trailing
+  space; tokenizes the buffer with `"${(@z)BUFFER}"` — the quoted,
+  `@`-flagged form, not the bare `${(z)BUFFER}` — because unquoted
+  `(z)`-split words are glob-eligible under `setopt GLOB_SUBST`, and a
+  buffer word containing a glob metacharacter could otherwise leak a
+  `no matches found` error mid-redraw.
+- Writes the resolved hint into `POSTDISPLAY` (zsh's own "ghost text
+  after the cursor" mechanism), and tracks ownership with
+  `__comrade_hint_owns` so it only ever overwrites `POSTDISPLAY` when
+  either nothing else has claimed it or comrade itself set it last —
+  this is how it coexists with zsh-autosuggestions: it always defers to
+  an existing suggestion rather than clobbering it.
+- Applies its own `region_highlight` entry tagged `memo=comrade` so the
+  hint renders dim/de-emphasized, and dedupes on that same tag
+  (`region_highlight=( ${region_highlight:#*memo=comrade} )`) before
+  each write so re-renders never accumulate duplicate highlight spans.
+- Clears `POSTDISPLAY` and the highlight the moment the buffer no
+  longer matches the trailing-space pattern (i.e. the user keeps
+  typing), and only when comrade itself owns the current display.
+
+**PowerShell handler** (`internal/shellinit/snippets/powershell.ps1`):
+
+- Installed only if no existing, non-`SelfInsert` Spacebar
+  `PSReadLineKeyHandler` is already registered — a custom user binding
+  on space is left completely untouched.
+- The handler inserts the space itself (`PSConsoleReadLine::Insert('
+  ')`), reads the buffer back via `GetBufferState`, and — only when the
+  buffer matches `^\s*comrade(\.exe)?(\s+[\w-]+)*\s$` — calls
+  `PSConsoleReadLine::PossibleCompletions()`, which renders PSReadLine's
+  own completion list below the line. This is a list render, not inline
+  ghost text: true inline ghost text on space would require a compiled
+  PSReadLine `ICommandPredictor` plugin, deliberately not shipped here.
+- Registration is wrapped in `try`/`catch`: on any failure (e.g.
+  `Set-PSReadLineKeyHandler` unavailable on an old PSReadLine) it
+  degrades silently — no error surfaces to the user, and the shell hook
+  and Tab-completion above remain unaffected either way.
+- Verified on both Windows PowerShell 5.1 and pwsh 7.
+
+**bash**: no space-triggered hint. bash's readline has no ghost-text or
+auto-list-on-keypress primitive comrade can hook without rebinding the
+space key itself, and rebinding space is unsafe — it breaks
+magic-space and paste. bash keeps Tab / double-Tab completion only
+(the completion machinery described above), documented in-line in
+`bash.sh` itself.
+
+**fish**: no new mechanism added. fish's own built-in as-you-type
+autosuggestions already render `comrade`'s completions
+(`fish-completions.fish`) as gray inline ghost text after `comrade `,
+so a separate space-triggered hint would be redundant.
+
 ## 10. i18n architecture
 
 Every user-facing string routes through `internal/i18n`'s

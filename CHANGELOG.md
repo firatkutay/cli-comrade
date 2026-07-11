@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-11
+
+### Added
+
+- **Space-triggered inline command hints**: after `comrade init <shell>` (re-run once on an existing install to pick it up), pressing space after `comrade` or a known subcommand now shows the next-word hint live. zsh shows a dim inline ghost hint that clears as you keep typing and defers to zsh-autosuggestions when present; PowerShell auto-opens the Tab-completion list below the line; fish already covers this via its native as-you-type autosuggestions, so nothing new was added there; bash keeps Tab / double-Tab only — readline has no ghost-text mechanism and rebinding space would break magic-space and paste. Powered by a new hidden `comrade __hint` resolver that reads the same command tree as Tab-completion, so a hint can never drift from what Tab itself would offer.
+
 ### Changed
 
 - Documentation overhauled for the v0.1.4 channel reality: README rewritten; INSTALL.md, KNOWN_LIMITATIONS.md, SECURITY.md, and PACKAGING.md refreshed to reflect that Homebrew/Scoop are live and winget/Snap are pending third-party review. Internal development-process records (`UYGULAMA_PLANI.md`, `docs/PROGRESS.md`, `docs/phases/`) archived under `docs/history/`.
@@ -827,7 +833,8 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/firatkutay/cli-comrade/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/firatkutay/cli-comrade/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/firatkutay/cli-comrade/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/firatkutay/cli-comrade/compare/v0.1.1...v0.1.2

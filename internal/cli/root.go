@@ -137,7 +137,16 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 	// a new version immediately after the user just checked/installed
 	// one).
 	root.PersistentPostRunE = func(cmd *cobra.Command, args []string) error {
-		if (cmd == root && len(args) == 0) || cmd.Name() == "upgrade" {
+		// __hint (hint.go) is invoked once per keystroke by the
+		// space-triggered shell widgets and must stay zero-config/
+		// zero-network — see newHintCmd's own doc comment. Without this
+		// skip, every hint request would fall through to
+		// maybeNotifyUpdate below exactly like any other successful
+		// subcommand (cobra's own execute() walks PersistentPostRunE up
+		// from whichever command actually ran, with no built-in
+		// exception for a Hidden one), silently loading config on a hot
+		// path that must never touch it.
+		if (cmd == root && len(args) == 0) || cmd.Name() == "upgrade" || cmd.Name() == "__hint" {
 			return nil
 		}
 		maybeNotifyUpdate(cmd, newLoader, version, updateFetcher)
@@ -186,6 +195,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 		authCmd, initCmd, configCmd,
 		historyCmd, upgradeCmd,
 		newHookCmd(newLoader),
+		newHintCmd(),
 	)
 
 	// Localizes every command's --help/usage output (help.go) — must run

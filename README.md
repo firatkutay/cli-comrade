@@ -1,7 +1,8 @@
 <div align="center">
 <img width="1199" height="573" alt="image" src="https://github.com/user-attachments/assets/380bfd7e-879a-41fa-a815-982713803823" />
 
-**A cross-platform AI CLI companion for people who don't want to fight the terminal.**
+
+**A cross-platform AI CLI companion for people who don't want to fight the terminal.**                           
 **Terminalle uğraşmak istemeyenler için cross-platform bir yapay zeka CLI yoldaşı.**
 
 [![Release](https://img.shields.io/github/v/release/firatkutay/cli-comrade)](https://github.com/firatkutay/cli-comrade/releases)

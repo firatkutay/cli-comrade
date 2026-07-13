@@ -36,3 +36,8 @@ Thumbs.db
 # Local scratch state (never versioned)
 .remember/
 .claude/
+
+# Playwright MCP browser console/page logs, dropped into the repo CWD
+# when Playwright is driven from here (e.g. noVNC-based macOS QA) —
+# tooling scratch, never a source.
+.playwright-mcp/

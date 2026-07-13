@@ -1,4 +1,5 @@
 <div align="center">
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/809b8c42-081e-432d-82b3-cf7ae697d218" />
 
 # cli-comrade
 

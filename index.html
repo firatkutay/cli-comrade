@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cli-comrade — terminalde yapay zeka yoldaşınız / your AI CLI companion</title>
+  <meta name="description" content="cli-comrade (comrade): terminalle uğraşmak istemeyenler için doğal dille (TR/EN) çalışan, cross-platform AI komut satırı asistanı. An AI CLI companion for people who don't want to fight the terminal — Windows, macOS, Linux." />
+  <meta name="theme-color" content="#05070a" />
+
+  <!-- Open Graph / link previews -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="cli-comrade — AI CLI companion" />
+  <meta property="og:description" content="Terminalle uğraşmak istemeyenlere komut satırında yoldaşlık eden yapay zeka asistanı. An AI CLI companion for people who don't want to fight the terminal." />
+  <meta property="og:image" content="./assets/logo.png" />
+  <meta property="og:url" content="https://firatkutay.github.io/cli-comrade/" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main" data-tr="İçeriğe atla" data-en="Skip to content">İçeriğe atla</a>
+
+  <!-- ============ STICKY TOP BAR ============ -->
+  <header class="topbar" role="banner">
+    <div class="topbar__inner">
+      <a class="brand" href="#hero" aria-label="cli-comrade">
+        <span class="brand__mark" aria-hidden="true">
+          <span class="brand__prompt">&gt;_</span>
+        </span>
+        <span class="brand__word"><span class="brand__cli">cli</span><span class="brand__comrade">comrade</span></span>
+      </a>
+
+      <nav class="topnav" aria-label="Ana / Primary">
+        <div class="langtoggle" role="group" data-tr-aria="Dil seçimi" data-en-aria="Language selection" aria-label="Dil seçimi">
+          <button type="button" class="langtoggle__btn" data-lang="tr" aria-pressed="true">TR</button>
+          <button type="button" class="langtoggle__btn" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="ghlink" href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer">
+          <svg class="ghlink__icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span data-tr="GitHub" data-en="GitHub">GitHub</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="hero">
+      <div class="hero__grid">
+        <div class="hero__copy">
+          <img class="hero__logo" src="./assets/logo.png" width="1199" height="573" alt="cli-comrade" />
+          <h1 class="hero__tagline"
+              data-tr="Terminalle uğraşmak istemeyenlere komut satırında yoldaşlık eden yapay zeka asistanı."
+              data-en="An AI CLI companion for people who don't want to fight the terminal.">Terminalle uğraşmak istemeyenlere komut satırında yoldaşlık eden yapay zeka asistanı.</h1>
+          <p class="hero__sub"
+             data-tr="Windows · macOS · Linux üzerinde çalışır. Türkçe ya da İngilizce, doğal dille konuş."
+             data-en="Runs on Windows · macOS · Linux. Speak naturally, in Turkish or English.">Windows · macOS · Linux üzerinde çalışır. Türkçe ya da İngilizce, doğal dille konuş.</p>
+          <div class="hero__cta">
+            <a class="btn btn--primary" href="#install" data-tr="Kur" data-en="Install">Kur</a>
+            <a class="btn btn--ghost" href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer" data-tr="GitHub'da gör" data-en="View on GitHub">GitHub'da gör</a>
+          </div>
+        </div>
+
+        <!-- ===== SIGNATURE: 3D CRT TERMINAL ===== -->
+        <div class="crt-stage" id="crtStage" aria-hidden="false">
+          <div class="crt" id="crt">
+            <div class="crt__bezel">
+              <div class="crt__bar">
+                <span class="crt__dot crt__dot--red"></span>
+                <span class="crt__dot crt__dot--amber"></span>
+                <span class="crt__dot crt__dot--green"></span>
+                <span class="crt__title">comrade — ask</span>
+              </div>
+              <div class="crt__screen">
+                <pre class="crt__pre" id="crtOut" role="img"
+                     data-tr-aria="comrade ask modunda canlı oturum: 8080 portunu dinleyen süreci bulup onay isteyerek sonlandırıyor."
+                     data-en-aria="A live comrade ask-mode session: it finds the process on port 8080 and asks before killing it."
+                     aria-label="comrade ask modunda canlı oturum"></pre>
+                <div class="crt__scan" aria-hidden="true"></div>
+                <div class="crt__glow" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ WHAT IT DOES ============ -->
+    <section class="section" id="what">
+      <p class="eyebrow" data-tr="// ne yapar" data-en="// what it does">// ne yapar</p>
+      <h2 class="section__title" data-tr="Dört komut, bir yoldaş" data-en="Four commands, one comrade">Dört komut, bir yoldaş</h2>
+      <div class="cards">
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">fix</span></div>
+          <p class="card__desc" data-tr="Son başarısız komutu teşhis eder, çözüm önerir." data-en="Diagnoses your last failed command and proposes a fix.">Son başarısız komutu teşhis eder, çözüm önerir.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-str">"docker kur"</span></div>
+          <p class="card__desc" data-tr="Serbest metin isteği çok adımlı plana çevirir ve moda göre çalıştırır." data-en="Turns a plain-language request into a multi-step plan and runs it per the active mode.">Serbest metin isteği çok adımlı plana çevirir ve moda göre çalıştırır.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">explain</span> <span class="tok-str">"git rebase -i HEAD~5"</span></div>
+          <p class="card__desc" data-tr="Bir komutu çalıştırmadan bayrak bayrak açıklar." data-en="Explains a command flag-by-flag without running it.">Bir komutu çalıştırmadan bayrak bayrak açıklar.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">chat</span></div>
+          <p class="card__desc" data-tr="Bağlamı koruyan interaktif sohbet." data-en="Context-preserving interactive chat.">Bağlamı koruyan interaktif sohbet.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ BEHAVIOR MODES ============ -->
+    <section class="section" id="modes">
+      <p class="eyebrow" data-tr="// davranış modları" data-en="// behavior modes">// davranış modları</p>
+      <h2 class="section__title" data-tr="Ne kadar devralsın, sen seç" data-en="You decide how much it takes over">Ne kadar devralsın, sen seç</h2>
+      <div class="modes">
+        <article class="mode">
+          <h3 class="mode__name">auto</h3>
+          <p class="mode__desc" data-tr="Her adımı kendisi çalıştırır." data-en="Runs each step itself.">Her adımı kendisi çalıştırır.</p>
+        </article>
+        <article class="mode mode--default">
+          <span class="mode__badge" data-tr="Varsayılan" data-en="Default">Varsayılan</span>
+          <h3 class="mode__name">ask</h3>
+          <p class="mode__desc" data-tr="Her komuttan önce gerekçe + komutu gösterir, onay ister." data-en="Shows a rationale + the command before each step and asks.">Her komuttan önce gerekçe + komutu gösterir, onay ister.</p>
+        </article>
+        <article class="mode">
+          <h3 class="mode__name">info</h3>
+          <p class="mode__desc" data-tr="Hiçbir şey çalıştırmaz — sebebi ve çözümü açıklar." data-en="Runs nothing — explains the cause and the fix.">Hiçbir şey çalıştırmaz — sebebi ve çözümü açıklar.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ SAFETY ============ -->
+    <section class="section" id="safety">
+      <p class="eyebrow" data-tr="// güvenlik" data-en="// safety">// güvenlik</p>
+      <h2 class="section__title" data-tr="LLM'e asla güvenmez" data-en="It never trusts the LLM">LLM'e asla güvenmez</h2>
+      <div class="safety">
+        <div class="safety__demo" role="img"
+             data-tr-aria="Yıkıcı bir komut engellendi: rm -rf /, destructive olarak işaretlendi ve bloklandı."
+             data-en-aria="A destructive command was blocked: rm -rf / flagged as destructive and stopped."
+             aria-label="Yıkıcı komut engellendi">
+          <div class="safety__line"><span class="tok-prompt">$</span> comrade <span class="tok-str">"her şeyi sil"</span></div>
+          <div class="safety__line safety__line--cmd"><span class="tok-arrow">&rarr;</span> rm -rf /</div>
+          <div class="safety__line">
+            <span class="badge badge--destructive">destructive</span>
+            <span class="badge badge--blocked" data-tr="ENGELLENDİ" data-en="BLOCKED">ENGELLENDİ</span>
+          </div>
+          <div class="safety__line safety__note" data-tr="Bu komut geri alınamaz. Onay olmadan çalıştırılmayacak." data-en="This command is irreversible. It will not run without confirmation.">Bu komut geri alınamaz. Onay olmadan çalıştırılmayacak.</div>
+        </div>
+        <div class="safety__copy">
+          <p class="safety__rule"
+             data-tr="`auto` modda bile yıkıcı komutlar (rm -rf /, mkfs, dd, fork-bomb…) daima onay ister. Yerel bir kural motoru + denylist ikinci kontrolü yapar ve LLM'e asla güvenmez."
+             data-en="Even in `auto`, destructive commands (rm -rf /, mkfs, dd, fork bombs…) always require confirmation. A local rule engine + denylist does a second check and never trusts the LLM."></p>
+          <ul class="safety__list">
+            <li data-tr="Redaction: makineden hiçbir şey çıkmadan önce sırlar (API anahtarı, token, parola) maskelenir." data-en="Redaction: secrets (API keys, tokens, passwords) are masked before anything leaves the machine."></li>
+            <li data-tr="Audit log: çalıştırılan her komut zaman damgası, mod ve risk sınıfıyla kaydedilir." data-en="Audit log: every executed command is recorded with timestamp, mode and risk class."></li>
+            <li data-tr="API anahtarları keychain'de tutulur, config dosyasına düz metin yazılmaz." data-en="API keys are stored in the OS keychain, never written to config in plaintext."></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PROVIDERS ============ -->
+    <section class="section" id="providers">
+      <p class="eyebrow" data-tr="// sağlayıcılar" data-en="// providers">// sağlayıcılar</p>
+      <h2 class="section__title" data-tr="Kendi modelini getir" data-en="Bring your own model">Kendi modelini getir</h2>
+      <div class="providers">
+        <div class="provider"><span class="provider__name">Anthropic</span><span class="provider__meta" data-tr="Messages API" data-en="Messages API">Messages API</span></div>
+        <div class="provider"><span class="provider__name" data-tr="OpenAI-uyumlu" data-en="OpenAI-compatible">OpenAI-uyumlu</span><span class="provider__meta">OpenAI · OpenRouter · Groq · Mistral…</span></div>
+        <div class="provider"><span class="provider__name">Google Gemini</span><span class="provider__meta" data-tr="bulut" data-en="cloud">bulut</span></div>
+        <div class="provider"><span class="provider__name">Ollama</span><span class="provider__meta" data-tr="yerel · çevrimdışı" data-en="local · offline">yerel · çevrimdışı</span></div>
+      </div>
+    </section>
+
+    <!-- ============ INSTALL ============ -->
+    <section class="section" id="install">
+      <p class="eyebrow" data-tr="// kurulum" data-en="// install">// kurulum</p>
+      <h2 class="section__title" data-tr="Bir satırda kur" data-en="Install in one line">Bir satırda kur</h2>
+
+      <div class="install">
+        <div class="install__tabs" role="tablist" data-tr-aria="Kurulum yöntemi" data-en-aria="Install method" aria-label="Kurulum yöntemi">
+          <button class="tab" role="tab" id="tab-curl" aria-controls="panel-curl" aria-selected="true" tabindex="0">macOS / Linux</button>
+          <button class="tab" role="tab" id="tab-win" aria-controls="panel-win" aria-selected="false" tabindex="-1">Windows</button>
+          <button class="tab" role="tab" id="tab-brew" aria-controls="panel-brew" aria-selected="false" tabindex="-1">Homebrew</button>
+          <button class="tab" role="tab" id="tab-scoop" aria-controls="panel-scoop" aria-selected="false" tabindex="-1">Scoop</button>
+          <button class="tab" role="tab" id="tab-winget" aria-controls="panel-winget" aria-selected="false" tabindex="-1">winget</button>
+          <button class="tab" role="tab" id="tab-snap" aria-controls="panel-snap" aria-selected="false" tabindex="-1">Snap</button>
+        </div>
+
+        <div class="install__panels">
+          <div class="panel" role="tabpanel" id="panel-curl" aria-labelledby="tab-curl" tabindex="0">
+            <div class="code">
+              <code>curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh</code>
+              <button type="button" class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh"><span class="copy-label">Kopyala</span></button>
+            </div>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-win" aria-labelledby="tab-win" tabindex="0" hidden>
+            <div class="code">
+              <code>irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex</code>
+              <button type="button" class="copy" data-copy="irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint" data-tr="PowerShell'de çalıştır." data-en="Run in PowerShell.">PowerShell'de çalıştır.</p>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-brew" aria-labelledby="tab-brew" tabindex="0" hidden>
+            <div class="code">
+              <code>brew install firatkutay/tap/comrade</code>
+              <button type="button" class="copy" data-copy="brew install firatkutay/tap/comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-scoop" aria-labelledby="tab-scoop" tabindex="0" hidden>
+            <div class="code">
+              <code>scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket</code>
+              <button type="button" class="copy" data-copy="scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <div class="code">
+              <code>scoop install comrade</code>
+              <button type="button" class="copy" data-copy="scoop install comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-winget" aria-labelledby="tab-winget" tabindex="0" hidden>
+            <div class="code">
+              <code>winget install cli.comrade</code>
+              <button type="button" class="copy" data-copy="winget install cli.comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint"><span class="statustag statustag--pending" data-tr="onay bekliyor" data-en="pending review">onay bekliyor</span> <span data-tr="Microsoft moderatör onayı bekleniyor." data-en="Awaiting Microsoft moderator approval.">Microsoft moderatör onayı bekleniyor.</span></p>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-snap" aria-labelledby="tab-snap" tabindex="0" hidden>
+            <div class="code">
+              <code>sudo snap install cli-comrade --classic</code>
+              <button type="button" class="copy" data-copy="sudo snap install cli-comrade --classic"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint"><span class="statustag statustag--soon" data-tr="yakında" data-en="soon">yakında</span> <span data-tr="Snap Store'da yayına hazırlanıyor." data-en="Being prepared for the Snap Store.">Snap Store'da yayına hazırlanıyor.</span></p>
+          </div>
+        </div>
+
+        <p class="install__after">
+          <span data-tr="Kurduktan sonra:" data-en="After installing:">Kurduktan sonra:</span>
+          <code class="inline-code">comrade init</code>
+          <span class="dim" data-tr="(shell hook + sekme tamamlama)" data-en="(shell hook + tab-completion)">(shell hook + sekme tamamlama)</span>
+          <span class="sep">·</span>
+          <code class="inline-code">comrade auth login</code>
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer" role="contentinfo">
+    <div class="footer__inner">
+      <div class="footer__links">
+        <a href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/firatkutay/cli-comrade/releases" target="_blank" rel="noopener noreferrer" data-tr="Sürümler" data-en="Releases">Sürümler</a>
+        <a href="https://github.com/firatkutay/cli-comrade#readme" target="_blank" rel="noopener noreferrer" data-tr="Dokümanlar" data-en="Docs">Dokümanlar</a>
+        <a href="https://github.com/firatkutay/cli-comrade/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
+      </div>
+      <p class="footer__meta">
+        <span class="footer__ver">v0.2.0</span>
+        <span class="sep">·</span>
+        <span data-tr="Terminalde yoldaşlıkla yapıldı." data-en="Built with terminal camaraderie.">Terminalde yoldaşlıkla yapıldı.</span>
+      </p>
+    </div>
+  </footer>
+
+  <script src="./script.js"></script>
+</body>
+</html>

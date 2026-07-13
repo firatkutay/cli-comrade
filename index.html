@@ -59,8 +59,8 @@
               data-tr="Terminalle uğraşmak istemeyenlere komut satırında yoldaşlık eden yapay zeka asistanı."
               data-en="An AI CLI companion for people who don't want to fight the terminal.">Terminalle uğraşmak istemeyenlere komut satırında yoldaşlık eden yapay zeka asistanı.</h1>
           <p class="hero__sub"
-             data-tr="Windows · macOS · Linux üzerinde çalışır. Türkçe ya da İngilizce, doğal dille konuş."
-             data-en="Runs on Windows · macOS · Linux. Speak naturally, in Turkish or English.">Windows · macOS · Linux üzerinde çalışır. Türkçe ya da İngilizce, doğal dille konuş.</p>
+             data-tr="Windows, macOS ve Linux'ta çalışır. Ne istediğini gündelik dille söyle — komutları comrade çıkarır."
+             data-en="Runs on Windows, macOS and Linux. Say what you want in plain words — comrade works out the commands.">Windows, macOS ve Linux'ta çalışır. Ne istediğini gündelik dille söyle — komutları comrade çıkarır.</p>
           <div class="hero__cta">
             <a class="btn btn--primary" href="#install" data-tr="Kur" data-en="Install">Kur</a>
             <a class="btn btn--ghost" href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer" data-tr="GitHub'da gör" data-en="View on GitHub">GitHub'da gör</a>
@@ -101,7 +101,7 @@
           <p class="card__desc" data-tr="Son başarısız komutu teşhis eder, çözüm önerir." data-en="Diagnoses your last failed command and proposes a fix.">Son başarısız komutu teşhis eder, çözüm önerir.</p>
         </article>
         <article class="card">
-          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-str">"docker kur"</span></div>
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-str" data-tr="&quot;docker kur&quot;" data-en="&quot;docker install&quot;">"docker kur"</span></div>
           <p class="card__desc" data-tr="Serbest metin isteği çok adımlı plana çevirir ve moda göre çalıştırır." data-en="Turns a plain-language request into a multi-step plan and runs it per the active mode.">Serbest metin isteği çok adımlı plana çevirir ve moda göre çalıştırır.</p>
         </article>
         <article class="card">
@@ -145,7 +145,7 @@
              data-tr-aria="Yıkıcı bir komut engellendi: rm -rf /, destructive olarak işaretlendi ve bloklandı."
              data-en-aria="A destructive command was blocked: rm -rf / flagged as destructive and stopped."
              aria-label="Yıkıcı komut engellendi">
-          <div class="safety__line"><span class="tok-prompt">$</span> comrade <span class="tok-str">"her şeyi sil"</span></div>
+          <div class="safety__line"><span class="tok-prompt">$</span> comrade <span class="tok-str" data-tr="&quot;her şeyi sil&quot;" data-en="&quot;delete everything&quot;">"her şeyi sil"</span></div>
           <div class="safety__line safety__line--cmd"><span class="tok-arrow">&rarr;</span> rm -rf /</div>
           <div class="safety__line">
             <span class="badge badge--destructive">destructive</span>
@@ -171,9 +171,9 @@
       <p class="eyebrow" data-tr="// sağlayıcılar" data-en="// providers">// sağlayıcılar</p>
       <h2 class="section__title" data-tr="Kendi modelini getir" data-en="Bring your own model">Kendi modelini getir</h2>
       <div class="providers">
-        <div class="provider"><span class="provider__name">Anthropic</span><span class="provider__meta" data-tr="Messages API" data-en="Messages API">Messages API</span></div>
+        <div class="provider"><span class="provider__name">Anthropic</span><span class="provider__meta">Claude</span></div>
         <div class="provider"><span class="provider__name" data-tr="OpenAI-uyumlu" data-en="OpenAI-compatible">OpenAI-uyumlu</span><span class="provider__meta">OpenAI · OpenRouter · Groq · Mistral…</span></div>
-        <div class="provider"><span class="provider__name">Google Gemini</span><span class="provider__meta" data-tr="bulut" data-en="cloud">bulut</span></div>
+        <div class="provider"><span class="provider__name">Google</span><span class="provider__meta">Gemini</span></div>
         <div class="provider"><span class="provider__name">Ollama</span><span class="provider__meta" data-tr="yerel · çevrimdışı" data-en="local · offline">yerel · çevrimdışı</span></div>
       </div>
     </section>
@@ -226,14 +226,14 @@
           <div class="panel" role="tabpanel" id="panel-winget" aria-labelledby="tab-winget" tabindex="0" hidden>
             <div class="code">
               <code>winget install cli.comrade</code>
-              <button type="button" class="copy" data-copy="winget install cli.comrade"><span class="copy-label">Kopyala</span></button>
+              <button type="button" class="copy" data-soon="1" data-copy="winget install cli.comrade"><span class="copy-label">Kopyala</span></button>
             </div>
             <p class="panel__hint"><span class="statustag statustag--pending" data-tr="onay bekliyor" data-en="pending review">onay bekliyor</span> <span data-tr="Microsoft moderatör onayı bekleniyor." data-en="Awaiting Microsoft moderator approval.">Microsoft moderatör onayı bekleniyor.</span></p>
           </div>
           <div class="panel" role="tabpanel" id="panel-snap" aria-labelledby="tab-snap" tabindex="0" hidden>
             <div class="code">
               <code>sudo snap install cli-comrade --classic</code>
-              <button type="button" class="copy" data-copy="sudo snap install cli-comrade --classic"><span class="copy-label">Kopyala</span></button>
+              <button type="button" class="copy" data-soon="1" data-copy="sudo snap install cli-comrade --classic"><span class="copy-label">Kopyala</span></button>
             </div>
             <p class="panel__hint"><span class="statustag statustag--soon" data-tr="yakında" data-en="soon">yakında</span> <span data-tr="Snap Store'da yayına hazırlanıyor." data-en="Being prepared for the Snap Store.">Snap Store'da yayına hazırlanıyor.</span></p>
           </div>

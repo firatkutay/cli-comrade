@@ -93,7 +93,9 @@
   function setCopyLabel(btn) {
     var span = btn.querySelector(".copy-label");
     if (!span) return;
-    if (btn.classList.contains("copied")) {
+    if (btn.classList.contains("soon")) {
+      span.textContent = lang === "tr" ? "Yakında" : "Soon";
+    } else if (btn.classList.contains("copied")) {
       span.textContent = lang === "tr" ? "Kopyalandı ✓" : "Copied ✓";
     } else {
       span.textContent = lang === "tr" ? "Kopyala" : "Copy";
@@ -104,8 +106,20 @@
   for (var ci = 0; ci < copyButtons.length; ci++) {
     (function (btn) {
       var text = btn.getAttribute("data-copy") || "";
-      btn.setAttribute("aria-label", "Kopyala / Copy");
+      var soon = btn.getAttribute("data-soon") === "1";
+      btn.setAttribute("aria-label", soon ? "Yakında / Soon" : "Kopyala / Copy");
       btn.addEventListener("click", function () {
+        // Channels not live yet (winget/snap): don't copy — flash a red "Soon".
+        if (soon) {
+          btn.classList.add("soon");
+          setCopyLabel(btn);
+          window.clearTimeout(btn._t);
+          btn._t = window.setTimeout(function () {
+            btn.classList.remove("soon");
+            setCopyLabel(btn);
+          }, 1800);
+          return;
+        }
         copyText(text).then(function () {
           btn.classList.add("copied");
           setCopyLabel(btn);
@@ -314,7 +328,70 @@
   }
 
   /* -----------------------------------------------------------
+     SCROLL REVEAL — staggered rise + fade (IntersectionObserver)
+     Progressive enhancement: without JS (or under reduced motion)
+     all content stays fully visible; we only add hidden state here.
+     ----------------------------------------------------------- */
+  function setupReveal() {
+    if (prefersReduced || !("IntersectionObserver" in window)) return;
+    document.body.classList.add("reveals-enabled");
+
+    var io = new IntersectionObserver(
+      function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          var en = entries[i];
+          if (!en.isIntersecting) continue;
+          var el = en.target;
+          el.classList.add("is-visible");
+          io.unobserve(el);
+          // After the reveal settles, drop the reveal wiring so the
+          // element's own (fast) hover transition takes back over.
+          (function (node) {
+            window.setTimeout(function () {
+              node.classList.remove("reveal");
+              node.style.transitionDelay = "";
+              node.style.willChange = "";
+            }, 720);
+          })(el);
+        }
+      },
+      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" }
+    );
+
+    function observe(el, delayMs) {
+      el.classList.add("reveal");
+      if (delayMs) el.style.transitionDelay = delayMs + "ms";
+      io.observe(el);
+    }
+
+    // Section headers rise on their own.
+    var solos = document.querySelectorAll(
+      ".section .eyebrow, .section .section__title, .install__after"
+    );
+    for (var s = 0; s < solos.length; s++) observe(solos[s], 0);
+
+    // Grids stagger their children left-to-right.
+    [".cards", ".modes", ".providers"].forEach(function (sel) {
+      var wrap = document.querySelector(sel);
+      if (!wrap) return;
+      var kids = wrap.children;
+      for (var k = 0; k < kids.length; k++) observe(kids[k], k * 70);
+    });
+
+    // Safety two-column block.
+    var safety = document.querySelectorAll(".safety__demo, .safety__copy");
+    for (var f = 0; f < safety.length; f++) observe(safety[f], f * 80);
+
+    // Install controls.
+    var tablist = document.querySelector(".install__tabs");
+    if (tablist) observe(tablist, 0);
+    var panels = document.querySelector(".install__panels");
+    if (panels) observe(panels, 90);
+  }
+
+  /* -----------------------------------------------------------
      INIT
      ----------------------------------------------------------- */
   applyLang(); // also starts the terminal
+  setupReveal();
 })();

@@ -98,7 +98,7 @@ img { max-width: 100%; height: auto; display: block; }
 .topbar__inner {
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: 0.95rem clamp(1rem, 4vw, 2rem);
+  padding: 0.6rem clamp(1rem, 4vw, 2rem);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -136,7 +136,7 @@ img { max-width: 100%; height: auto; display: block; }
 .brand__comrade { color: var(--green); }
 .brand__logo {
   display: block;
-  height: 54px;
+  height: 108px;
   width: auto;
   /* the logo art sits on a solid-black plate; `screen` drops that
      black into the dark header so only the blue/green mark shows */
@@ -426,6 +426,11 @@ img { max-width: 100%; height: auto; display: block; }
 .tok-key { color: var(--blue); }
 .tok-str { color: var(--amber); }
 .tok-arrow { color: var(--dim); }
+
+/* Grid/flex items must be allowed to shrink below their content's
+   intrinsic width; without this a long non-wrapping command inside a
+   card forces a ~15px horizontal overflow on narrow phones. */
+.card, .mode, .provider, .card__cmd, .provider__meta { min-width: 0; }
 
 /* ---------- modes ---------- */
 .modes {
@@ -738,7 +743,7 @@ body.reveals-enabled .reveal.is-visible { opacity: 1; transform: none; }
   .footer__inner { flex-direction: column; align-items: flex-start; }
   .crt__screen { min-height: 260px; }
   .crt__pre { min-height: 232px; }
-  .brand__logo { height: 44px; }
+  .brand__logo { height: 88px; }
 }
 
 /* ============================================================

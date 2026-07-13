@@ -17,10 +17,6 @@ Binary: `comrade`
 
 </div>
 
-> v0.1.x is pre-1.0 — commands and behavior may still evolve before v1.0.
-> See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the honest list of
-> what's unverified.
-
 ---
 
 ## English

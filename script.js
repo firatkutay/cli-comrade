@@ -390,8 +390,60 @@
   }
 
   /* -----------------------------------------------------------
+     SCROLL PARALLAX — continuous depth as you scroll up/down.
+     Uses the standalone `translate` property (NOT `transform`) so it
+     composes with the CRT 3D tilt and the reveal transform without
+     conflict. Bases are measured once (stable, document-space), so
+     update() never reads back its own applied translate — no feedback
+     loop / jitter. Fully disabled under reduced motion.
+     ----------------------------------------------------------- */
+  function setupParallax() {
+    if (prefersReduced || !("requestAnimationFrame" in window)) return;
+    if (!(window.CSS && CSS.supports && CSS.supports("translate", "0px 1px"))) return;
+
+    var layers = [];
+    function add(sel, speed) {
+      var els = document.querySelectorAll(sel);
+      for (var i = 0; i < els.length; i++) layers.push({ el: els[i], speed: speed, base: 0 });
+    }
+    add(".hero__logo", 0.08);
+    add(".crt-stage", -0.06);
+    add(".section .eyebrow", 0.1);
+    add(".section .section__title", 0.05);
+    if (!layers.length) return;
+
+    function measure() {
+      var sy = window.pageYOffset || document.documentElement.scrollTop;
+      var i;
+      for (i = 0; i < layers.length; i++) layers[i].el.style.translate = ""; // clear to read true layout
+      for (i = 0; i < layers.length; i++) {
+        var r = layers[i].el.getBoundingClientRect();
+        layers[i].base = r.top + sy + r.height / 2; // stable document-space center
+        layers[i].el.style.willChange = "translate";
+      }
+    }
+    var ticking = false;
+    function update() {
+      ticking = false;
+      var mid = (window.pageYOffset || document.documentElement.scrollTop) + window.innerHeight / 2;
+      for (var i = 0; i < layers.length; i++) {
+        var L = layers[i];
+        L.el.style.translate = "0px " + ((mid - L.base) * L.speed).toFixed(1) + "px";
+      }
+    }
+    function onScroll() {
+      if (!ticking) { ticking = true; window.requestAnimationFrame(update); }
+    }
+    measure();
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", function () { measure(); update(); }, { passive: true });
+  }
+
+  /* -----------------------------------------------------------
      INIT
      ----------------------------------------------------------- */
   applyLang(); // also starts the terminal
   setupReveal();
+  setupParallax();
 })();

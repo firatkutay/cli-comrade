@@ -1,5 +1,5 @@
 <div align="center">
-<img width="1040" height="381" alt="Copilot_20260713_134831" src="https://github.com/user-attachments/assets/9d21d4e0-17af-42ea-9912-4787823c0c6d" />
+<img width="1199" height="573" alt="image" src="https://github.com/user-attachments/assets/380bfd7e-879a-41fa-a815-982713803823" />
 
 
 # cli-comrade

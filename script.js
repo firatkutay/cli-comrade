@@ -441,9 +441,31 @@
   }
 
   /* -----------------------------------------------------------
+     HEADER SHRINK — collapse the sticky top bar once you scroll
+     off the very top. Independent of parallax so it still works
+     under reduced motion (the height change just becomes instant).
+     ----------------------------------------------------------- */
+  function setupHeaderShrink() {
+    var bar = document.querySelector(".topbar");
+    if (!bar) return;
+    var ticking = false;
+    function apply() {
+      ticking = false;
+      var sy = window.pageYOffset || document.documentElement.scrollTop;
+      bar.classList.toggle("topbar--scrolled", sy > 24);
+    }
+    function onScroll() {
+      if (!ticking) { ticking = true; window.requestAnimationFrame(apply); }
+    }
+    apply(); // initial state (handles reload while already scrolled)
+    window.addEventListener("scroll", onScroll, { passive: true });
+  }
+
+  /* -----------------------------------------------------------
      INIT
      ----------------------------------------------------------- */
   applyLang(); // also starts the terminal
   setupReveal();
   setupParallax();
+  setupHeaderShrink();
 })();

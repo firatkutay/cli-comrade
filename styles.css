@@ -94,6 +94,7 @@ img { max-width: 100%; height: auto; display: block; }
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--hair);
+  transition: box-shadow 0.28s ease;
 }
 .topbar__inner {
   max-width: var(--maxw);
@@ -141,6 +142,19 @@ img { max-width: 100%; height: auto; display: block; }
   /* the logo art sits on a solid-black plate; `screen` drops that
      black into the dark header so only the blue/green mark shows */
   mix-blend-mode: screen;
+  /* on narrow phones the flex row shrinks this wide logo; `contain`
+     letterboxes instead of stretching, so the aspect never distorts */
+  object-fit: contain;
+  transition: height 0.28s ease;
+}
+
+/* Header collapses as you scroll away from the very top: the logo — and
+   therefore the whole bar — shrinks. JS toggles .topbar--scrolled. */
+.topbar--scrolled {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+.topbar--scrolled .brand__logo {
+  height: 128px;
 }
 
 .topnav {
@@ -743,8 +757,9 @@ body.reveals-enabled .reveal.is-visible { opacity: 1; transform: none; }
   .footer__inner { flex-direction: column; align-items: flex-start; }
   .crt__screen { min-height: 260px; }
   .crt__pre { min-height: 232px; }
-  .brand__logo { height: 120px; }
-  .ghlink span { display: none; } /* icon-only GitHub so the bigger logo fits the phone header */
+  .brand__logo { height: 72px; }
+  .topbar--scrolled .brand__logo { height: 48px; }
+  .ghlink span { display: none; } /* icon-only GitHub so the wider logo fits the phone header */
 }
 
 /* ============================================================

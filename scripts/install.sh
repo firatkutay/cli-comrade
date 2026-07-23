@@ -10,10 +10,20 @@
 #   COMRADE_VERSION      release tag to install, e.g. "v0.1.0" (default: latest)
 #   COMRADE_INSTALL_DIR   install directory (default: $HOME/.local/bin, falling
 #                         back to /usr/local/bin if that can't be created)
+#   COMRADE_NO_MODIFY_PATH  set to any non-empty value to stop the installer
+#                         from appending a PATH export to your shell rc file
+#                         when the install dir isn't already on PATH (default:
+#                         unset — the rc file is edited automatically)
 set -eu
 
 REPO="firatkutay/cli-comrade"
 BIN_NAME="comrade"
+
+# PATH_MARKER is the idempotency marker prepended to the PATH export line
+# configure_path_in_rc appends to a shell rc file. Its presence in a rc
+# file is the sole signal that this installer already edited that file —
+# re-running install.sh must never append a second copy.
+PATH_MARKER="# Added by the cli-comrade installer — https://github.com/firatkutay/cli-comrade"
 
 # fetch_url_to_file downloads $1 to the file path $2, using whichever
 # downloader require_downloader resolved.
@@ -80,6 +90,78 @@ detect_arch() {
       exit 1
       ;;
   esac
+}
+
+# rc_file_for_shell prints the shell rc file that should receive the PATH
+# export for the given shell name ($1: bash/zsh/fish/anything else).
+rc_file_for_shell() {
+  case "$1" in
+    bash) printf '%s\n' "$HOME/.bashrc" ;;
+    zsh) printf '%s\n' "$HOME/.zshrc" ;;
+    fish) printf '%s\n' "$HOME/.config/fish/config.fish" ;;
+    *) printf '%s\n' "$HOME/.profile" ;;
+  esac
+}
+
+# path_export_line_for_shell prints the shell-appropriate PATH export line
+# to append for install dir $2 under shell $1. When $2 resolved to exactly
+# $HOME/.local/bin, the literal (unexpanded) "$HOME/.local/bin" form is
+# written instead of the expanded path, so the line stays correct even if
+# the rc file is later sourced with a different HOME (e.g. restored on
+# another account).
+path_export_line_for_shell() {
+  shell_arg="$1"
+  dir_arg="$2"
+  if [ "$dir_arg" = "$HOME/.local/bin" ]; then
+    dir_expr='$HOME/.local/bin'
+  else
+    dir_expr="$dir_arg"
+  fi
+  case "$shell_arg" in
+    fish) printf 'set -gx PATH %s $PATH\n' "$dir_expr" ;;
+    *) printf 'export PATH="%s:$PATH"\n' "$dir_expr" ;;
+  esac
+}
+
+# configure_path_in_rc appends an idempotent PATH export line for
+# install_dir ($1) to the shell rc file appropriate for shell_name ($2),
+# unless COMRADE_NO_MODIFY_PATH is set or the rc file's directory isn't
+# writable — either case degrades to the old print-only warning rather
+# than failing the install. Safe to call repeatedly: PATH_MARKER makes
+# the edit idempotent, so re-running install.sh never duplicates it.
+configure_path_in_rc() {
+  install_dir_arg="$1"
+  shell_name_arg="$2"
+
+  if [ -n "${COMRADE_NO_MODIFY_PATH:-}" ]; then
+    echo "install.sh: note — ${install_dir_arg} is not on your PATH; add it to your shell rc file (COMRADE_NO_MODIFY_PATH is set, so this was not done automatically)."
+    return 0
+  fi
+
+  rc_file="$(rc_file_for_shell "$shell_name_arg")"
+  rc_dir="$(dirname "$rc_file")"
+  mkdir -p "$rc_dir" 2>/dev/null || true
+
+  if [ ! -d "$rc_dir" ] || [ ! -w "$rc_dir" ]; then
+    echo "install.sh: note — ${install_dir_arg} is not on your PATH; add it to your shell rc file."
+    return 0
+  fi
+
+  if [ -f "$rc_file" ] && grep -Fq -- "$PATH_MARKER" "$rc_file" 2>/dev/null; then
+    return 0
+  fi
+
+  export_line="$(path_export_line_for_shell "$shell_name_arg" "$install_dir_arg")"
+
+  if { printf '\n%s\n%s\n' "$PATH_MARKER" "$export_line" >>"$rc_file"; } 2>/dev/null; then
+    echo "install.sh: added ${install_dir_arg} to your PATH in ${rc_file}."
+    case "$shell_name_arg" in
+      fish) echo "install.sh: restart your shell or run:  set -gx PATH ${install_dir_arg} \$PATH" ;;
+      *) echo "install.sh: restart your shell or run:  export PATH=\"${install_dir_arg}:\$PATH\"" ;;
+    esac
+  else
+    echo "install.sh: note — ${install_dir_arg} is not on your PATH; add it to your shell rc file."
+  fi
 }
 
 main() {
@@ -151,19 +233,25 @@ main() {
   $sudo_prefix install -m 0755 "${workdir}/${BIN_NAME}" "${install_dir}/${BIN_NAME}"
   echo "install.sh: installed ${BIN_NAME} to ${install_dir}/${BIN_NAME}"
 
+  shell_name="$(basename "${SHELL:-sh}")"
+
   case ":${PATH}:" in
     *":${install_dir}:"*) ;;
-    *)
-      echo "install.sh: note — ${install_dir} is not on your PATH; add it to your shell rc file."
-      ;;
+    *) configure_path_in_rc "$install_dir" "$shell_name" ;;
   esac
 
-  shell_name="$(basename "${SHELL:-sh}")"
-  case "$shell_name" in
+  shell_hint="$shell_name"
+  case "$shell_hint" in
     bash | zsh | fish) ;;
-    *) shell_name="bash|zsh|fish" ;;
+    *) shell_hint="bash|zsh|fish" ;;
   esac
-  echo "install.sh: run 'comrade init ${shell_name}' to set up shell integration (error capture + completions)."
+  echo "install.sh: run 'comrade init ${shell_hint}' to set up shell integration (error capture + completions)."
 }
 
-main "$@"
+# main is skipped when this script is sourced with
+# COMRADE_INSTALL_SH_TEST=1 set — scripts/install_test.sh uses that to
+# source install.sh and unit-test configure_path_in_rc (and its helpers)
+# directly, in isolation, with no network access and no real install.
+if [ "${COMRADE_INSTALL_SH_TEST:-}" != "1" ]; then
+  main "$@"
+fi

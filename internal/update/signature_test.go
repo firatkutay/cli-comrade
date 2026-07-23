@@ -43,6 +43,12 @@ func signTestChecksums(t *testing.T, priv *ecdsa.PrivateKey, checksums []byte) [
 	return []byte(encoded)
 }
 
+// placeholderPub is an EXPLICIT stand-in for cosign.pub's build-time
+// placeholder shape (non-PEM comment text) — used instead of the real
+// embeddedCosignPub so the not-configured branch is exercised regardless
+// of whatever key the binary actually has embedded.
+var placeholderPub = []byte("# cosign public key placeholder — replace with the contents of your cosign.pub\n")
+
 func TestVerifyChecksumsSignatureWithValidSignatureSucceeds(t *testing.T) {
 	priv, pubPEM := generateTestKeyPair(t)
 	checksums := []byte("deadbeef  comrade_0.2.0_linux_amd64.tar.gz\n")
@@ -78,7 +84,7 @@ func TestVerifyChecksumsSignatureWithDifferentKeyFails(t *testing.T) {
 
 func TestVerifyChecksumsSignatureWithPlaceholderKeyReturnsNotConfigured(t *testing.T) {
 	checksums := []byte("deadbeef  comrade_0.2.0_linux_amd64.tar.gz\n")
-	err := verifyChecksumsSignatureWith(embeddedCosignPub, checksums, []byte("irrelevant"))
+	err := verifyChecksumsSignatureWith(placeholderPub, checksums, []byte("irrelevant"))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrSigningNotConfigured)
 }
@@ -118,17 +124,26 @@ func TestVerifyChecksumsSignatureWithNonECDSAKeyErrors(t *testing.T) {
 }
 
 func TestVerifyChecksumsSignaturePublicFunctionUsesEmbeddedKey(t *testing.T) {
-	// The exported entrypoint always verifies against embeddedCosignPub
-	// (the real cosign.pub, still the placeholder at this point in the
-	// rollout) — proving it, not some other key, is what backs the
-	// public API.
-	err := VerifyChecksumsSignature([]byte("checksums"), []byte("sig"))
+	// The exported entrypoint always verifies against embeddedCosignPub —
+	// proving it, not some other key, is what backs the public API. The
+	// embedded key is now a real configured key (see
+	// TestSigningConfiguredReportsTrueForEmbeddedKey), so a signature
+	// produced by a DIFFERENT key must be rejected as cryptographically
+	// invalid rather than reported as "not configured".
+	otherPriv, _ := generateTestKeyPair(t)
+	checksums := []byte("deadbeef  comrade_0.2.0_linux_amd64.tar.gz\n")
+	sig := signTestChecksums(t, otherPriv, checksums)
+
+	err := VerifyChecksumsSignature(checksums, sig)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrSigningNotConfigured)
+	assert.ErrorIs(t, err, ErrSignatureInvalid)
+	assert.False(t, errors.Is(err, ErrSigningNotConfigured))
 }
 
-func TestSigningConfiguredReportsFalseForPlaceholder(t *testing.T) {
-	assert.False(t, signingConfigured(embeddedCosignPub))
+func TestSigningConfiguredReportsTrueForEmbeddedKey(t *testing.T) {
+	// cosign.pub now embeds the project's real PEM-encoded public key
+	// rather than the build-time placeholder comment.
+	assert.True(t, signingConfigured(embeddedCosignPub))
 }
 
 func TestSigningConfiguredReportsTrueForRealKey(t *testing.T) {

@@ -55,6 +55,14 @@ const (
 	fakeBinaryContent = "new-binary-content"
 )
 
+// fakePlaceholderCosignPub is an EXPLICIT stand-in for cosign.pub's
+// build-time placeholder shape (non-PEM comment text), injected via
+// upgradeDeps.cosignPub -> update.Updater.CosignPub. Tests that only
+// exercise checksum verification or executable-path resolution (not the
+// signature gate itself) set this so they stay independent of whatever
+// key is actually embedded in internal/update/cosign.pub.
+var fakePlaceholderCosignPub = []byte("# cosign public key placeholder — replace with the contents of your cosign.pub\n")
+
 // buildFakeArchive builds a minimal tar.gz archive containing a single
 // "comrade" binary entry, plus a matching checksums.txt line — the same
 // shape internal/update's own extract/checksum tests build.
@@ -269,6 +277,7 @@ func TestUpgradeApplyDownloadsVerifiesAndReplaces(t *testing.T) {
 	}
 
 	deps := testUpgradeDeps("v0.1.0", fetcher, downloader, replace)
+	deps.cosignPub = fakePlaceholderCosignPub
 	out, err := execUpgradeCmd(t, deps)
 	require.NoError(t, err)
 
@@ -300,6 +309,7 @@ func TestUpgradeApplyChecksumMismatchNeverCallsReplace(t *testing.T) {
 	replace := func(string, []byte, string) error { replaceCalled = true; return nil }
 
 	deps := testUpgradeDeps("v0.1.0", fetcher, downloader, replace)
+	deps.cosignPub = fakePlaceholderCosignPub
 	_, err := execUpgradeCmd(t, deps)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "checksum mismatch")
@@ -352,6 +362,7 @@ func TestUpgradeApplyResolvesSymlinkedExecutableBeforeReplace(t *testing.T) {
 		downloader: downloader,
 		executable: func() (string, error) { return symlinkPath, nil },
 		replace:    replace,
+		cosignPub:  fakePlaceholderCosignPub,
 	}
 
 	_, err := execUpgradeCmd(t, deps)
@@ -389,10 +400,67 @@ func TestUpgradeApplyFallsBackWhenSymlinkResolutionFails(t *testing.T) {
 	}
 
 	deps := testUpgradeDeps("v0.1.0", fetcher, downloader, replace)
+	deps.cosignPub = fakePlaceholderCosignPub
 	out, err := execUpgradeCmd(t, deps)
 	require.NoError(t, err)
 	assert.Equal(t, "/fake/path/comrade", replacedPath, "a nonexistent path must fall back to the original, unresolved path")
 	assert.Contains(t, out, "could not resolve symlinks")
+}
+
+// TestDefaultUpgradeDepsLeavesCosignPubNil pins the production wiring
+// invariant every other cosign-signature test in this file relies on:
+// defaultUpgradeDeps — the exact function root.go uses to build
+// upgradeDeps for a real `comrade upgrade` run — must never set
+// cosignPub. A future edit that fed a placeholder (or any explicit
+// value) into production here would silently disable signature
+// enforcement in the real binary while every test that deliberately
+// overrides cosignPub kept passing; this guard catches that edit
+// directly instead of relying on absence of evidence.
+func TestDefaultUpgradeDepsLeavesCosignPubNil(t *testing.T) {
+	deps := defaultUpgradeDeps("v1.2.3")
+	assert.Nil(t, deps.cosignPub, "production upgradeDeps must leave cosignPub nil so Updater falls back to the real embedded cosign.pub key")
+}
+
+// TestUpgradeApplyRealEmbeddedKeyRequiresSignatureAsset is the strong
+// enforcement proof: it drives `comrade upgrade` with cosignPub
+// deliberately left at its zero value (nil) — exactly what
+// defaultUpgradeDeps leaves it as in production — against a release
+// fixture that publishes checksums.txt but no checksums.txt.sig.
+//
+// Every OTHER test in this file that reaches the signature gate
+// injects fakePlaceholderCosignPub, so none of them ever exercises the
+// real embedded internal/update/cosign.pub key. Without this test, a
+// future wiring regression that fed a placeholder into
+// defaultUpgradeDeps would pass the entire existing suite while
+// silently disabling signature enforcement for real users — the real
+// key embedded in this binary is not a placeholder (see cosign.pub),
+// so signingConfigured(embeddedCosignPub) is true and Apply must
+// hard-fail with update.ErrMissingSignatureAsset, refusing to install
+// an unsigned release, rather than falling back to checksum-only
+// verification.
+func TestUpgradeApplyRealEmbeddedKeyRequiresSignatureAsset(t *testing.T) {
+	archiveName := "comrade_0.2.0_linux_amd64.tar.gz"
+	fetcher := fakeReleaseFetcher{release: update.Release{
+		TagName: "v0.2.0",
+		Assets: []update.Asset{
+			{Name: archiveName, BrowserDownloadURL: "https://example.com/" + archiveName},
+			{Name: "checksums.txt", BrowserDownloadURL: "https://example.com/checksums.txt"},
+			// Deliberately no checksums.txt.sig asset.
+		},
+	}}
+	downloader := fakeDownloader{byURL: map[string][]byte{
+		"https://example.com/" + archiveName: []byte("irrelevant-archive-bytes"),
+		"https://example.com/checksums.txt":  []byte("irrelevant checksums\n"),
+	}}
+
+	deps := testUpgradeDeps("v0.1.0", fetcher, downloader, nil)
+	// deps.cosignPub is deliberately left unset (nil, its zero value) —
+	// this is what exercises the real embedded key path instead of a
+	// fake placeholder.
+
+	_, err := execUpgradeCmd(t, deps)
+	require.Error(t, err)
+	assert.Equal(t, "this release does not include a signature file; refusing to install it", err.Error())
 }
 
 func TestUpgradeHelpDescribesCheckFlag(t *testing.T) {

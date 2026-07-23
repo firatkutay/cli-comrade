@@ -27,6 +27,13 @@ type upgradeDeps struct {
 	downloader update.AssetDownloader
 	executable func() (string, error)
 	replace    func(targetPath string, content []byte, goos string) error
+
+	// cosignPub overrides update.Updater's embedded cosign.pub for tests
+	// only, via update.Updater.CosignPub — the zero value (nil) means
+	// "use the real embedded key", exactly what defaultUpgradeDeps
+	// leaves it as. Tests set this explicitly so signature-gate coverage
+	// never depends on whatever key is actually embedded in cosign.pub.
+	cosignPub []byte
 }
 
 // defaultUpgradeDeps wires upgradeDeps to the real operating system and
@@ -81,6 +88,7 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 				Downloader: deps.downloader,
 				GOOS:       deps.goos,
 				GOARCH:     deps.goarch,
+				CosignPub:  deps.cosignPub,
 			}
 
 			if checkOnly {

@@ -56,14 +56,15 @@ type Updater struct {
 	GOOS       string
 	GOARCH     string
 
-	// cosignPub overrides the embedded cosign.pub for tests only. The
-	// zero value (nil) means "use the real embedded key", exactly like
-	// every production caller. Unexported: this is not part of the
-	// public API — white-box tests in this package set it directly to
-	// exercise the "a real key IS configured" branches of Apply's
-	// signature-verification gate against an ephemeral, in-test key pair
-	// instead of the one real key actually embedded in the binary.
-	cosignPub []byte
+	// CosignPub overrides the embedded cosign.pub for tests only. nil or
+	// empty means: use the embedded key — exactly like every production
+	// caller (internal/cli's defaultUpgradeDeps never sets this).
+	// Exported only so tests in OTHER packages (internal/cli) can drive
+	// Apply's signature-verification gate against an explicit placeholder
+	// or an ephemeral in-test key pair instead of whatever key is
+	// actually embedded in the binary — production code must always
+	// leave this nil.
+	CosignPub []byte
 }
 
 // Check resolves the latest published release and reports whether it is
@@ -168,8 +169,8 @@ func (u *Updater) Apply(ctx context.Context, currentVersion string) (Result, []b
 //     VerifyChecksum/ExtractBinary, so the caller's ReplaceBinary is
 //     never invoked on unsigned or mis-signed material.
 func (u *Updater) verifyChecksumsSignature(ctx context.Context, rel Release, checksumsData []byte) (SignatureStatus, error) {
-	pubPEM := u.cosignPub
-	if pubPEM == nil {
+	pubPEM := u.CosignPub
+	if len(u.CosignPub) == 0 {
 		pubPEM = embeddedCosignPub
 	}
 

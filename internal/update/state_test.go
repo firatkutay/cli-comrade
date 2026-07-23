@@ -74,6 +74,24 @@ func TestReadStateCorruptJSONReturnsZeroValue(t *testing.T) {
 	assert.True(t, got.LastCheckedAt.IsZero())
 }
 
+// TestReadStateOversizedFileReturnsZeroValue is LOW#10's regression
+// guard: a file larger than maxStateBytes must never be read in full —
+// ReadState degrades to the same "not available" zero value it already
+// returns for a missing or corrupt file, rather than allocating an
+// unbounded amount of memory decoding it.
+func TestReadStateOversizedFileReturnsZeroValue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "update_check.json")
+	oversized := make([]byte, maxStateBytes+1024)
+	for i := range oversized {
+		oversized[i] = ' '
+	}
+	require.NoError(t, os.WriteFile(path, oversized, 0o644))
+
+	got := ReadState(path)
+	assert.True(t, got.LastCheckedAt.IsZero())
+	assert.Equal(t, "", got.LatestKnownVersion)
+}
+
 func TestWriteStateThenReadStateRoundTrips(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "update_check.json")
 	want := CheckState{

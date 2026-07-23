@@ -78,6 +78,12 @@ func (l *Loader) Load() (*Config, bool, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, created, fmt.Errorf("parse config file %s: %w", l.path, err)
 	}
+	// SAST finding #3: warn (never fail — see validateLoadedConfig's own
+	// doc comment for why) about the ACTIVE provider's base_url here too,
+	// not just at `comrade config set` time in Validate — a value can
+	// reach the file via a hand-edit or a COMRADE_ env var, entirely
+	// bypassing Validate.
+	validateLoadedConfig(&cfg)
 	return &cfg, created, nil
 }
 

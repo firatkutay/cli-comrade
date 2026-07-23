@@ -82,6 +82,30 @@ func TestGitHubClientLatestReleaseOtherNonOKStatusNeverIncludesFullRawBody(t *te
 	assert.Less(t, len(err.Error()), 300, "the full 5000-byte body must never be included verbatim")
 }
 
+// TestGitHubClientLatestReleaseOversizedBodyFailsToDecode is LOW#7's
+// guard on LatestRelease's own response-body cap: a body larger than
+// maxReleaseJSONBytes must never be decoded in full — the truncated
+// (necessarily invalid, mid-array) JSON fails to decode, which
+// LatestRelease already reports as ErrFetchFailed, exactly like any
+// other malformed response body.
+func TestGitHubClientLatestReleaseOversizedBodyFailsToDecode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tag_name": "v0.2.0", "assets": [`))
+		padding := make([]byte, maxReleaseJSONBytes+1024)
+		for i := range padding {
+			padding[i] = ' '
+		}
+		_, _ = w.Write(padding)
+	}))
+	defer srv.Close()
+
+	client := &GitHubClient{APIBaseURL: srv.URL, HTTPClient: srv.Client()}
+	_, err := client.LatestRelease(context.Background())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrFetchFailed)
+}
+
 func TestReleaseAssetByName(t *testing.T) {
 	rel := Release{Assets: []Asset{
 		{Name: "checksums.txt", BrowserDownloadURL: "https://example.com/checksums.txt"},

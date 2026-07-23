@@ -220,22 +220,30 @@ snapcrafts:
         command: comrade
     disable: true
 
-# --- Supply-chain signing (enablement note, not wired) ----------------------
-# cosign signing of checksums.txt (which covers every other artifact
-# transitively, since checksums.txt lists their digests) is NOT enabled
-# here: it requires a cosign key pair (or keyless/Fulcio+Rekor OIDC
-# signing) provisioned in CI secrets, which this repo does not have yet.
-# Enable by uncommenting the block below once COSIGN_PASSWORD (and either
-# a committed cosign.pub + a COSIGN_PRIVATE_KEY secret, or keyless OIDC
-# signing in the release workflow) exist:
-#
-# signs:
-#   - cmd: cosign
-#     stdin: "{{ .Env.COSIGN_PASSWORD }}"
-#     args:
-#       - sign-blob
-#       - "--key=cosign.key"
-#       - "--output-signature=${signature}"
-#       - "${artifact}"
-#       - "--yes"
-#     artifacts: checksum
+# --- Supply-chain signing ----------------------------------------------------
+# Key-based, offline cosign signing of checksums.txt (which covers every
+# other release artifact transitively, since checksums.txt lists their
+# digests). `--tlog-upload=false` deliberately skips Rekor (no transparency
+# log entry, no network dependency at sign time) — verification is meant to
+# be fully offline against a public key baked into the binary
+# (internal/update/cosign.pub), not against a Rekor lookup. `--key=env://...`
+# (rather than a `--key=cosign.key` file path) reads the private key
+# straight from the COSIGN_PRIVATE_KEY env var injected by
+# .github/workflows/release.yml — no key material ever touches disk in CI.
+# No `certificate:` field: that's the keyless/Fulcio flow, not applicable
+# here. Activation (see the RESULT note for the full list): the user
+# generates a key pair, sets COSIGN_PRIVATE_KEY/COSIGN_PASSWORD as repo
+# secrets, and replaces internal/update/cosign.pub with the real public key.
+signs:
+  - id: checksum-cosign
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    args:
+      - "sign-blob"
+      - "--key=env://COSIGN_PRIVATE_KEY"
+      - "--output-signature=${signature}"
+      - "--tlog-upload=false"
+      - "--yes"
+      - "${artifact}"
+    output: true

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"strconv"
 	"testing"
 
@@ -144,6 +145,79 @@ func TestValidateStringSliceEmptyStringYieldsEmptySlice(t *testing.T) {
 func TestIsValidKey(t *testing.T) {
 	assert.True(t, IsValidKey("general.mode"))
 	assert.False(t, IsValidKey("general.bogus"))
+}
+
+// captureBaseURLWarnings redirects baseURLWarningWriter to a buffer for the
+// duration of the calling test, restoring the original (os.Stderr) after
+// via t.Cleanup, and returns the buffer so the test can assert on it.
+func captureBaseURLWarnings(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	original := baseURLWarningWriter
+	baseURLWarningWriter = &buf
+	t.Cleanup(func() { baseURLWarningWriter = original })
+	return &buf
+}
+
+// TestValidateBaseURL is SAST finding #3's table: neither
+// llm.openai_compat.base_url nor llm.ollama.base_url may send the
+// provider API key to an arbitrary or cloud-metadata/link-local host, but
+// both must keep accepting (with only a cleartext warning, never a
+// rejection) a self-hosted http:// endpoint on a non-loopback host.
+func TestValidateBaseURL(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       string
+		wantError string // substring, or "" if raw must be accepted
+		wantWarn  bool
+	}{
+		{name: "https public host ok, no warning", raw: "https://api.example.com/v1"},
+		{name: "http localhost ok, no warning", raw: "http://localhost:11434"},
+		{name: "http loopback IP ok, no warning", raw: "http://127.0.0.1:8080"},
+		{name: "http private LAN host ok, but warns", raw: "http://192.168.1.50:11434", wantWarn: true},
+		{name: "http arbitrary host ok, but warns", raw: "http://api.evil.tld", wantWarn: true},
+		{name: "https metadata IP rejected", raw: "https://169.254.169.254/v1", wantError: "cloud metadata / link-local address not allowed"},
+		{name: "http metadata IP rejected", raw: "http://169.254.169.254/latest/meta-data/", wantError: "cloud metadata / link-local address not allowed"},
+		{name: "non-http(s) scheme rejected", raw: "ftp://x", wantError: "must be a valid http:// or https:// URL with a host"},
+		{name: "file scheme rejected", raw: "file:///etc/passwd", wantError: "must be a valid http:// or https:// URL with a host"},
+		{name: "no scheme rejected", raw: "not-a-url", wantError: "must be a valid http:// or https:// URL with a host"},
+		{name: "no host rejected", raw: "https://", wantError: "must be a valid http:// or https:// URL with a host"},
+	}
+
+	for _, key := range []string{"llm.openai_compat.base_url", "llm.ollama.base_url"} {
+		key := key
+		t.Run(key, func(t *testing.T) {
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					buf := captureBaseURLWarnings(t)
+
+					got, err := Validate(key, tc.raw)
+
+					if tc.wantError != "" {
+						require.Error(t, err)
+						assert.ErrorContains(t, err, tc.wantError)
+						assert.ErrorContains(t, err, key)
+						assert.Empty(t, buf.String(), "a rejected value must never also warn")
+						return
+					}
+
+					require.NoError(t, err)
+					assert.Equal(t, tc.raw, got, "a valid base_url must be stored verbatim, unmodified")
+					if tc.wantWarn {
+						assert.Contains(t, buf.String(), key)
+						assert.Contains(t, buf.String(), "unencrypted")
+					} else {
+						assert.Empty(t, buf.String())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestValidateBaseURLRejectsUnknownKeyBeforeParsingURL(t *testing.T) {
+	_, err := Validate("llm.openai_compat.nonexistent", "https://api.example.com")
+	assert.ErrorContains(t, err, "unknown config key")
 }
 
 func TestKeysIsSorted(t *testing.T) {

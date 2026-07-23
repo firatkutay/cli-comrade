@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // RepoOwner and RepoName identify cli-comrade's GitHub repository — the
@@ -22,6 +23,20 @@ const (
 // overrides it — tests point this at an httptest.Server so no test ever
 // makes a real network call.
 const defaultAPIBaseURL = "https://api.github.com"
+
+// apiTimeout bounds how long a single "latest release" API call is
+// allowed to take end-to-end — a small JSON response over a metadata
+// API call needs nowhere near downloader.go's downloadTimeout, but it
+// still needs a finite bound so a stalled or hostile endpoint can never
+// hang `comrade upgrade`/`upgrade --check` forever (LOW#7).
+const apiTimeout = 30 * time.Second
+
+// maxReleaseJSONBytes bounds how many bytes of the "latest release" API
+// response body LatestRelease will decode. GitHub's real response is at
+// most a few hundred KB even for a release with many assets; this caps
+// memory use against a compromised or misbehaving endpoint serving an
+// unbounded response body (LOW#7).
+const maxReleaseJSONBytes = 10 << 20 // 10 MiB
 
 // Asset is one downloadable file attached to a GitHub release.
 type Asset struct {
@@ -98,7 +113,7 @@ func (c *GitHubClient) LatestRelease(ctx context.Context) (Release, error) {
 	}
 	client := c.HTTPClient
 	if client == nil {
-		client = &http.Client{}
+		client = &http.Client{Timeout: apiTimeout}
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", base, RepoOwner, RepoName)
@@ -142,7 +157,7 @@ func (c *GitHubClient) LatestRelease(ctx context.Context) (Release, error) {
 	}
 
 	var rel Release
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxReleaseJSONBytes)).Decode(&rel); err != nil {
 		return Release{}, fmt.Errorf("update: decode latest release response: %w: %w", ErrFetchFailed, err)
 	}
 	return rel, nil

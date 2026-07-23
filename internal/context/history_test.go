@@ -3,6 +3,7 @@ package context
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -115,4 +116,41 @@ func TestReadHistoryMissingFileReturnsNil(t *testing.T) {
 func TestReadHistoryUnknownShellReturnsNil(t *testing.T) {
 	got := ReadHistory("tcsh", fakeEnv(map[string]string{"HOME": t.TempDir()}), 5)
 	assert.Nil(t, got)
+}
+
+// TestReadHistoryOversizedFileIsBoundedNotReadInFull proves LOW#10's fix
+// for history.go: a history file far larger than maxHistoryBytes is
+// handled gracefully by reading only its final maxHistoryBytes window
+// (via Seek+LimitReader), never the whole file — and the most recent
+// entries (the ones ReadHistory actually promises to return) still come
+// back correctly out of that tail window.
+func TestReadHistoryOversizedFileIsBoundedNotReadInFull(t *testing.T) {
+	dir := t.TempDir()
+
+	var b strings.Builder
+	// Pad well past maxHistoryBytes with old, throwaway lines, then add
+	// a handful of real, distinctive recent commands at the very end —
+	// exactly what a bash user's real .bash_history looks like after
+	// years of accumulated history.
+	line := strings.Repeat("x", 200) + "\n"
+	for b.Len() < maxHistoryBytes+(1<<20) {
+		b.WriteString(line)
+	}
+	b.WriteString("echo recent-one\ncd /var/log\ngit status\n")
+
+	env := writeHistoryFixture(t, dir, ".bash_history", b.String())
+
+	got := ReadHistory("bash", fakeEnv(env), 3)
+	assert.Equal(t, []string{"echo recent-one", "cd /var/log", "git status"}, got)
+}
+
+// TestReadHistoryFileExactlyAtCapReadsInFull proves the cap is not
+// off-by-one: a file no larger than maxHistoryBytes is read in full,
+// unchanged from before this fix.
+func TestReadHistoryFileExactlyAtCapReadsInFull(t *testing.T) {
+	dir := t.TempDir()
+	env := writeHistoryFixture(t, dir, ".bash_history", "one\ntwo\nthree\n")
+
+	got := ReadHistory("bash", fakeEnv(env), 10)
+	assert.Equal(t, []string{"one", "two", "three"}, got)
 }

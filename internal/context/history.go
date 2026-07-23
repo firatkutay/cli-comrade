@@ -1,11 +1,20 @@
 package context
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
+
+// maxHistoryBytes bounds how much of a shell history file ReadHistory
+// will ever read into memory. Shell history files are user-controlled
+// and can grow unbounded over years of interactive use (unlike
+// last_command.json, which comrade itself writes and keeps small) —
+// 4 MiB comfortably covers the "last few thousand commands" ReadHistory
+// actually needs (depth is always small) while still bounding the read.
+const maxHistoryBytes = 4 << 20 // 4 MiB
 
 // zshExtendedPrefix strips zsh's optional "extended_history" prefix
 // (`: <epoch>:<duration>;`) that precedes each command when that shell
@@ -65,7 +74,7 @@ func ReadHistory(shell string, getenv func(string) string, depth int) []string {
 	if !ok {
 		return nil
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- path comes from HistoryPath's own fixed, well-known shell-history conventions (e.g. $HOME/.bash_history), not attacker-controlled input
+	data, err := readHistoryTail(path, maxHistoryBytes)
 	if err != nil {
 		return nil
 	}
@@ -83,6 +92,33 @@ func ReadHistory(shell string, getenv func(string) string, depth int) []string {
 	}
 
 	return lastN(lines, depth)
+}
+
+// readHistoryTail reads path bounded to at most limit bytes. A file no
+// larger than limit is read in full, unchanged from before. A larger file
+// has its LEADING bytes skipped (via Seek) so the bounded read captures
+// the file's last limit bytes instead of its first — ReadHistory only
+// ever wants the most recent entries (lastN's own trim to `depth`
+// applies after this), so keeping the tail of an oversized file is what
+// actually degrades gracefully here, unlike last_command.json's
+// all-or-nothing JSON blob. The one entry straddling the truncation
+// boundary may come out malformed (a partial line, or — for zsh/fish's
+// own line-prefixed formats — a line missing its prefix); that entry is
+// simply one more line for lastN to potentially drop, not a read
+// failure.
+func readHistoryTail(path string, limit int64) ([]byte, error) {
+	f, err := os.Open(path) // #nosec G304 -- path comes from HistoryPath's own fixed, well-known shell-history conventions (e.g. $HOME/.bash_history), not attacker-controlled input
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	if info, err := f.Stat(); err == nil && info.Size() > limit {
+		if _, err := f.Seek(-limit, io.SeekEnd); err != nil {
+			return nil, err
+		}
+	}
+	return io.ReadAll(io.LimitReader(f, limit))
 }
 
 // plainHistoryLines splits data into non-empty lines, used for shells

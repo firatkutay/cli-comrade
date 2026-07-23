@@ -3,12 +3,19 @@ package update
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
 	"time"
 )
+
+// maxStateBytes bounds how many bytes ReadState will read from
+// update_check.json. Its real content is always a tiny JSON object (a
+// timestamp and a short version string); this caps memory use if the
+// file were ever replaced by something unexpectedly large (LOW#10).
+const maxStateBytes = 64 << 10 // 64 KiB
 
 // stateFileName is the JSON file's name within the resolved state
 // directory — deliberately NOT alongside config.toml: this is transient,
@@ -79,7 +86,13 @@ func ReadState(path string) CheckState {
 	if path == "" {
 		return CheckState{}
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- path is this process's own fixed XDG-state update-check location (DefaultStatePath), not attacker-controlled input
+	f, err := os.Open(path) // #nosec G304 -- path is this process's own fixed XDG-state update-check location (DefaultStatePath), not attacker-controlled input
+	if err != nil {
+		return CheckState{}
+	}
+	defer func() { _ = f.Close() }()
+
+	data, err := io.ReadAll(io.LimitReader(f, maxStateBytes))
 	if err != nil {
 		return CheckState{}
 	}

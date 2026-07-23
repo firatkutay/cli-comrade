@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +103,48 @@ func TestReadLastCommandCorruptJSON(t *testing.T) {
 func TestReadLastCommandEmptyPath(t *testing.T) {
 	_, ok := ReadLastCommand("")
 	assert.False(t, ok)
+}
+
+// TestReadLastCommandOversizedFileIsRejectedNotOOMed proves LOW#10's
+// fix: a file over maxLastCommandBytes is refused outright — ok=false,
+// same "not available" outcome as a missing or corrupt file — rather
+// than being read in full and handed to json.Unmarshal.
+func TestReadLastCommandOversizedFileIsRejectedNotOOMed(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "last_command.json")
+
+	// A syntactically valid JSON object that is still over the cap: if
+	// ReadLastCommand only bounded parsing (not the read itself), this
+	// oversized-but-valid input would slip through and prove nothing.
+	oversized := `{"command":"` + strings.Repeat("a", maxLastCommandBytes+1) + `"}`
+	require.NoError(t, os.WriteFile(path, []byte(oversized), 0o644))
+
+	_, ok := ReadLastCommand(path)
+	assert.False(t, ok)
+}
+
+// TestReadLastCommandExactlyAtCapStillParses proves the cap is not
+// off-by-one in the wrong direction: a file exactly at maxLastCommandBytes
+// is read and parsed normally, matching "normal-sized files behave
+// identically" from before this fix.
+func TestReadLastCommandExactlyAtCapStillParses(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "last_command.json")
+
+	fixture := LastCommand{Command: "echo hi", ExitCode: 0, Shell: "bash"}
+	raw, err := json.Marshal(fixture)
+	require.NoError(t, err)
+	// Pad with JSON whitespace (still exactly maxLastCommandBytes total,
+	// still valid JSON) so the fixture's own size reaches the cap exactly
+	// regardless of how large the marshaled struct itself is.
+	require.Less(t, len(raw), maxLastCommandBytes)
+	padded := append([]byte(strings.Repeat(" ", maxLastCommandBytes-len(raw))), raw...)
+	require.Len(t, padded, maxLastCommandBytes)
+	require.NoError(t, os.WriteFile(path, padded, 0o644))
+
+	got, ok := ReadLastCommand(path)
+	require.True(t, ok)
+	assert.Equal(t, "echo hi", got.Command)
 }
 
 func TestWriteLastCommandRoundTrip(t *testing.T) {

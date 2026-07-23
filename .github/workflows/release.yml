@@ -27,6 +27,25 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Installs the cosign CLI that .goreleaser.yaml's `signs:` block
+      # invokes to key-based sign checksums.txt. Action pinned to a full
+      # commit SHA (sigstore/cosign-installer v4.1.2, released 2026-05-07 —
+      # matches this repo's existing convention of SHA-pinning every
+      # `uses:` step, see actions/checkout and actions/setup-go above).
+      #
+      # cosign-release is pinned to v2.6.3, NOT the newer v2.6.4: v2.6.4
+      # was published 2026-07-17, six days before this change (younger
+      # than the house ≥15-day release-age floor), and its changelog is an
+      # OCI-manifest/attestation-download backport with no security
+      # content for the sign-blob path this repo uses. v2.6.3 (published
+      # 2026-04-06, well past 15 days) additionally resolves
+      # GHSA-w6c6-c85g-mmv6 relative to earlier 2.6.x releases, so it is
+      # both the aging-eligible and the more conservative choice — adopt
+      # v2.6.4 later once it has cleared the 15-day floor.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v2.6.3"
+
       # Source SBOM, attached to the release alongside goreleaser's own
       # archives/checksums — this repo ships no container image, so
       # there is no separate "container SBOM" to also generate (see
@@ -124,3 +143,12 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          # Consumed by .goreleaser.yaml's `signs:` block
+          # (--key=env://COSIGN_PRIVATE_KEY) to key-based sign
+          # checksums.txt offline (--tlog-upload=false, no Rekor). Both
+          # secrets are required for the signs pipe to succeed; unlike the
+          # three packaging PATs above, signing has no skip_upload-style
+          # degrade-gracefully path, so a missing secret here fails the
+          # release rather than silently skipping the .sig asset.
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}

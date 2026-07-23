@@ -214,6 +214,15 @@ const (
 	// ReasonNotNonNegative}'s translated rendering. Two args: the
 	// rejected raw value, the key.
 	MsgConfigNotNonNegative MessageID = "config_not_non_negative"
+	// MsgConfigInvalidURL is config.InvalidValueError{Reason:
+	// ReasonNotURL}'s translated rendering (SAST finding #3's base_url
+	// validation — internal/config/validate.go's checkBaseURL). Two args:
+	// the rejected raw value, the key.
+	MsgConfigInvalidURL MessageID = "config_invalid_url"
+	// MsgConfigMetadataBlocked is config.InvalidValueError{Reason:
+	// ReasonMetadataOrLinkLocal}'s translated rendering (SAST finding #3).
+	// Two args: the rejected raw value, the key.
+	MsgConfigMetadataBlocked MessageID = "config_metadata_blocked"
 
 	// MsgModelsDocsNote is printed after `comrade config models`'s numbered
 	// list for a provider with only a static model snapshot (anthropic/
@@ -347,6 +356,24 @@ const (
 	// request succeeded. Three args: provider name, model name, rounded
 	// latency duration string.
 	MsgAuthStoredKeyPingSucceeded MessageID = "auth_stored_key_ping_succeeded"
+
+	// MsgAuthStoredKeyBaseURLUnsafe reports `comrade auth login` storing a
+	// key while SKIPPING the live test because the active provider's
+	// base_url is reject-class (isBaseURLRejection — the SAME
+	// errors.As+Reason check translateBaseURLRejectedError uses for
+	// do/fix/explain/chat's own client-build-time refusal; runtime.go).
+	// Unlike MsgAuthStoredKeyPingFailed (a network/timeout/5xx/parse
+	// failure that says nothing about whether the key itself is good),
+	// this is a DEFINITIVE, known cause: the endpoint itself was refused
+	// before any request was attempted, so the message names that cause
+	// directly instead of the misleading "could not verify it right now."
+	// The key is still stored — buildProvider/pingProvider refuse before
+	// any network call, so the key was never transmitted, and storing it
+	// locally (0600, never sent anywhere) is harmless; only the ping was
+	// skipped. Four args: provider name, the offending config key, the
+	// rejected raw base_url value, the offending config key again (for
+	// the suggested repair command).
+	MsgAuthStoredKeyBaseURLUnsafe MessageID = "auth_stored_key_base_url_unsafe"
 
 	// MsgAuthNoStoredKey reports `comrade auth logout` found nothing to
 	// remove. One arg: the provider name.
@@ -714,6 +741,20 @@ const (
 	// the provider name (prose), the provider name again (the suggested
 	// command's own argument).
 	MsgLLMNoKeyError MessageID = "llm_no_key_error"
+	// MsgLLMBaseURLRejected replaces the raw internal wrap-chain
+	// (fmt.Errorf("llm: %s: %w", providerName, *config.InvalidValueError))
+	// internal/llm/client.go's buildProvider returns when the ACTIVE
+	// provider's base_url is reject-class per SAST finding #3 (non-
+	// http(s) scheme, no host, or a cloud-metadata/link-local host) —
+	// every LLM-reaching command (do/fix/explain/chat) refuses to build a
+	// client rather than hand the API key to that host. Unlike
+	// MsgConfigInvalidURL/MsgConfigMetadataBlocked (the SAME underlying
+	// InvalidValueError, rendered for a rejected `comrade config set`),
+	// this points the user at the fix: `comrade config set` remains
+	// reachable because config subcommands never build an LLM client.
+	// Three args: the offending key, the rejected raw value, the
+	// offending key again (repeated in the suggested command).
+	MsgLLMBaseURLRejected MessageID = "llm_base_url_rejected"
 	// MsgFixRerunNoLastCommandError is `comrade fix --rerun`'s error when
 	// there is no recorded last command to re-run.
 	MsgFixRerunNoLastCommandError MessageID = "fix_rerun_no_last_command_error"
@@ -835,6 +876,34 @@ const (
 	// COMRADE_DEBUG-gated stderr output (see upgrade.go).
 	MsgUpgradeFetchFailed MessageID = "upgrade_fetch_failed"
 
+	// MsgUpgradeSymlinkResolveWarning is a non-fatal warning printed to
+	// stderr when `comrade upgrade` cannot resolve the running
+	// executable's path through filepath.EvalSymlinks (LOW#8) — the
+	// upgrade still proceeds, replacing the original, unresolved path.
+	// Two args: the original executable path, and the underlying
+	// resolution error.
+	MsgUpgradeSymlinkResolveWarning MessageID = "upgrade_symlink_resolve_warning"
+
+	// MsgUpgradeSignatureNotConfigured is a non-fatal, informational
+	// warning printed to stderr (MEDIUM#4) when the embedded cosign.pub
+	// is still the build-time placeholder: `comrade upgrade` falls back
+	// to checksum-only verification instead of verifying checksums.txt's
+	// signature. No args.
+	MsgUpgradeSignatureNotConfigured MessageID = "upgrade_signature_not_configured"
+
+	// MsgUpgradeSignatureMissing is printed for update.ErrMissingSignatureAsset
+	// (MEDIUM#4): a real signing key IS configured, but the release being
+	// installed published no checksums.txt.sig asset — `comrade upgrade`
+	// refuses to install it. No args.
+	MsgUpgradeSignatureMissing MessageID = "upgrade_signature_missing"
+
+	// MsgUpgradeSignatureInvalid is printed for update.ErrSignatureInvalid
+	// (MEDIUM#4): a real signing key is configured and the release
+	// published a checksums.txt.sig, but it did not verify against the
+	// embedded public key — `comrade upgrade` refuses to install it. No
+	// args.
+	MsgUpgradeSignatureInvalid MessageID = "upgrade_signature_invalid"
+
 	// -- per-flag --help descriptions (comrade upgrade) -------------------
 
 	// MsgFlagCheck is --check's --help description.
@@ -907,12 +976,14 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgConfigListHeader:    "KEY\tVALUE\tSOURCE",
 	MsgConfigSetUsageError: "usage: comrade config set <key> <value>",
 
-	MsgConfigUnknownKey:     "unknown config key %q; valid keys are: %s",
-	MsgConfigInvalidEnum:    "invalid value %q for %s; must be one of: %s",
-	MsgConfigInvalidBool:    "invalid value %q for %s: must be a boolean (true/false)",
-	MsgConfigInvalidInt:     "invalid value %q for %s: must be an integer",
-	MsgConfigNotPositive:    "invalid value %q for %s: must be greater than 0",
-	MsgConfigNotNonNegative: "invalid value %q for %s: must be 0 or greater",
+	MsgConfigUnknownKey:      "unknown config key %q; valid keys are: %s",
+	MsgConfigInvalidEnum:     "invalid value %q for %s; must be one of: %s",
+	MsgConfigInvalidBool:     "invalid value %q for %s: must be a boolean (true/false)",
+	MsgConfigInvalidInt:      "invalid value %q for %s: must be an integer",
+	MsgConfigNotPositive:     "invalid value %q for %s: must be greater than 0",
+	MsgConfigNotNonNegative:  "invalid value %q for %s: must be 0 or greater",
+	MsgConfigInvalidURL:      "invalid value %q for %s: must be a valid http:// or https:// URL with a host",
+	MsgConfigMetadataBlocked: "invalid value %q for %s: cloud metadata / link-local address not allowed",
 
 	MsgModelsDocsNote:     "(static snapshot — see %s for the current list)\n",
 	MsgModelsSelectPrompt: "Select a model number: ",
@@ -963,6 +1034,7 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStoredKeyPingFailed:    "Stored key for %s. Could not verify it right now (%v) — this looks like a network or connectivity issue, not necessarily a bad key. The key was saved.\n",
 	MsgAuthKeyRejected:            "The provider rejected this key for %s (%v) — it was not saved. Double-check the key and try \"comrade auth login %s\" again.\n",
 	MsgAuthStoredKeyPingSucceeded: "Stored key for %s. Test request succeeded (model=%s, latency=%s).\n",
+	MsgAuthStoredKeyBaseURLUnsafe: "Stored key for %s. Skipped the live test — %s (currently %q) is not a safe endpoint, so your key was never sent there; fix it with: comrade config set %s <valid-url>\n",
 	MsgAuthNoStoredKey:            "No stored key for %s.\n",
 	MsgAuthRemovedStoredKey:       "Removed stored key for %s.\n",
 	MsgAuthStatusHeader:           "PROVIDER\tSTATUS",
@@ -1034,6 +1106,7 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthNoKeyEnteredError:         "auth login: no key entered",
 	MsgAuthLoginRequiresTTY:          "auth login needs an interactive terminal (stdin is not a TTY) — run it directly in a terminal, not piped or redirected.",
 	MsgLLMNoKeyError:                 "no API key configured for %s yet — run \"comrade auth login %s\" to set one up (or export its env var directly; see \"comrade auth login --help\")",
+	MsgLLMBaseURLRejected:            "refusing to send your API key to %s (currently %q) — it is not a safe endpoint; fix it with: comrade config set %s <valid-url>",
 	MsgFixRerunNoLastCommandError:    "--rerun: no recorded last command found; run a command with shell integration installed first, or use `comrade fix -- <command>`",
 	MsgFlagsModeExclusiveError:       "only one of --auto, --ask, or --info may be given",
 	MsgInitPrintRemoveExclusiveError: "init: --print and --remove are mutually exclusive",
@@ -1053,13 +1126,17 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUsageNoArgsError:       "%s does not take any arguments",
 	MsgUnknownSubcommandError: "unknown subcommand %q for %s (expected one of: %s)",
 
-	MsgUpgradeDevBuildError:  "upgrade: this is a dev build (no version was embedded at build time); install a released build to use `comrade upgrade`",
-	MsgUpgradeUpToDate:       "you're already on the latest version (%s)\n",
-	MsgUpgradeNewerAvailable: "a newer version is available: %s (you have %s) — %s\n",
-	MsgUpgradeDownloading:    "downloading comrade %s...\n",
-	MsgUpgradeInstalled:      "updated to %s. Restart any running comrade session to pick it up.\n",
-	MsgUpgradeNoReleaseFound: "no published release of comrade is available yet — check back later",
-	MsgUpgradeFetchFailed:    "could not reach GitHub to check for a newer version — try again later",
+	MsgUpgradeDevBuildError:          "upgrade: this is a dev build (no version was embedded at build time); install a released build to use `comrade upgrade`",
+	MsgUpgradeUpToDate:               "you're already on the latest version (%s)\n",
+	MsgUpgradeNewerAvailable:         "a newer version is available: %s (you have %s) — %s\n",
+	MsgUpgradeDownloading:            "downloading comrade %s...\n",
+	MsgUpgradeInstalled:              "updated to %s. Restart any running comrade session to pick it up.\n",
+	MsgUpgradeNoReleaseFound:         "no published release of comrade is available yet — check back later",
+	MsgUpgradeFetchFailed:            "could not reach GitHub to check for a newer version — try again later",
+	MsgUpgradeSymlinkResolveWarning:  "cli-comrade: warning: could not resolve symlinks for %s (%v); replacing it directly\n",
+	MsgUpgradeSignatureNotConfigured: "cli-comrade: release signature verification is not configured; proceeding with checksum-only verification\n",
+	MsgUpgradeSignatureMissing:       "this release does not include a signature file; refusing to install it",
+	MsgUpgradeSignatureInvalid:       "this release's signature could not be verified; refusing to install it",
 
 	MsgHelpShortUpgrade: "Check for or install a newer released version of comrade",
 	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
@@ -1119,12 +1196,14 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgConfigListHeader:    "ANAHTAR\tDEĞER\tKAYNAK",
 	MsgConfigSetUsageError: "kullanım: comrade config set <anahtar> <değer>",
 
-	MsgConfigUnknownKey:     "bilinmeyen config anahtarı %q; geçerli anahtarlar: %s",
-	MsgConfigInvalidEnum:    "%q değeri %s için geçersiz; şunlardan biri olmalı: %s",
-	MsgConfigInvalidBool:    "%q değeri %s için geçersiz: bir boolean olmalı (true/false)",
-	MsgConfigInvalidInt:     "%q değeri %s için geçersiz: bir tam sayı olmalı",
-	MsgConfigNotPositive:    "%q değeri %s için geçersiz: 0'dan büyük olmalı",
-	MsgConfigNotNonNegative: "%q değeri %s için geçersiz: 0 veya daha büyük olmalı",
+	MsgConfigUnknownKey:      "bilinmeyen config anahtarı %q; geçerli anahtarlar: %s",
+	MsgConfigInvalidEnum:     "%q değeri %s için geçersiz; şunlardan biri olmalı: %s",
+	MsgConfigInvalidBool:     "%q değeri %s için geçersiz: bir boolean olmalı (true/false)",
+	MsgConfigInvalidInt:      "%q değeri %s için geçersiz: bir tam sayı olmalı",
+	MsgConfigNotPositive:     "%q değeri %s için geçersiz: 0'dan büyük olmalı",
+	MsgConfigNotNonNegative:  "%q değeri %s için geçersiz: 0 veya daha büyük olmalı",
+	MsgConfigInvalidURL:      "%q değeri %s için geçersiz: geçerli bir http:// veya https:// URL'si olmalı ve bir host içermeli",
+	MsgConfigMetadataBlocked: "%q değeri %s için geçersiz: bulut metadata / link-local adresine izin verilmiyor",
 
 	MsgModelsDocsNote:     "(sabit bir liste — güncel liste için: %s)\n",
 	MsgModelsSelectPrompt: "Bir model numarası seçin: ",
@@ -1175,6 +1254,7 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStoredKeyPingFailed:    "%s için anahtar kaydedildi. Şu anda doğrulanamadı (%v) — bu, ağ veya bağlantı sorunundan kaynaklanıyor olabilir, anahtarın hatalı olduğu anlamına gelmez. Anahtar kaydedildi.\n",
 	MsgAuthKeyRejected:            "%s için bu anahtar sağlayıcı tarafından reddedildi (%v) — kaydedilmedi. Anahtarı kontrol edip \"comrade auth login %s\" komutunu tekrar deneyin.\n",
 	MsgAuthStoredKeyPingSucceeded: "%s için anahtar kaydedildi. Test isteği başarılı oldu (model=%s, gecikme=%s).\n",
+	MsgAuthStoredKeyBaseURLUnsafe: "%s için anahtar kaydedildi. Canlı test atlandı — %s (şu an %q) güvenli bir uç nokta değil, bu yüzden anahtarınız oraya hiç gönderilmedi; düzeltmek için: comrade config set %s <geçerli-url>\n",
 	MsgAuthNoStoredKey:            "%s için kayıtlı anahtar yok.\n",
 	MsgAuthRemovedStoredKey:       "%s için kayıtlı anahtar kaldırıldı.\n",
 	MsgAuthStatusHeader:           "SAĞLAYICI\tDURUM",
@@ -1246,6 +1326,7 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthNoKeyEnteredError:         "auth login: hiçbir anahtar girilmedi",
 	MsgAuthLoginRequiresTTY:          "auth login, etkileşimli bir terminal gerektirir (stdin bir TTY değil) — doğrudan bir terminalde çalıştırın, boru hattına yönlendirmeyin.",
 	MsgLLMNoKeyError:                 "%s için henüz bir API anahtarı yapılandırılmamış — kurmak için \"comrade auth login %s\" çalıştırın (ya da doğrudan ortam değişkenini ayarlayın; ayrıntılar için \"comrade auth login --help\")",
+	MsgLLMBaseURLRejected:            "API anahtarınız %s (şu an %q) adresine gönderilmeyecek — güvenli bir uç nokta değil; düzeltmek için: comrade config set %s <geçerli-url>",
 	MsgFixRerunNoLastCommandError:    "--rerun: kayıtlı son komut bulunamadı; önce kabuk entegrasyonu kurulu bir komut çalıştırın ya da `comrade fix -- <komut>` kullanın",
 	MsgFlagsModeExclusiveError:       "--auto, --ask veya --info bayraklarından yalnızca biri verilebilir",
 	MsgInitPrintRemoveExclusiveError: "init: --print ve --remove birlikte kullanılamaz",
@@ -1265,13 +1346,17 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUsageNoArgsError:       "%s hiçbir argüman almaz",
 	MsgUnknownSubcommandError: "%q: %s için bilinmeyen alt komut (beklenen: %s)",
 
-	MsgUpgradeDevBuildError:  "upgrade: bu bir geliştirme (dev) derlemesi (derleme zamanında bir sürüm gömülmemiş); `comrade upgrade` kullanmak için yayımlanmış bir derleme kurun",
-	MsgUpgradeUpToDate:       "zaten en güncel sürümdesiniz (%s)\n",
-	MsgUpgradeNewerAvailable: "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s) — %s\n",
-	MsgUpgradeDownloading:    "comrade %s indiriliyor...\n",
-	MsgUpgradeInstalled:      "%s sürümüne güncellendi. Çalışan bir comrade oturumu varsa bunu yansıtması için yeniden başlatın.\n",
-	MsgUpgradeNoReleaseFound: "henüz yayımlanmış bir comrade sürümü yok — daha sonra tekrar kontrol edin",
-	MsgUpgradeFetchFailed:    "daha yeni bir sürüm kontrol edilirken GitHub'a ulaşılamadı — daha sonra tekrar deneyin",
+	MsgUpgradeDevBuildError:          "upgrade: bu bir geliştirme (dev) derlemesi (derleme zamanında bir sürüm gömülmemiş); `comrade upgrade` kullanmak için yayımlanmış bir derleme kurun",
+	MsgUpgradeUpToDate:               "zaten en güncel sürümdesiniz (%s)\n",
+	MsgUpgradeNewerAvailable:         "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s) — %s\n",
+	MsgUpgradeDownloading:            "comrade %s indiriliyor...\n",
+	MsgUpgradeInstalled:              "%s sürümüne güncellendi. Çalışan bir comrade oturumu varsa bunu yansıtması için yeniden başlatın.\n",
+	MsgUpgradeNoReleaseFound:         "henüz yayımlanmış bir comrade sürümü yok — daha sonra tekrar kontrol edin",
+	MsgUpgradeFetchFailed:            "daha yeni bir sürüm kontrol edilirken GitHub'a ulaşılamadı — daha sonra tekrar deneyin",
+	MsgUpgradeSymlinkResolveWarning:  "cli-comrade: uyarı: %s için sembolik bağlar çözülemedi (%v); doğrudan bu yol değiştiriliyor\n",
+	MsgUpgradeSignatureNotConfigured: "cli-comrade: sürüm imza doğrulaması yapılandırılmamış; yalnızca sağlama toplamı (checksum) ile doğrulamaya devam ediliyor\n",
+	MsgUpgradeSignatureMissing:       "bu sürüm bir imza dosyası içermiyor; kurulum reddediliyor",
+	MsgUpgradeSignatureInvalid:       "bu sürümün imzası doğrulanamadı; kurulum reddediliyor",
 
 	MsgHelpShortUpgrade: "comrade'in daha yeni bir yayımlanmış sürümünü denetler veya kurar",
 	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -739,5 +740,142 @@ func TestConfirmYesNoReadsLangSpecificAnswer(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 			assert.Equal(t, "confirm? ", out.String())
 		})
+	}
+}
+
+// TestWriteFileContent drives writeFileContent directly (LOW#9's atomic
+// rc-file write) rather than only indirectly through the higher-level
+// TestInit* flows above: it asserts the resulting content is exactly
+// right, that re-running is idempotent (no double-write/corruption),
+// that no leftover ".comrade-init-*.tmp" file survives a successful
+// write (proof the mechanism is genuinely temp-file-then-rename rather
+// than a direct in-place write), and that pre-existing sibling content
+// in the same directory is left untouched.
+func TestWriteFileContent(t *testing.T) {
+	tests := []struct {
+		name        string
+		existing    string // "" means: do not create the file at all first
+		content     string
+		wantContent string
+	}{
+		{
+			name:        "fresh file with no prior content",
+			existing:    "",
+			content:     "export COMRADE_HOME=1\n",
+			wantContent: "export COMRADE_HOME=1\n",
+		},
+		{
+			name:        "overwrite replaces existing content exactly",
+			existing:    "# old rc content\nalias ll='ls -la'\n",
+			content:     "# new rc content\n",
+			wantContent: "# new rc content\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, ".bashrc")
+			if tt.existing != "" {
+				require.NoError(t, os.WriteFile(path, []byte(tt.existing), 0o644))
+			}
+
+			require.NoError(t, writeFileContent(path, tt.content))
+
+			got, err := os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantContent, string(got))
+
+			assertNoLeftoverTempFile(t, dir)
+		})
+	}
+}
+
+// TestWriteFileContentIsIdempotentAcrossRepeatedWrites proves writing the
+// same content twice in a row never double-appends or corrupts the file
+// — the second write's temp-file-then-rename simply replaces the first
+// write's result byte-for-byte.
+func TestWriteFileContentIsIdempotentAcrossRepeatedWrites(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".bashrc")
+	content := "# cli-comrade hook\nexport FOO=bar\n"
+
+	require.NoError(t, writeFileContent(path, content))
+	require.NoError(t, writeFileContent(path, content))
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, content, string(got), "re-running writeFileContent with identical content must not double-write it")
+	assertNoLeftoverTempFile(t, dir)
+}
+
+// TestWriteFileContentPreservesExistingFileMode proves an existing rc
+// file's own permission bits survive the temp-file-then-rename — the
+// same behavior os.WriteFile always had (it never re-chmods a file that
+// already exists), now delivered atomically instead of in-place.
+// POSIX permission bits are not meaningful on Windows (see this
+// package's other runtime.GOOS-guarded mode assertions, e.g.
+// TestUpdateReplace* in internal/update), so this only runs elsewhere.
+func TestWriteFileContentPreservesExistingFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful on windows")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".bashrc")
+	require.NoError(t, os.WriteFile(path, []byte("# old\n"), 0o640))
+
+	require.NoError(t, writeFileContent(path, "# new\n"))
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o640), info.Mode().Perm())
+}
+
+// TestWriteFileContentFreshFileGetsDefaultMode proves a newly created rc
+// file still gets the same 0o644 default writeFileContent always used,
+// matching os.WriteFile's own create-time mode.
+func TestWriteFileContentFreshFileGetsDefaultMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful on windows")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".bashrc")
+
+	require.NoError(t, writeFileContent(path, "# new\n"))
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+}
+
+// TestWriteFileContentLeavesSiblingFilesUntouched proves the temp file
+// writeFileContent creates alongside path (same directory, required for
+// os.Rename to stay within one filesystem) never collides with or
+// clobbers an unrelated file that happens to already live there.
+func TestWriteFileContentLeavesSiblingFilesUntouched(t *testing.T) {
+	dir := t.TempDir()
+	siblingPath := filepath.Join(dir, ".zshrc")
+	require.NoError(t, os.WriteFile(siblingPath, []byte("# unrelated zsh content\n"), 0o644))
+
+	path := filepath.Join(dir, ".bashrc")
+	require.NoError(t, writeFileContent(path, "# bash content\n"))
+
+	sibling, err := os.ReadFile(siblingPath)
+	require.NoError(t, err)
+	assert.Equal(t, "# unrelated zsh content\n", string(sibling))
+	assertNoLeftoverTempFile(t, dir)
+}
+
+// assertNoLeftoverTempFile lists dir and fails the test if any entry
+// matches writeFileContent's own ".comrade-init-*.tmp" temp-file
+// pattern — the sole positive proof that a write actually went through
+// os.CreateTemp+os.Rename rather than a direct in-place os.WriteFile.
+func assertNoLeftoverTempFile(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	for _, e := range entries {
+		assert.False(t, strings.Contains(e.Name(), ".comrade-init-"), "leftover temp file: %s", e.Name())
 	}
 }

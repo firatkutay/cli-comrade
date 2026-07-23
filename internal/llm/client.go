@@ -172,6 +172,19 @@ func splitProviderModel(entry string) (provider, model string) {
 // any other retryable failure, never as ErrAuthRejected (that sentinel is
 // reserved for a credential the provider's API itself rejected over the
 // wire, not one that was never sent).
+//
+// For openai_compat/ollama specifically, this is also SAST finding #3's
+// point-of-use enforcement: config.CheckBaseURL rejects (a hard error,
+// failing Client construction — unlike config.validateLoadedConfig at
+// config-load time, which only warns) a reject-class base_url — non-
+// http(s) scheme, no host, or a cloud-metadata/link-local host — for the
+// entry actually being built here, whether it's the primary provider or a
+// configured fallback. This is the moment the API key would otherwise be
+// handed to a connector holding that base_url, so it is the right place
+// to refuse, and it is safe to fail Client construction entirely here
+// (unlike Load()): `comrade config set`/`config edit`/`config get` never
+// call New at all, so they stay available to repair the value even when
+// every do/fix/chat/explain invocation now refuses to build a client.
 func buildProvider(providerName, model string, cfg config.Config, httpClient *http.Client, resolveKey KeyResolver) (Provider, error) {
 	switch providerName {
 	case "anthropic":
@@ -187,6 +200,9 @@ func buildProvider(providerName, model string, cfg config.Config, httpClient *ht
 	case "openai_compat":
 		if model == "" {
 			model = defaultOpenAICompatModel
+		}
+		if _, err := config.CheckBaseURL("llm.openai_compat.base_url", cfg.LLM.OpenAICompat.BaseURL); err != nil {
+			return nil, fmt.Errorf("llm: %s: %w", providerName, err)
 		}
 		key, err := resolveKey("openai_compat")
 		if err != nil {
@@ -207,6 +223,9 @@ func buildProvider(providerName, model string, cfg config.Config, httpClient *ht
 	case "ollama":
 		// model may legitimately be "" here — resolved lazily against
 		// /api/tags on first use (see ollamaConnector.resolveModel).
+		if _, err := config.CheckBaseURL("llm.ollama.base_url", cfg.LLM.Ollama.BaseURL); err != nil {
+			return nil, fmt.Errorf("llm: %s: %w", providerName, err)
+		}
 		return newOllamaConnector(model, cfg.LLM.Ollama.BaseURL, httpClient), nil
 
 	default:

@@ -3,11 +3,19 @@ package context
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"time"
 )
+
+// maxLastCommandBytes bounds how much of last_command.json
+// ReadLastCommand will ever read into memory. The file is a single
+// small JSON object FAZ 4's shell hooks write via WriteLastCommand
+// (command text + a bounded stderr/stdout tail); anything anywhere
+// near this size is not a file comrade itself ever produced.
+const maxLastCommandBytes = 1 << 20 // 1 MiB
 
 // LastCommand is the shape of the last_command.json file written by the
 // FAZ 4 shell hooks and read here. FAZ 3 owns and defines this format
@@ -120,16 +128,31 @@ func WriteLastCommand(path string, cmd LastCommand) error {
 }
 
 // ReadLastCommand reads and parses the last_command.json file at path. A
-// missing file, an unreadable file, or corrupt JSON is not an error: ok
-// is false and the zero LastCommand is returned, so callers always get a
-// uniform "not available" result instead of having to special-case
-// os.IsNotExist versus a json.Unmarshal failure.
+// missing file, an unreadable file, an oversized file (over
+// maxLastCommandBytes), or corrupt JSON is not an error: ok is false and
+// the zero LastCommand is returned, so callers always get a uniform "not
+// available" result instead of having to special-case os.IsNotExist
+// versus a json.Unmarshal failure.
 func ReadLastCommand(path string) (cmd LastCommand, ok bool) {
 	if path == "" {
 		return LastCommand{}, false
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- path is this process's own fixed XDG-state last_command.json location (LastCommandPath), not attacker-controlled input
+	f, err := os.Open(path) // #nosec G304 -- path is this process's own fixed XDG-state last_command.json location (LastCommandPath), not attacker-controlled input
 	if err != nil {
+		return LastCommand{}, false
+	}
+	defer func() { _ = f.Close() }()
+
+	// Read at most maxLastCommandBytes+1: this process's own memory
+	// footprint never exceeds ~1 MiB regardless of the file's actual
+	// on-disk size, and if the file is larger, the extra byte tips
+	// len(data) over the cap below so the oversized file is rejected
+	// outright rather than parsed from a truncated JSON fragment.
+	data, err := io.ReadAll(io.LimitReader(f, maxLastCommandBytes+1))
+	if err != nil {
+		return LastCommand{}, false
+	}
+	if len(data) > maxLastCommandBytes {
 		return LastCommand{}, false
 	}
 	if err := json.Unmarshal(data, &cmd); err != nil {

@@ -300,6 +300,110 @@ func TestConfigGetUnknownKeyRejectedInTurkish(t *testing.T) {
 	assert.True(t, strings.HasPrefix(err.Error(), "bilinmeyen config anahtarı"), "got: %s", err.Error())
 }
 
+// TestConfigSetNonHTTPBaseURLRejectedInTurkish is QA D4a's pattern
+// (TestConfigSetInvalidEnumRejectedInTurkish) applied to the two base_url
+// InvalidValueReasons (ReasonNotURL/ReasonMetadataOrLinkLocal) that used
+// to fall through translateConfigError's switch untranslated — the fix
+// this task closes. `comrade config set llm.ollama.base_url ftp://x` must
+// still be a HARD reject (Fix A's "Validate stays a hard reject,
+// unchanged" requirement), and now render fully in Turkish.
+func TestConfigSetNonHTTPBaseURLRejectedInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.ollama.base_url", "ftp://x")
+
+	require.Error(t, err)
+	assert.Equal(t, `"ftp://x" değeri llm.ollama.base_url için geçersiz: geçerli bir http:// veya https:// URL'si olmalı ve bir host içermeli`, err.Error())
+}
+
+// TestConfigSetNonHTTPBaseURLRejectedInEnglish is the EN-default
+// counterpart, pinning the exact same text `config.Validate` has always
+// produced for this case (byte-identical, per this catalog's own
+// convention) — proving the new translateConfigError case didn't change
+// English behavior at all.
+func TestConfigSetNonHTTPBaseURLRejectedInEnglish(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.ollama.base_url", "ftp://x")
+
+	require.Error(t, err)
+	assert.Equal(t, `invalid value "ftp://x" for llm.ollama.base_url: must be a valid http:// or https:// URL with a host`, err.Error())
+}
+
+// TestConfigSetMetadataBaseURLRejectedInTurkish is
+// TestConfigSetNonHTTPBaseURLRejectedInTurkish's counterpart for the other
+// reject reason, ReasonMetadataOrLinkLocal.
+func TestConfigSetMetadataBaseURLRejectedInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", "https://169.254.169.254/v1")
+
+	require.Error(t, err)
+	assert.Equal(t, `"https://169.254.169.254/v1" değeri llm.openai_compat.base_url için geçersiz: bulut metadata / link-local adresine izin verilmiyor`, err.Error())
+}
+
+// TestConfigCommandsWorkOnFileWithMetadataBaseURLForInactiveProvider is the
+// CLI-level mirror of internal/config's
+// TestLoaderDoesNotBrickOnMetadataBaseURLForInactiveProvider — the
+// reviewer's exact proof, run at the real `comrade config` command
+// surface: a file whose llm.openai_compat.base_url is a hand-edited
+// cloud-metadata address, with openai_compat NOT the active provider,
+// used to make EVERY config subcommand fail at Load() — including
+// `config set`/`config edit`, the very commands that would otherwise fix
+// it — with no in-tool way back in. All of path/get/set/list must now
+// work normally.
+func TestConfigCommandsWorkOnFileWithMetadataBaseURLForInactiveProvider(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cli-comrade"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "cli-comrade", "config.toml"),
+		[]byte("[llm]\nprovider = \"anthropic\"\n\n[llm.openai_compat]\nbase_url = \"https://169.254.169.254/v1\"\n"),
+		0o600))
+
+	_, _, err := execRootSplit(t, "dev", "config", "path")
+	require.NoError(t, err, "config path must not even load config, so it was never broken by this bug, but pin it anyway")
+
+	stdout, _, err := execRootSplit(t, "dev", "config", "get", "llm.openai_compat.base_url")
+	require.NoError(t, err, "config get must survive a bad INACTIVE-provider base_url on disk")
+	assert.Equal(t, "https://169.254.169.254/v1\n", stdout)
+
+	stdout, _, err = execRootSplit(t, "dev", "config", "list")
+	require.NoError(t, err, "config list must survive it too")
+	assert.Contains(t, stdout, "llm.openai_compat.base_url")
+
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", "https://api.openai.com/v1")
+	require.NoError(t, err, "config set — the actual repair command — must remain reachable")
+
+	stdout, _, err = execRootSplit(t, "dev", "config", "get", "llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.openai.com/v1\n", stdout, "the repaired value must have persisted")
+}
+
+// TestConfigCommandsWorkOnFileWithMetadataBaseURLForActiveProvider is
+// TestConfigCommandsWorkOnFileWithMetadataBaseURLForInactiveProvider's
+// counterpart when the bad base_url DOES belong to the active provider:
+// config subcommands must still all work (Load() only warns, never
+// fails) — only building an actual LLM client (do/fix/chat/explain; see
+// do_test.go's TestDoRefusesToBuildClientForMetadataBaseURLActiveProvider)
+// refuses.
+func TestConfigCommandsWorkOnFileWithMetadataBaseURLForActiveProvider(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cli-comrade"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "cli-comrade", "config.toml"),
+		[]byte("[llm]\nprovider = \"openai_compat\"\n\n[llm.openai_compat]\nbase_url = \"https://169.254.169.254/v1\"\n"),
+		0o600))
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", "https://api.openai.com/v1")
+	require.NoError(t, err, "config set must remain reachable even for the ACTIVE provider's bad value")
+
+	stdout, _, err := execRootSplit(t, "dev", "config", "get", "llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.openai.com/v1\n", stdout)
+}
+
 func TestConfigSetDoesNotPersistInvalidValue(t *testing.T) {
 	withIsolatedConfigDir(t)
 
@@ -548,6 +652,50 @@ func TestConfigTestLLMReportsHelpfulErrorOnMissingKey(t *testing.T) {
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "ANTHROPIC_API_KEY")
+}
+
+// TestConfigTestLLMRefusesToBuildClientForMetadataBaseURLActiveProvider is
+// the reviewer-flagged residual's fix for `config test-llm`: it used to
+// wrap llm.New's error as "test-llm: %w", surfacing a reject-class
+// base_url's raw, untranslated *config.InvalidValueError.Error() text
+// verbatim. Like TestDoRefusesToBuildClientForMetadataBaseURLActiveProvider
+// (do_test.go), the active provider's base_url reaches config via a
+// COMRADE_ env var — `config set` itself still hard-rejects this value
+// directly, so it cannot be the source here — and the command must now
+// refuse with the SAME translated, actionable MsgLLMBaseURLRejected
+// message do/fix/explain/chat already render for this error class, not
+// the raw wrap-chain.
+func TestConfigTestLLMRefusesToBuildClientForMetadataBaseURLActiveProvider(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", "http://169.254.169.254/latest/meta-data/")
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	_, _, err := execRootSplit(t, "dev", "config", "test-llm")
+
+	require.Error(t, err)
+	assert.Equal(t,
+		`refusing to send your API key to llm.openai_compat.base_url (currently "http://169.254.169.254/latest/meta-data/") — it is not a safe endpoint; fix it with: comrade config set llm.openai_compat.base_url <valid-url>`,
+		err.Error())
+	assert.NotContains(t, err.Error(), "InvalidValueError")
+	assert.NotContains(t, err.Error(), "test-llm:")
+}
+
+// TestConfigTestLLMRefusesToBuildClientForMetadataBaseURLActiveProviderInTurkish
+// is the same proof under COMRADE_LANG=tr.
+func TestConfigTestLLMRefusesToBuildClientForMetadataBaseURLActiveProviderInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", "http://169.254.169.254/latest/meta-data/")
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	_, _, err := execRootSplit(t, "dev", "config", "test-llm")
+
+	require.Error(t, err)
+	assert.Equal(t,
+		`API anahtarınız llm.openai_compat.base_url (şu an "http://169.254.169.254/latest/meta-data/") adresine gönderilmeyecek — güvenli bir uç nokta değil; düzeltmek için: comrade config set llm.openai_compat.base_url <geçerli-url>`,
+		err.Error())
 }
 
 func TestRootHelpFlagStillPrintsUsage(t *testing.T) {

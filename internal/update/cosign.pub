@@ -1,0 +1,1 @@
+# cosign public key placeholder — replace with the contents of your cosign.pub (run: cosign generate-key-pair). Until a real PEM key is embedded here, release-signature verification is skipped (checksum-only) with a warning. See docs/UPDATE_SIGNING.md.

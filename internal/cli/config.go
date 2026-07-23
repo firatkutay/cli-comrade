@@ -90,6 +90,14 @@ func newConfigTestLLMCmd(newLoader loaderFactory) *cobra.Command {
 			}
 			client, err := llm.New(*cfg, llm.WithKeyResolver(secretsKeyResolver(store)))
 			if err != nil {
+				// A reject-class base_url for the active provider
+				// (isBaseURLRejection — runtime.go) is rendered translated,
+				// consistent with do/fix/explain/chat's own client-build-
+				// time refusal; any other llm.New failure keeps this
+				// command's existing "test-llm: %w" wrap unchanged.
+				if _, ok := isBaseURLRejection(err); ok {
+					return translateBaseURLRejectedError(tr, err)
+				}
 				return fmt.Errorf("test-llm: %w", err)
 			}
 
@@ -250,6 +258,10 @@ func translateConfigError(tr i18n.Translator, err error) error {
 			return fmt.Errorf("%s", tr.T(i18n.MsgConfigNotPositive, invalid.Raw, invalid.Key))
 		case config.ReasonNotNonNegative:
 			return fmt.Errorf("%s", tr.T(i18n.MsgConfigNotNonNegative, invalid.Raw, invalid.Key))
+		case config.ReasonNotURL:
+			return fmt.Errorf("%s", tr.T(i18n.MsgConfigInvalidURL, invalid.Raw, invalid.Key))
+		case config.ReasonMetadataOrLinkLocal:
+			return fmt.Errorf("%s", tr.T(i18n.MsgConfigMetadataBlocked, invalid.Raw, invalid.Key))
 		}
 	}
 

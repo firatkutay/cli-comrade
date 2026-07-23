@@ -169,6 +169,75 @@ func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {
 	assert.Equal(t, "sk-still-stored", key, "the key must be stored regardless of whether the ping succeeded")
 }
 
+// TestAuthLoginStoresKeyAndReportsBaseURLUnsafeInsteadOfPingFailed is the
+// reviewer-flagged residual's fix: when the active provider's base_url
+// reaches config via a COMRADE_ env var (the same bypass path
+// TestDoRefusesToBuildClientForMetadataBaseURLActiveProvider (do_test.go)
+// documents — `config set` itself still hard-rejects this value directly,
+// so it cannot be the source here) is a cloud-metadata address,
+// pingProvider's own llm.New call never even attempts a request —
+// isBaseURLRejection recognizes the SAME *config.InvalidValueError
+// do/fix/explain/chat's translateBaseURLRejectedError does. The key must
+// still be stored (buildProvider refuses before any network call, so it
+// was never transmitted — storing it locally is harmless), but the
+// printed message must be the translated, base_url-focused
+// MsgAuthStoredKeyBaseURLUnsafe — NOT the generic
+// MsgAuthStoredKeyPingFailed "could not verify it right now" framing,
+// which would misleadingly read as a network hiccup rather than a
+// security refusal, and NOT the raw, untranslated
+// *config.InvalidValueError.Error() text either.
+func TestAuthLoginStoresKeyAndReportsBaseURLUnsafeInsteadOfPingFailed(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", "http://169.254.169.254/latest/meta-data/")
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute(), "a base_url-reject ping must not turn auth login into a command error")
+
+	assert.Contains(t, stdout.String(),
+		`Stored key for openai_compat. Skipped the live test — llm.openai_compat.base_url (currently "http://169.254.169.254/latest/meta-data/") is not a safe endpoint, so your key was never sent there; fix it with: comrade config set llm.openai_compat.base_url <valid-url>`+"\n")
+	assert.NotContains(t, stdout.String(), "Could not verify it right now", "must not use the generic ping-failed framing for a base_url refusal")
+	assert.NotContains(t, stdout.String(), "InvalidValueError")
+
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
+	require.NoError(t, err)
+	key, _, err := store.Get(context.Background(), "openai_compat")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-still-stored", key, "the key must still be stored — buildProvider refuses before any network call, so it was never transmitted")
+}
+
+// TestAuthLoginStoresKeyAndReportsBaseURLUnsafeInTurkish is the same proof
+// in Turkish — this project's established TR-smoke-test convention (exact
+// full-string pin, not merely "TR appears").
+func TestAuthLoginStoresKeyAndReportsBaseURLUnsafeInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+	t.Setenv("COMRADE_LANG", "tr")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", "http://169.254.169.254/latest/meta-data/")
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Contains(t, stdout.String(),
+		`openai_compat için anahtar kaydedildi. Canlı test atlandı — llm.openai_compat.base_url (şu an "http://169.254.169.254/latest/meta-data/") güvenli bir uç nokta değil, bu yüzden anahtarınız oraya hiç gönderilmedi; düzeltmek için: comrade config set llm.openai_compat.base_url <geçerli-url>`+"\n")
+
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
+	require.NoError(t, err)
+	key, _, err := store.Get(context.Background(), "openai_compat")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-still-stored", key)
+}
+
 // TestAuthLoginNeverWritesKeyWhenProviderRejectsIt is QA MAJOR-2's
 // branch (a), reordered per review: pingProvider verifies the IN-MEMORY
 // key directly (its own llm.WithKeyResolver closure, never the store),

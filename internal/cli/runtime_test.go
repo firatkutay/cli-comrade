@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/firatkutay/cli-comrade/internal/config"
 	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 )
@@ -137,6 +138,69 @@ func TestTranslateLLMErrorNeverDumpsDetailForUnclassifiedErrors(t *testing.T) {
 	_ = translateLLMError(&stderr, "comrade do", i18n.NewTranslator(i18n.LangEN), err)
 
 	assert.Empty(t, stderr.String())
+}
+
+// realBaseURLRejectedError builds the EXACT error shape
+// internal/llm/client.go's buildProvider actually returns for SAST finding
+// #3's point-of-use reject (see buildProvider's own doc comment) — not a
+// hand-simplified stand-in — so translateBaseURLRejectedError is proven
+// against the real wrap-chain shape.
+func realBaseURLRejectedError() error {
+	invalid := &config.InvalidValueError{
+		Key:    "llm.openai_compat.base_url",
+		Raw:    "http://169.254.169.254/latest/meta-data/",
+		Reason: config.ReasonMetadataOrLinkLocal,
+	}
+	return fmt.Errorf("llm: %s: %w", "openai_compat", invalid)
+}
+
+// TestTranslateBaseURLRejectedErrorRendersActionableMessage is SAST
+// finding #3's client-build-time i18n proof: errors.As sees straight
+// through internal/llm's wrap chain to the original
+// *config.InvalidValueError, and the rendered message is the exact
+// friendly EN text (MsgLLMBaseURLRejected) — pointing at `comrade config
+// set` to fix it — not the raw "llm: openai_compat: invalid value ..."
+// wrap chain.
+func TestTranslateBaseURLRejectedErrorRendersActionableMessage(t *testing.T) {
+	err := realBaseURLRejectedError()
+
+	got := translateBaseURLRejectedError(i18n.NewTranslator(i18n.LangEN), err)
+
+	assert.Equal(t,
+		`refusing to send your API key to llm.openai_compat.base_url (currently "http://169.254.169.254/latest/meta-data/") — it is not a safe endpoint; fix it with: comrade config set llm.openai_compat.base_url <valid-url>`,
+		got.Error())
+	assert.NotContains(t, got.Error(), "InvalidValueError")
+}
+
+// TestTranslateBaseURLRejectedErrorRendersActionableMessageInTurkish is the
+// same proof in Turkish — this project's established TR-smoke-test
+// convention.
+func TestTranslateBaseURLRejectedErrorRendersActionableMessageInTurkish(t *testing.T) {
+	err := realBaseURLRejectedError()
+
+	got := translateBaseURLRejectedError(i18n.NewTranslator(i18n.LangTR), err)
+
+	assert.Equal(t,
+		`API anahtarınız llm.openai_compat.base_url (şu an "http://169.254.169.254/latest/meta-data/") adresine gönderilmeyecek — güvenli bir uç nokta değil; düzeltmek için: comrade config set llm.openai_compat.base_url <geçerli-url>`,
+		got.Error())
+}
+
+// TestTranslateBaseURLRejectedErrorLeavesOtherErrorsUnchanged proves the
+// translation is NARROW: any error that is not (or does not wrap) a
+// *config.InvalidValueError with Reason ReasonNotURL/
+// ReasonMetadataOrLinkLocal — including an *config.InvalidValueError with
+// a DIFFERENT Reason, which base_url's own connector construction never
+// actually produces but this proves is not accidentally caught either —
+// is returned completely unchanged.
+func TestTranslateBaseURLRejectedErrorLeavesOtherErrorsUnchanged(t *testing.T) {
+	cases := []error{
+		fmt.Errorf("llm: unknown provider %q", "bogus"),
+		fmt.Errorf("llm: openai_compat: %w", &config.InvalidValueError{Key: "llm.timeout_seconds", Raw: "x", Reason: config.ReasonNotInteger}),
+	}
+	for _, err := range cases {
+		got := translateBaseURLRejectedError(i18n.NewTranslator(i18n.LangEN), err)
+		assert.Equal(t, err, got, "must not translate: %v", err)
+	}
 }
 
 func init() {

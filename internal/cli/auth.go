@@ -149,6 +149,28 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 				if errors.Is(pingErr, llm.ErrAuthRejected) {
 					return fmt.Errorf("%s", tr.T(i18n.MsgAuthKeyRejected, provider, pingErr, provider))
 				}
+				// pingProvider's own llm.New call refuses to build a
+				// client at all when the active provider's base_url is
+				// reject-class (isBaseURLRejection — runtime.go, the SAME
+				// detection do/fix/explain/chat's
+				// translateBaseURLRejectedError uses). That is a
+				// definitive, known cause — the endpoint itself, not the
+				// key — so it gets its own translated, base_url-focused
+				// message (MsgAuthStoredKeyBaseURLUnsafe) instead of the
+				// generic MsgAuthStoredKeyPingFailed framing below, which
+				// would misleadingly read as "a network hiccup, not
+				// necessarily a bad key" for what is actually a security
+				// refusal. The key is still stored: buildProvider refuses
+				// before any network call, so it was never transmitted,
+				// and storing it locally (0600) is harmless — only the
+				// ping was skipped, and the message says so.
+				if invalid, ok := isBaseURLRejection(pingErr); ok {
+					if err := store.Set(cmd.Context(), provider, key); err != nil {
+						return fmt.Errorf("auth login: store key: %w", err)
+					}
+					_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyBaseURLUnsafe, provider, invalid.Key, invalid.Raw, invalid.Key))
+					return err
+				}
 				if err := store.Set(cmd.Context(), provider, key); err != nil {
 					return fmt.Errorf("auth login: store key: %w", err)
 				}

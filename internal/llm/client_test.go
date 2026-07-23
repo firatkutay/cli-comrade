@@ -236,6 +236,80 @@ func TestNewUnknownProviderErrors(t *testing.T) {
 	assert.ErrorContains(t, err, `unknown provider "bogus"`)
 }
 
+// TestNewRejectsMetadataBaseURLForActiveProvider is SAST finding #3's
+// point-of-use enforcement (buildProvider, client.go): unlike
+// config.validateLoadedConfig at config-load time (which only warns, so
+// Load() itself never bricks), the moment a Client is actually built for
+// the active provider — the moment its API key would be handed to a
+// connector holding this base_url — a cloud-metadata/link-local host must
+// hard-fail Client construction. The returned error must remain
+// errors.As-reachable to *config.InvalidValueError, with the SAME Reason
+// checkBaseURL itself would produce, so internal/cli's
+// translateBaseURLRejectedError (runtime.go) can render it.
+func TestNewRejectsMetadataBaseURLForActiveProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.LLM.Provider = "openai_compat"
+	cfg.LLM.OpenAICompat.BaseURL = "http://169.254.169.254/latest/meta-data/"
+
+	_, err := New(cfg)
+
+	require.Error(t, err)
+	var invalid *config.InvalidValueError
+	require.ErrorAs(t, err, &invalid)
+	assert.Equal(t, config.ReasonMetadataOrLinkLocal, invalid.Reason)
+	assert.Equal(t, "llm.openai_compat.base_url", invalid.Key)
+	assert.Equal(t, "http://169.254.169.254/latest/meta-data/", invalid.Raw)
+}
+
+// TestNewRejectsNonHTTPBaseURLForActiveProvider is
+// TestNewRejectsMetadataBaseURLForActiveProvider's counterpart for the
+// OTHER reject class (ReasonNotURL) and the ollama connector, proving both
+// base_url-holding connectors (openai_compat and ollama) and both reject
+// reasons are enforced, not just one of each.
+func TestNewRejectsNonHTTPBaseURLForActiveProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.LLM.Provider = "ollama"
+	cfg.LLM.Ollama.BaseURL = "ftp://x"
+
+	_, err := New(cfg)
+
+	require.Error(t, err)
+	var invalid *config.InvalidValueError
+	require.ErrorAs(t, err, &invalid)
+	assert.Equal(t, config.ReasonNotURL, invalid.Reason)
+	assert.Equal(t, "llm.ollama.base_url", invalid.Key)
+}
+
+// TestNewAllowsWarnClassBaseURLForActiveProvider proves the reject-class
+// check does NOT also reject a warn-class value (http:// to a non-loopback
+// host, e.g. a legitimate self-hosted LAN Ollama) — client construction
+// must succeed exactly like it always has for this case, matching
+// checkBaseURL's own documented warn-but-allow rule.
+func TestNewAllowsWarnClassBaseURLForActiveProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.LLM.Provider = "ollama"
+	cfg.LLM.Ollama.BaseURL = "http://192.168.1.5:11434"
+
+	client, err := New(cfg)
+
+	require.NoError(t, err)
+	require.Len(t, client.attempts, 1)
+}
+
+// TestNewAllowsPublicHTTPSBaseURLForActiveProvider is the plain-good-path
+// sanity check: the shipped default-shaped https:// endpoint must keep
+// building a Client with no error at all.
+func TestNewAllowsPublicHTTPSBaseURLForActiveProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.LLM.Provider = "openai_compat"
+	cfg.LLM.OpenAICompat.BaseURL = "https://api.openai.com/v1"
+
+	client, err := New(cfg)
+
+	require.NoError(t, err)
+	require.Len(t, client.attempts, 1)
+}
+
 func TestNewMissingAPIKeyDefersErrorToAttemptTime(t *testing.T) {
 	t.Setenv("COMRADE_ANTHROPIC_API_KEY", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")

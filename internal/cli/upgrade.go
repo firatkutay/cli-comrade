@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/spf13/cobra"
@@ -99,6 +100,16 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 				return err
 			}
 
+			// update.Updater never prints anything itself (it has no
+			// i18n.Translator) — it only reports the signature-gate
+			// outcome (MEDIUM#4) via result.SignatureStatus, so this is
+			// the one place that renders it for the user.
+			if result.SignatureStatus == update.SignatureStatusNotConfigured {
+				if _, err := fmt.Fprint(cmd.ErrOrStderr(), tr.T(i18n.MsgUpgradeSignatureNotConfigured)); err != nil {
+					return err
+				}
+			}
+
 			if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgUpgradeDownloading, result.LatestVersion)); err != nil {
 				return err
 			}
@@ -107,6 +118,7 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("upgrade: resolve running executable path: %w", err)
 			}
+			exePath = resolveRealExecutablePath(cmd, tr, exePath)
 			if err := deps.replace(exePath, binary, deps.goos); err != nil {
 				return fmt.Errorf("upgrade: %w", err)
 			}
@@ -118,6 +130,29 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 
 	cmd.Flags().BoolVar(&checkOnly, "check", false, enUsageDefault(i18n.MsgFlagCheck))
 	return cmd
+}
+
+// resolveRealExecutablePath resolves exePath through any symlinks
+// (LOW#8): package managers such as Homebrew install the actual binary
+// under a versioned cellar path and symlink it into PATH, so
+// os.Executable() can return the symlink's path rather than the real
+// file. deps.replace/update.ReplaceBinary renames/overwrites whatever
+// path it's given — pointed at a symlink, that would either clobber the
+// symlink itself with a plain file or leave it dangling, either way
+// breaking the install. Resolving first makes ReplaceBinary operate on
+// the real backing file instead, exactly like a manual reinstall would.
+//
+// On EvalSymlinks failure (a dangling symlink, or exePath just not
+// existing as a real filesystem entry) this warns to cmd's stderr and
+// falls back to the original, unresolved path rather than aborting the
+// upgrade — the previous, symlink-naive behavior.
+func resolveRealExecutablePath(cmd *cobra.Command, tr i18n.Translator, exePath string) string {
+	resolvedPath, err := filepath.EvalSymlinks(exePath)
+	if err != nil {
+		_, _ = fmt.Fprint(cmd.ErrOrStderr(), tr.T(i18n.MsgUpgradeSymlinkResolveWarning, exePath, err))
+		return exePath
+	}
+	return resolvedPath
 }
 
 // translateUpgradeFetchError re-renders a failure from u.Check/u.Apply's
@@ -134,12 +169,18 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 // hook.go's own established COMRADE_DEBUG-gated-detail convention
 // elsewhere in this tree.
 //
-// Any error that is NEITHER of those two (e.g. a later Apply-specific
-// failure — no matching release asset for this platform, a checksum
-// mismatch, a failed binary replace, or resultFor's version-string parse
-// error) falls through unchanged, wrapped with prefix exactly like
-// before this fix — those already carry their own reasonably specific
-// detail and are unrelated to D3's fetch-step bug.
+// It also renders MEDIUM#4's two signature-gate hard-failures the same
+// way: update.ErrMissingSignatureAsset (signing is configured but this
+// release published no checksums.txt.sig) and update.ErrSignatureInvalid
+// (checksums.txt's signature didn't verify) each get their own clean,
+// translated message instead of the raw internal error text.
+//
+// Any error that is NEITHER of those four (e.g. no matching release
+// asset for this platform, a checksum mismatch, a failed binary replace,
+// or resultFor's version-string parse error) falls through unchanged,
+// wrapped with prefix exactly like before this fix — those already carry
+// their own reasonably specific detail and are unrelated to D3's
+// fetch-step bug.
 func translateUpgradeFetchError(cmd *cobra.Command, tr i18n.Translator, prefix string, err error) error {
 	if errors.Is(err, update.ErrReleaseNotFound) {
 		return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeNoReleaseFound))
@@ -149,6 +190,12 @@ func translateUpgradeFetchError(cmd *cobra.Command, tr i18n.Translator, prefix s
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s: %v\n", prefix, err)
 		}
 		return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeFetchFailed))
+	}
+	if errors.Is(err, update.ErrMissingSignatureAsset) {
+		return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeSignatureMissing))
+	}
+	if errors.Is(err, update.ErrSignatureInvalid) {
+		return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeSignatureInvalid))
 	}
 	return fmt.Errorf("%s: %w", prefix, err)
 }

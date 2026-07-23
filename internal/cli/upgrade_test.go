@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,23 +46,32 @@ func (f fakeDownloader) Download(_ context.Context, url string) ([]byte, error) 
 	return data, nil
 }
 
+// fakeArchiveName and fakeBinaryContent are the release asset name and
+// binary payload every buildFakeArchive caller in this file uses,
+// matching the fake release fixtures' own asset name and the
+// replacedContent assertions downstream.
+const (
+	fakeArchiveName   = "comrade_0.2.0_linux_amd64.tar.gz"
+	fakeBinaryContent = "new-binary-content"
+)
+
 // buildFakeArchive builds a minimal tar.gz archive containing a single
 // "comrade" binary entry, plus a matching checksums.txt line — the same
 // shape internal/update's own extract/checksum tests build.
-func buildFakeArchive(t *testing.T, archiveName, binaryContent string) (archive, checksums []byte) {
+func buildFakeArchive(t *testing.T) (archive, checksums []byte) {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "comrade", Mode: 0o755, Size: int64(len(binaryContent))}))
-	_, err := tw.Write([]byte(binaryContent))
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "comrade", Mode: 0o755, Size: int64(len(fakeBinaryContent))}))
+	_, err := tw.Write([]byte(fakeBinaryContent))
 	require.NoError(t, err)
 	require.NoError(t, tw.Close())
 	require.NoError(t, gz.Close())
 	archive = buf.Bytes()
 
 	sum := sha256.Sum256(archive)
-	checksums = []byte(hex.EncodeToString(sum[:]) + "  " + archiveName + "\n")
+	checksums = []byte(hex.EncodeToString(sum[:]) + "  " + fakeArchiveName + "\n")
 	return archive, checksums
 }
 
@@ -235,7 +247,7 @@ func TestUpgradeApplyNoOpWhenUpToDate(t *testing.T) {
 
 func TestUpgradeApplyDownloadsVerifiesAndReplaces(t *testing.T) {
 	archiveName := "comrade_0.2.0_linux_amd64.tar.gz"
-	archive, checksums := buildFakeArchive(t, archiveName, "new-binary-content")
+	archive, checksums := buildFakeArchive(t)
 
 	fetcher := fakeReleaseFetcher{release: update.Release{
 		TagName: "v0.2.0",
@@ -269,7 +281,7 @@ func TestUpgradeApplyDownloadsVerifiesAndReplaces(t *testing.T) {
 
 func TestUpgradeApplyChecksumMismatchNeverCallsReplace(t *testing.T) {
 	archiveName := "comrade_0.2.0_linux_amd64.tar.gz"
-	archive, _ := buildFakeArchive(t, archiveName, "new-binary-content")
+	archive, _ := buildFakeArchive(t)
 	wrongChecksums := []byte("0000000000000000000000000000000000000000000000000000000000000000  " + archiveName + "\n")
 
 	fetcher := fakeReleaseFetcher{release: update.Release{
@@ -292,6 +304,95 @@ func TestUpgradeApplyChecksumMismatchNeverCallsReplace(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "checksum mismatch")
 	assert.False(t, replaceCalled, "a checksum mismatch must never reach ReplaceBinary")
+}
+
+// TestUpgradeApplyResolvesSymlinkedExecutableBeforeReplace is LOW#8's
+// regression guard: when os.Executable() resolves to a symlink (as it
+// does for a Homebrew-style install, where the PATH entry is a symlink
+// into a versioned cellar directory), `comrade upgrade` must call
+// deps.replace with the symlink's REAL target, not the symlink path
+// itself — otherwise ReplaceBinary would clobber the symlink rather than
+// the actual binary it points at.
+func TestUpgradeApplyResolvesSymlinkedExecutableBeforeReplace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require elevated privileges on Windows CI runners")
+	}
+
+	dir := t.TempDir()
+	realBinary := filepath.Join(dir, "comrade-real")
+	require.NoError(t, os.WriteFile(realBinary, []byte("old-content"), 0o755))
+	symlinkPath := filepath.Join(dir, "comrade")
+	require.NoError(t, os.Symlink(realBinary, symlinkPath))
+
+	archiveName := "comrade_0.2.0_linux_amd64.tar.gz"
+	archive, checksums := buildFakeArchive(t)
+	fetcher := fakeReleaseFetcher{release: update.Release{
+		TagName: "v0.2.0",
+		Assets: []update.Asset{
+			{Name: archiveName, BrowserDownloadURL: "https://example.com/" + archiveName},
+			{Name: "checksums.txt", BrowserDownloadURL: "https://example.com/checksums.txt"},
+		},
+	}}
+	downloader := fakeDownloader{byURL: map[string][]byte{
+		"https://example.com/" + archiveName: archive,
+		"https://example.com/checksums.txt":  checksums,
+	}}
+
+	var replacedPath string
+	replace := func(targetPath string, _ []byte, _ string) error {
+		replacedPath = targetPath
+		return nil
+	}
+
+	deps := upgradeDeps{
+		version:    "v0.1.0",
+		goos:       "linux",
+		goarch:     "amd64",
+		fetcher:    fetcher,
+		downloader: downloader,
+		executable: func() (string, error) { return symlinkPath, nil },
+		replace:    replace,
+	}
+
+	_, err := execUpgradeCmd(t, deps)
+	require.NoError(t, err)
+
+	wantReal, err := filepath.EvalSymlinks(realBinary)
+	require.NoError(t, err)
+	assert.Equal(t, wantReal, replacedPath, "replace must target the symlink's real backing file, not the symlink itself")
+	assert.NotEqual(t, symlinkPath, replacedPath)
+}
+
+// TestUpgradeApplyFallsBackWhenSymlinkResolutionFails proves the
+// non-fatal fallback half of LOW#8: when the resolved executable path
+// doesn't actually exist on disk (EvalSymlinks fails), the upgrade still
+// proceeds using the original, unresolved path rather than aborting.
+func TestUpgradeApplyFallsBackWhenSymlinkResolutionFails(t *testing.T) {
+	archiveName := "comrade_0.2.0_linux_amd64.tar.gz"
+	archive, checksums := buildFakeArchive(t)
+	fetcher := fakeReleaseFetcher{release: update.Release{
+		TagName: "v0.2.0",
+		Assets: []update.Asset{
+			{Name: archiveName, BrowserDownloadURL: "https://example.com/" + archiveName},
+			{Name: "checksums.txt", BrowserDownloadURL: "https://example.com/checksums.txt"},
+		},
+	}}
+	downloader := fakeDownloader{byURL: map[string][]byte{
+		"https://example.com/" + archiveName: archive,
+		"https://example.com/checksums.txt":  checksums,
+	}}
+
+	var replacedPath string
+	replace := func(targetPath string, _ []byte, _ string) error {
+		replacedPath = targetPath
+		return nil
+	}
+
+	deps := testUpgradeDeps("v0.1.0", fetcher, downloader, replace)
+	out, err := execUpgradeCmd(t, deps)
+	require.NoError(t, err)
+	assert.Equal(t, "/fake/path/comrade", replacedPath, "a nonexistent path must fall back to the original, unresolved path")
+	assert.Contains(t, out, "could not resolve symlinks")
 }
 
 func TestUpgradeHelpDescribesCheckFlag(t *testing.T) {

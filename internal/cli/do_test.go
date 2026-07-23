@@ -234,6 +234,70 @@ func TestDoNoArgsShowsTranslatedUsageErrorInTurkish(t *testing.T) {
 	assert.Equal(t, `kullanım: comrade do <istek...> (örnek: comrade do "docker kur")`, err.Error())
 }
 
+// TestDoRefusesToBuildClientForMetadataBaseURLActiveProvider is SAST
+// finding #3's end-to-end, real-command-surface proof: the active
+// provider's base_url reaching config via a COMRADE_ env var (the same
+// bypass path validateLoadedConfig's own warn-only fix documents; `config
+// set` itself still hard-rejects this value, so it cannot be the source
+// here) is a cloud-metadata address. `comrade do` must refuse to build an
+// LLM client at all — no mock plan server is set up, and none is ever
+// contacted — with a translated, actionable error (runDo's own
+// "comrade do: " prefix still applies, exactly like every other error
+// setupCLIRuntime returns), never the raw "llm: openai_compat: invalid
+// value ..." wrap-chain.
+func TestDoRefusesToBuildClientForMetadataBaseURLActiveProvider(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", "http://169.254.169.254/latest/meta-data/")
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	_, _, err := execRootSplit(t, "dev", "do", "list", "files", "--dry-run")
+
+	require.Error(t, err)
+	assert.Equal(t,
+		`comrade do: refusing to send your API key to llm.openai_compat.base_url (currently "http://169.254.169.254/latest/meta-data/") — it is not a safe endpoint; fix it with: comrade config set llm.openai_compat.base_url <valid-url>`,
+		err.Error())
+	assert.NotContains(t, err.Error(), "InvalidValueError")
+}
+
+// TestDoRefusesToBuildClientForMetadataBaseURLActiveProviderInTurkish is
+// the same proof under COMRADE_LANG=tr.
+func TestDoRefusesToBuildClientForMetadataBaseURLActiveProviderInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "tr")
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", "http://169.254.169.254/latest/meta-data/")
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	_, _, err := execRootSplit(t, "dev", "do", "list", "files", "--dry-run")
+
+	require.Error(t, err)
+	assert.Equal(t,
+		`comrade do: API anahtarınız llm.openai_compat.base_url (şu an "http://169.254.169.254/latest/meta-data/") adresine gönderilmeyecek — güvenli bir uç nokta değil; düzeltmek için: comrade config set llm.openai_compat.base_url <geçerli-url>`,
+		err.Error())
+}
+
+// TestDoBuildsClientForWarnClassBaseURLActiveProvider is the regression
+// guard proving the new reject-class check in buildProvider does NOT also
+// block a legitimate endpoint: `comrade do --dry-run` still reaches the
+// mock plan server (an http:// loopback URL — the same shape
+// TestDoDryRunRendersPlanTableAgainstMockProvider already exercised)
+// exactly as before this fix.
+func TestDoBuildsClientForWarnClassBaseURLActiveProvider(t *testing.T) {
+	withIsolatedConfigDir(t)
+	server := newMockPlanServer(t, dockerKurPlanJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	stdout, stderr, err := execRootSplit(t, "dev", "do", "docker", "kur", "--dry-run")
+
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Contains(t, stdout, "Docker kurulur ve başlatılır.")
+}
+
 // TestRenderPlanShowsEffectiveRiskNotDeclaredRisk is renderPlan's own
 // exact-value unit test for MEDIUM 6: the RISK column must always render
 // internal/safety's independent Decision, never the LLM-declared

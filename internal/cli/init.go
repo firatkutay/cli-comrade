@@ -492,12 +492,58 @@ func readFileOrEmpty(path string) (string, error) {
 // writeFileContent writes content to path, creating path's parent
 // directory first if needed (e.g. fish's ~/.config/fish/ on a machine
 // that has never run fish).
+//
+// The write itself is atomic: content is written to a temp file in
+// path's own directory (same filesystem, so the final step is a plain
+// rename, not a cross-device copy), then moved into place with
+// os.Rename — never a direct os.WriteFile to path. A process
+// interrupted mid-write (crash, kill, power loss) either leaves path
+// untouched or fully replaced with content; it can never observe or
+// leave behind a half-written rc/profile file. WHAT gets written is
+// unchanged from before — callers (ApplyBlock/RemoveBlock) already
+// hand this the complete resulting file content, never a partial
+// edit — only the write mechanism changed. path's existing file mode
+// is preserved (matching os.WriteFile's own behavior of never
+// re-chmod'ing a file that already exists); a freshly created path
+// keeps the same 0o644 default this function used before.
 func writeFileContent(path, content string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return fmt.Errorf("init: create directory for %s: %w", path, err)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("init: create directory for %s: %w", dir, err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { // #nosec G306 -- an rc/profile file is meant to be user-readable, matching its pre-existing permissions convention
-		return fmt.Errorf("init: write %s: %w", path, err)
+
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("init: stat %s: %w", path, err)
 	}
+
+	tmp, err := os.CreateTemp(dir, ".comrade-init-*.tmp")
+	if err != nil {
+		return fmt.Errorf("init: create temp file for %s: %w", path, err)
+	}
+	tmpPath := tmp.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.WriteString(content); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("init: write temp file for %s: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("init: close temp file for %s: %w", path, err)
+	}
+	if err := os.Chmod(tmpPath, mode); err != nil { // #nosec G302 -- mode is either an rc/profile file's own pre-existing permissions (preserved as-is) or the same 0o644 user-readable default this function always used for a freshly created one
+		return fmt.Errorf("init: chmod temp file for %s: %w", path, err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("init: rename temp file into %s: %w", path, err)
+	}
+	renamed = true
 	return nil
 }

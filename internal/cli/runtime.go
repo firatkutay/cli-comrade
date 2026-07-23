@@ -182,15 +182,60 @@ func requireInteractiveTTY(tr i18n.Translator, isTerminal isTerminalFunc, msgID 
 // buildLLMClient constructs the full llm.Client (fallback chain included)
 // for cfg, resolving API keys through the same keychain/file/env chain
 // every FAZ 8 command uses (see newSecretsStore/secretsKeyResolver). tr
-// is only used for the file-fallback keychain-unavailable notice's
-// language (QA MINOR-4) — every caller already has it in scope from its
-// own loadConfigWithNotice call.
+// is used both for the file-fallback keychain-unavailable notice's
+// language (QA MINOR-4) and — as of SAST finding #3's point-of-use fix —
+// to translate a reject-class base_url error llm.New returns (see
+// translateBaseURLRejectedError); every caller already has tr in scope
+// from its own loadConfigWithNotice call.
 func buildLLMClient(cmd *cobra.Command, cfg config.Config, tr i18n.Translator) (*llm.Client, error) {
 	store, err := newSecretsStore(cmd.ErrOrStderr(), tr)
 	if err != nil {
 		return nil, err
 	}
-	return llm.New(cfg, llm.WithKeyResolver(secretsKeyResolver(store)))
+	client, err := llm.New(cfg, llm.WithKeyResolver(secretsKeyResolver(store)))
+	if err != nil {
+		return nil, translateBaseURLRejectedError(tr, err)
+	}
+	return client, nil
+}
+
+// isBaseURLRejection reports whether err is (or wraps) a
+// *config.InvalidValueError with Reason ReasonNotURL or
+// ReasonMetadataOrLinkLocal — the reject-class base_url check SAST finding
+// #3 enforces at the point an LLM client is actually built (buildProvider
+// in internal/llm/client.go). This is the single errors.As+Reason
+// detection every caller that needs to recognize this specific error class
+// shares: translateBaseURLRejectedError (below, for do/fix/explain/chat's
+// buildLLMClient path), `comrade config test-llm` (config.go), and
+// `comrade auth login`'s pingProvider failure handling (auth.go) — each
+// call site renders its own message for the case, but none of them
+// duplicates this detection.
+func isBaseURLRejection(err error) (*config.InvalidValueError, bool) {
+	var invalid *config.InvalidValueError
+	if errors.As(err, &invalid) && (invalid.Reason == config.ReasonNotURL || invalid.Reason == config.ReasonMetadataOrLinkLocal) {
+		return invalid, true
+	}
+	return nil, false
+}
+
+// translateBaseURLRejectedError re-renders the *config.InvalidValueError
+// (Reason ReasonNotURL/ReasonMetadataOrLinkLocal) internal/llm/client.go's
+// buildProvider returns when the active provider's connector construction
+// hard-rejects a dangerous base_url (SAST finding #3's point-of-use
+// enforcement — see buildProvider's own doc comment), as
+// MsgLLMBaseURLRejected: a translated, actionable message pointing at
+// `comrade config set` to fix it, rather than the raw internal wrap-chain
+// ("llm: openai_compat: invalid value ... for llm.openai_compat.base_url:
+// ...") that would otherwise surface verbatim and untranslated — the same
+// errors.As-at-the-CLI-boundary pattern translateConfigError and
+// classifyLLMError already established for their own error families. Any
+// OTHER error from llm.New (e.g. an unknown provider name) is returned
+// unchanged.
+func translateBaseURLRejectedError(tr i18n.Translator, err error) error {
+	if invalid, ok := isBaseURLRejection(err); ok {
+		return fmt.Errorf("%s", tr.T(i18n.MsgLLMBaseURLRejected, invalid.Key, invalid.Raw, invalid.Key))
+	}
+	return err
 }
 
 // setupCLIRuntime is the config-load/first-run-notice/--yolo-warning/

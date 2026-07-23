@@ -10,6 +10,141 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestLoaderDefaultConfigLoadsWithoutErrorOrWarning pins the "must stay
+// non-breaking" requirement for SAST finding #3's base_url validation: the
+// two shipped defaults (an https public host, and http on loopback) must
+// keep loading cleanly with no error and no cleartext warning.
+func TestLoaderDefaultConfigLoadsWithoutErrorOrWarning(t *testing.T) {
+	buf := captureBaseURLWarnings(t)
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.openai.com/v1", cfg.LLM.OpenAICompat.BaseURL)
+	assert.Equal(t, "http://localhost:11434", cfg.LLM.Ollama.BaseURL)
+	assert.Empty(t, buf.String())
+}
+
+// TestLoaderDoesNotBrickOnMetadataBaseURLForInactiveProvider is the
+// regression guard for the "un-brick Load()" fix: a base_url reaching the
+// file some other way than `comrade config set` (here, a hand-edited file)
+// used to make Load() FAIL for this exact fixture — including for every
+// command that calls Load() before it can do anything else, `comrade
+// config set`/`get`/`edit`/`path` among them — with no in-tool way back
+// in. llm.provider here is left at its default ("anthropic"), so
+// llm.openai_compat.base_url is a value nobody is even using: Load() must
+// now succeed AND stay silent (no warning either — see
+// validateLoadedConfig's own doc comment for why an unused provider's bad
+// value produces no per-invocation noise). The companion active-provider
+// case (warns, still succeeds) is
+// TestLoaderWarnsOnMetadataBaseURLForActiveProvider below; the
+// companion "repair commands survive this file" proof, at the actual
+// `comrade config` command surface, is
+// TestConfigSetGetPathWorkOnFileWithMetadataBaseURLForInactiveProvider in
+// internal/cli/config_test.go.
+func TestLoaderDoesNotBrickOnMetadataBaseURLForInactiveProvider(t *testing.T) {
+	buf := captureBaseURLWarnings(t)
+	path := tempConfigPath(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	toml := "[llm.openai_compat]\nbase_url = \"https://169.254.169.254/v1\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0o644))
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+
+	require.NoError(t, err, "Load() must never fail because of a base_url value — see validateLoadedConfig")
+	assert.Equal(t, "anthropic", cfg.LLM.Provider, "precondition: openai_compat must be inactive")
+	assert.Equal(t, "https://169.254.169.254/v1", cfg.LLM.OpenAICompat.BaseURL)
+	assert.Empty(t, buf.String(), "an inactive provider's bad base_url must stay silent")
+
+	// The repair path itself: Get/SetAndSave (what `comrade config
+	// get`/`set` call) must still work against this exact file.
+	value, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, "https://169.254.169.254/v1", value)
+
+	require.NoError(t, loader.SetAndSave("llm.openai_compat.base_url", "https://api.openai.com/v1"))
+	cfg, _, err = loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.openai.com/v1", cfg.LLM.OpenAICompat.BaseURL, "the repaired value must persist")
+}
+
+// TestLoaderWarnsOnMetadataBaseURLForActiveProvider is
+// TestLoaderDoesNotBrickOnMetadataBaseURLForInactiveProvider's counterpart:
+// the SAME reject-class value, but for the ACTIVE provider this time —
+// Load() must still succeed (never hard-fail; see validateLoadedConfig's
+// own doc comment), but now it must warn, since this is the base_url an
+// LLM client would actually be built against (and — separately —
+// internal/llm.buildProvider is where that HARD reject actually happens,
+// once a client is built for do/fix/chat/explain; see client_test.go).
+func TestLoaderWarnsOnMetadataBaseURLForActiveProvider(t *testing.T) {
+	buf := captureBaseURLWarnings(t)
+	path := tempConfigPath(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	toml := "[llm]\nprovider = \"openai_compat\"\n\n[llm.openai_compat]\nbase_url = \"https://169.254.169.254/v1\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0o644))
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://169.254.169.254/v1", cfg.LLM.OpenAICompat.BaseURL)
+	assert.Contains(t, buf.String(), "llm.openai_compat.base_url")
+	assert.Contains(t, buf.String(), "cloud metadata / link-local address not allowed")
+}
+
+// TestLoaderWarnsOnCleartextBaseURLFromEnv exercises the other bypass path
+// (a COMRADE_ environment variable) and confirms it still only warns, never
+// rejects, for a legitimate self-hosted LAN endpoint over http:// — for the
+// ACTIVE provider (COMRADE_PROVIDER=ollama alongside
+// COMRADE_LLM_OLLAMA_BASE_URL): validateLoadedConfig scopes its warning to
+// cfg.LLM.Provider only, so without this the env-supplied ollama base_url
+// would go unchecked while the default "anthropic" provider stays active.
+func TestLoaderWarnsOnCleartextBaseURLFromEnv(t *testing.T) {
+	buf := captureBaseURLWarnings(t)
+	path := tempConfigPath(t)
+	t.Setenv("COMRADE_PROVIDER", "ollama")
+	t.Setenv("COMRADE_LLM_OLLAMA_BASE_URL", "http://192.168.1.50:11434")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "http://192.168.1.50:11434", cfg.LLM.Ollama.BaseURL)
+	assert.Contains(t, buf.String(), "llm.ollama.base_url")
+	assert.Contains(t, buf.String(), "unencrypted")
+}
+
+// TestLoaderStaysSilentOnCleartextBaseURLForInactiveProviderFromEnv is
+// TestLoaderWarnsOnCleartextBaseURLFromEnv's negative counterpart: the
+// SAME env-supplied value, but with llm.provider left at its default
+// ("anthropic") — must load cleanly with no warning at all, since
+// validateLoadedConfig only ever looks at the active provider's base_url.
+func TestLoaderStaysSilentOnCleartextBaseURLForInactiveProviderFromEnv(t *testing.T) {
+	buf := captureBaseURLWarnings(t)
+	path := tempConfigPath(t)
+	t.Setenv("COMRADE_LLM_OLLAMA_BASE_URL", "http://192.168.1.50:11434")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "anthropic", cfg.LLM.Provider, "precondition: ollama must be inactive")
+	assert.Equal(t, "http://192.168.1.50:11434", cfg.LLM.Ollama.BaseURL)
+	assert.Empty(t, buf.String(), "an inactive provider's base_url must never warn, even from env")
+}
+
 func tempConfigPath(t *testing.T) string {
 	t.Helper()
 	return filepath.Join(t.TempDir(), "config.toml")

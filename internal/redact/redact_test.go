@@ -136,6 +136,158 @@ func TestApplyMandatoryPatterns(t *testing.T) {
 	}
 }
 
+// TestApplyNewSecretShapes is the golden table for the additional
+// high-confidence secret shapes added to close the SAST redaction-coverage
+// finding: each case asserts the secret is gone, the expected marker is
+// present, and applying Apply a second time is a no-op (idempotency).
+func TestApplyNewSecretShapes(t *testing.T) {
+	cases := []struct {
+		name       string
+		input      string
+		wantMasked string // substring that must appear in the output
+		rawSecret  string // substring that must NOT appear in the output
+	}{
+		{
+			name:       "Google/Gemini API key standalone",
+			input:      "the gemini key is AIzaODjfcRNL2EDLbdDZ1c5jAU2rjTbrNLwMtsh for the bot",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "AIzaODjfcRNL2EDLbdDZ1c5jAU2rjTbrNLwMtsh",
+		},
+		{
+			name:       "GitHub fine-grained PAT",
+			input:      "leaked: github_pat_F6PwKluYIFdlKdMwj6uUvtaiJVfU7wicpHdEoziI in the log",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "github_pat_F6PwKluYIFdlKdMwj6uUvtaiJVfU7wicpHdEoziI",
+		},
+		{
+			name:       "GitHub app token",
+			input:      "installation token ghs_N68k4tUNpfZ46pdJQIPvjiQv expired",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "ghs_N68k4tUNpfZ46pdJQIPvjiQv",
+		},
+		{
+			name:       "GitLab personal access token",
+			input:      "gitlab token glpat-2zucR-LGOTU2Ixw7gBOirOl3 leaked",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "glpat-2zucR-LGOTU2Ixw7gBOirOl3",
+		},
+		{
+			name:       "Stripe live secret key",
+			input:      "stripe key sk_live_testvalidkey1234567890a in payload",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "sk_live_testvalidkey1234567890a",
+		},
+		{
+			name:       "Stripe test secret key",
+			input:      "stripe key sk_test_testvalidkey0987654321b in payload",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "sk_test_testvalidkey0987654321b",
+		},
+		{
+			name:       "Google OAuth client secret",
+			input:      "oauth secret GOCSPX-KK_IQQ8Vh2bZnzv45PfcIrCd leaked",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "GOCSPX-KK_IQQ8Vh2bZnzv45PfcIrCd",
+		},
+		{
+			name:       "SendGrid API key",
+			input:      "sendgrid key SG.test-fake-key-12345678.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx in env",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "SG.test-fake-key-12345678.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+		},
+		{
+			name:       "npm access token",
+			input:      "npm token npm_JMSN9DlviDvUDDleg62hKD9gF2LEmEr3PZH8 in .npmrc",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "npm_JMSN9DlviDvUDDleg62hKD9gF2LEmEr3PZH8",
+		},
+		{
+			name:       "GCP OAuth access token",
+			input:      "gcp access token ya29.fFK1ohaoehyQm6oJB6MJbhQsIfvkU4 expired",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "ya29.fFK1ohaoehyQm6oJB6MJbhQsIfvkU4",
+		},
+		{
+			name:       "Slack incoming webhook URL",
+			input:      "webhook https://hooks.slack.com/services/TTEST000/BTEST0000/ZZZZZZZZZZZZZZZZZZtest in config",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "https://hooks.slack.com/services/TTEST000/BTEST0000/ZZZZZZZZZZZZZZZZZZtest",
+		},
+		{
+			name:       "Azure storage AccountKey",
+			input:      "DefaultEndpointsProtocol=https;AccountName=foo;AccountKey=pTyGJMuHbEL31IeL2HPcHyGcFRl1SPnXNYvMIHa/2o==;EndpointSuffix=core.windows.net",
+			wantMasked: "AccountKey=[REDACTED:credential]",
+			rawSecret:  "pTyGJMuHbEL31IeL2HPcHyGcFRl1SPnXNYvMIHa/2o==",
+		},
+		{
+			name:       "Authorization Basic header",
+			input:      "Authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQxMjM0NTY3ODk=",
+			wantMasked: "Authorization: Basic [REDACTED:basic]",
+			rawSecret:  "dXNlcm5hbWU6cGFzc3dvcmQxMjM0NTY3ODk=",
+		},
+		{
+			name:       "postgres connection string with embedded password",
+			input:      `psql "postgres://admin:S3cr3tPassw0rd@db.internal/app"`,
+			wantMasked: "postgres://admin:[REDACTED:credential]@db.internal/app",
+			rawSecret:  "S3cr3tPassw0rd",
+		},
+		{
+			name:       "mongodb connection string with embedded password",
+			input:      "mongodb://dbuser:hunter2forever@cluster0.example.net:27017/mydb",
+			wantMasked: "mongodb://dbuser:[REDACTED:credential]@cluster0.example.net:27017/mydb",
+			rawSecret:  "hunter2forever",
+		},
+		{
+			name:       "redis connection string with empty user (password-only DSN)",
+			input:      "redis://:S3cr3t@localhost:6379/0",
+			wantMasked: "redis://:[REDACTED:credential]@localhost:6379/0",
+			rawSecret:  "S3cr3t",
+		},
+		{
+			name:       "credential kv DB_PASSWORD compound key",
+			input:      "DB_PASSWORD=hunter2forever in env",
+			wantMasked: "DB_PASSWORD=[REDACTED:credential]",
+			rawSecret:  "hunter2forever",
+		},
+		{
+			name:       "credential kv access_token compound key",
+			input:      "access_token=abc123opaquevalue in response",
+			wantMasked: "access_token=[REDACTED:credential]",
+			rawSecret:  "abc123opaquevalue",
+		},
+		{
+			name:       "credential kv client_secret compound key",
+			input:      "client_secret=zzsupersecretvalue in config",
+			wantMasked: "client_secret=[REDACTED:credential]",
+			rawSecret:  "zzsupersecretvalue",
+		},
+		{
+			name:       "credential kv AWS_SECRET_ACCESS_KEY compound key",
+			input:      "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY in env",
+			wantMasked: "AWS_SECRET_ACCESS_KEY=[REDACTED:credential]",
+			rawSecret:  "wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY",
+		},
+		{
+			name:       "credential kv GITHUB_TOKEN compound key",
+			input:      "GITHUB_TOKEN=ghp_opaqueGithubActionsToken1234 in workflow env",
+			wantMasked: "GITHUB_TOKEN=[REDACTED:credential]",
+			rawSecret:  "ghp_opaqueGithubActionsToken1234",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(false, false)
+			once := r.Apply(tc.input)
+			assert.Contains(t, once, tc.wantMasked)
+			assert.NotContains(t, once, tc.rawSecret)
+
+			twice := r.Apply(once)
+			assert.Equal(t, once, twice, "applying Apply twice must be a no-op the second time")
+		})
+	}
+}
+
 func TestApplyCredentialKVKeepsKeyNameVisible(t *testing.T) {
 	r := New(false, false)
 	got := r.Apply("password=hunter2forever")
@@ -202,6 +354,10 @@ func TestApplyFalsePositives(t *testing.T) {
 		{"passwords prose without separator does not trigger credential pattern", "passwords are important for security"},
 		{"sk- shorter than 20 chars does not trigger api_key pattern", "the code is sk-short123 today"},
 		{"lone Bearer word does not trigger bearer pattern", "Just say Bearer. That's it."},
+		{"compound key prose without separator does not trigger credential pattern", "mypassword_field_label is a form field name"},
+		{"Stripe publishable key pk_live_ is left intact (not a secret)", "publishable key pk_live_51H8xYzABCDEFGHIJKLMNOPQR is safe to embed client-side"},
+		{"credential-less HTTPS URL does not trigger connStringPattern", "see https://example.com/path for details"},
+		{"HTTP URL with port but no @ does not trigger connStringPattern", "server is at http://host:8080/db right now"},
 	}
 
 	for _, tc := range cases {

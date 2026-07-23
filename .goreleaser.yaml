@@ -141,6 +141,13 @@ winget:
     license: "MIT"
     homepage: "https://github.com/firatkutay/cli-comrade"
     package_identifier: cli.comrade
+    # Author the winget-pkgs commit as the CLA-signed maintainer identity
+    # rather than goreleaser's default "goreleaserbot" — the winget-pkgs
+    # CLA check is keyed on the commit author, so a bot author trips the
+    # Needs-CLA gate on every release PR.
+    commit_author:
+      name: Fırat Kutay
+      email: 22839242+firatkutay@users.noreply.github.com
     repository:
       owner: firatkutay
       name: winget-pkgs

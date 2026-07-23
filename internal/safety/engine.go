@@ -80,6 +80,7 @@ func (e *Engine) Evaluate(command string, declared RiskClass) Decision {
 			Reason:        reason,
 			EffectiveRisk: effective,
 			MatchedRule:   matchedRule,
+			Evaluated:     true,
 		}
 	}
 
@@ -87,6 +88,7 @@ func (e *Engine) Evaluate(command string, declared RiskClass) Decision {
 		Action:        Allow,
 		EffectiveRisk: effective,
 		MatchedRule:   matchedRule,
+		Evaluated:     true,
 	}
 }
 
@@ -96,5 +98,6 @@ func blockDecision(ruleName string) Decision {
 		Reason:        "matches denylist rule: " + ruleName,
 		EffectiveRisk: RiskDestructive,
 		MatchedRule:   ruleName,
+		Evaluated:     true,
 	}
 }

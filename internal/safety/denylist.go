@@ -158,7 +158,12 @@ func hasLegacySlashFlag(args []string, slashFlag string) bool {
 // (`echo "rm -rf /"`).
 func isRmRootDelete(tokens []string) bool {
 	for i, t := range tokens {
-		if path.Base(t) != "rm" {
+		// Lower-cased before comparison: `RM -rf /` must be recognized
+		// exactly like `rm -rf /` on case-insensitive filesystems
+		// (macOS/Windows), not merely on the flags MEDIUM finding #5
+		// already fixed — the command NAME itself is not a safe place to
+		// assume lowercase either.
+		if strings.ToLower(path.Base(t)) != "rm" {
 			continue
 		}
 		args := argsAfter(tokens, i+1)
@@ -193,6 +198,42 @@ func isRemoveItemAliasDriveRootDelete(tokens []string) bool {
 		}
 		for _, a := range args {
 			if driveRootPattern.MatchString(a) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isChmodChownRecursiveRootTarget reports whether tokens contains a
+// chmod or chown invocation (matched by basename, so `/bin/chmod` counts
+// too) with a recursive flag (`-R`/`-r`/`--recursive` — hasFlag's
+// short-flag scan is case-insensitive, see tokenize.go) whose target
+// normalizes (via normalizeRootTarget) to a rootTargets entry — i.e. the
+// filesystem root or the invoking user's home directory — regardless of
+// what mode/owner value is being applied.
+//
+// This generalizes the escalation list's existing chmod -R 777 rule
+// (chmodRThenModePattern/chmodModeThenRPattern below, which fires on ANY
+// target the instant mode 777 appears, and is kept unchanged) to also
+// catch a restrictive-looking mode that rule would miss entirely — e.g.
+// `chmod -R 000 /` (Finding 1's proof command: mode 000, not 777) — by
+// keying off "recursive change targeting root" instead of "targeting
+// mode 777", and extends the same protection to chown.
+func isChmodChownRecursiveRootTarget(tokens []string) bool {
+	for i, t := range tokens {
+		// Lower-cased before comparison — see isRmRootDelete's comment on
+		// why a command name is not a safe place to assume lowercase.
+		name := strings.ToLower(path.Base(t))
+		if name != "chmod" && name != "chown" {
+			continue
+		}
+		args := argsAfter(tokens, i+1)
+		if !hasFlag(args, 'r', "--recursive") {
+			continue
+		}
+		for _, a := range args {
+			if rootTargets[normalizeRootTarget(a)] {
 				return true
 			}
 		}
@@ -288,8 +329,15 @@ var (
 	// mkfsPattern matches `mkfs`, `mkfs.ext4`, etc. anywhere in the
 	// command — `\b...\b` already stops at the transition from "mkfs" to
 	// "." or whitespace, so it does not need a separate dotted-suffix
-	// group.
-	mkfsPattern = regexp.MustCompile(`\bmkfs\b`)
+	// group — plus the other filesystem-format-family command names that
+	// are not spelled "mkfs*" at all: `mke2fs` (ext2/3/4, standalone from
+	// e2fsprogs), `mkswap` (swap-space format), `mkdosfs`/`mkntfs`
+	// (FAT/NTFS), and `newfs` (BSD/macOS). Each is matched as its own
+	// whole word, same as "mkfs" — "mkfsutils" still does not match, and
+	// neither would e.g. "newfsutils". Case-insensitive (`(?i)`) so
+	// `MKFS.EXT4 /dev/sda1` on a case-insensitive filesystem (macOS/
+	// Windows) is recognized identically to `mkfs.ext4`.
+	mkfsPattern = regexp.MustCompile(`(?i)\b(?:mkfs|mke2fs|mkswap|mkdosfs|mkntfs|newfs)\b`)
 
 	// redirectDevPattern captures the "/dev/<name>" target of a `>`
 	// redirection.
@@ -350,6 +398,143 @@ var builtinDenylist = []denylistRule{
 		name:  "> /dev/<disk> (redirect into a real disk device)",
 		match: func(command string, _ []string) bool { return isDiskRedirect(command) },
 	},
+	{
+		// Wires hasRealDiskDeviceReference — previously used only by the
+		// dd-of= and redirect rules above — into a TARGETED, tool-aware,
+		// ADJACENCY-scoped rule: block only when a tool this package knows
+		// is destructive is itself POINTED AT a real (non-pseudo)
+		// /dev/<disk> device — i.e. the device reference appears among
+		// THAT TOOL'S OWN arguments (isDestructiveDiskTool scans
+		// per-invocation via argsAfter), not merely somewhere else on the
+		// same command line.
+		//
+		// This is deliberately narrower on two axes, both found on
+		// review:
+		//  1. Tool-aware, not "any command referencing a real disk
+		//     device" — that broadest form hard-blocked legitimate
+		//     read-only disk access (`lsblk /dev/sda`, `smartctl -a
+		//     /dev/sda`, `mount /dev/sda1 /mnt`, `dd if=/dev/sda
+		//     of=backup.img` for imaging, ...), disproportionate under
+		//     Block's unconditional (not even --yolo-overridable) tier.
+		//     Read-only/unknown-tool disk access is instead caught by
+		//     escalation.go's generic real-disk-device fallback rule,
+		//     which only raises to Confirm.
+		//  2. Adjacency-scoped, not whole-command-string co-occurrence —
+		//     a whole-string AND let a destructive tool word and an
+		//     unrelated /dev/<disk> reference elsewhere on the same
+		//     pipeline false-Block a safe command (`cat /dev/sda | tee
+		//     backup.img` reads the disk and tees to a FILE; `tee` never
+		//     touches /dev/sda). Scoping the device check to each
+		//     candidate tool's own argsAfter slice is what tells "tee's
+		//     target is the disk" apart from "the disk appears elsewhere
+		//     on this line" (still caught by the Confirm fallback either
+		//     way).
+		//
+		// Deliberately placed last so the more specific dd-of=/redirect
+		// rules above still decide the reported rule name for the
+		// commands they already covered (kept for backward-compatible
+		// Decision.MatchedRule text).
+		name:  "destructive disk tool + real /dev/<disk> reference",
+		match: func(_ string, tokens []string) bool { return isDestructiveDiskTool(tokens) },
+	},
+}
+
+// alwaysDestructiveDiskToolNames is the set of command words (matched by
+// basename, case-insensitively — see isDestructiveDiskTool) that are
+// destructive to whatever device they're pointed at on every invocation,
+// with no conditional flag/action needed: wipefs, blkdiscard, and sgdisk
+// always write to the device they're given; tee and shred always write to
+// (respectively overwrite) whatever path they're pointed at.
+var alwaysDestructiveDiskToolNames = map[string]bool{
+	"wipefs": true, "blkdiscard": true, "sgdisk": true, "tee": true, "shred": true,
+}
+
+// sfdiskDestructiveFlags is the set of sfdisk arguments this package
+// treats as write/destructive (as opposed to sfdisk's default dump/list
+// behavior).
+var sfdiskDestructiveFlags = map[string]bool{
+	"--delete": true, "-d": true, "-N": true, "--wipe": true,
+}
+
+// sfdiskArgsAreDestructive reports whether args (an sfdisk invocation's
+// OWN arguments) contains one of sfdiskDestructiveFlags (or a
+// `--wipe=<mode>` spelling).
+func sfdiskArgsAreDestructive(args []string) bool {
+	for _, a := range args {
+		if sfdiskDestructiveFlags[a] || strings.HasPrefix(a, "--wipe=") {
+			return true
+		}
+	}
+	return false
+}
+
+// cryptsetupDestructiveActions is the set of cryptsetup subcommands this
+// package treats as destructive to the underlying device's existing
+// contents (formatting/re-encrypting/erasing), matched case-insensitively
+// and lower-cased for lookup.
+var cryptsetupDestructiveActions = map[string]bool{
+	"luksformat": true, "reencrypt": true, "erase": true, "lukserase": true,
+}
+
+// cryptsetupArgsAreDestructive reports whether args (a cryptsetup
+// invocation's OWN arguments) contains a subcommand in
+// cryptsetupDestructiveActions.
+func cryptsetupArgsAreDestructive(args []string) bool {
+	for _, a := range args {
+		if cryptsetupDestructiveActions[strings.ToLower(a)] {
+			return true
+		}
+	}
+	return false
+}
+
+// isDestructiveDiskToolInvocation reports whether name (a single command
+// word, already lower-cased and basename-resolved by the caller) is a
+// tool this package knows is destructive GIVEN args — that same
+// invocation's OWN arguments (from argsAfter, i.e. up to the next shell
+// separator) — and, critically, whether a real (non-pseudo) /dev/<disk>
+// reference appears within those SAME args. Requiring the device
+// reference to come from the tool's own args (not the whole command
+// string) is what keeps a destructive tool word merely co-occurring with
+// an unrelated disk reference elsewhere on the line (e.g. `cat /dev/sda |
+// tee backup.img`) from false-Blocking: tee's own args here are just
+// `backup.img`, which contains no device reference at all.
+func isDestructiveDiskToolInvocation(name string, args []string) bool {
+	if !hasRealDiskDeviceReference(strings.Join(args, " ")) {
+		return false
+	}
+	switch {
+	case alwaysDestructiveDiskToolNames[name]:
+		return true
+	case name == "sfdisk":
+		return sfdiskArgsAreDestructive(args)
+	case name == "badblocks":
+		return hasFlag(args, 'w', "")
+	case name == "cryptsetup":
+		return cryptsetupArgsAreDestructive(args)
+	default:
+		return false
+	}
+}
+
+// isDestructiveDiskTool reports whether tokens contains at least one
+// invocation of a tool this package knows writes destructively to
+// whatever real (non-pseudo) disk device THAT SAME INVOCATION'S OWN
+// arguments point it at — see isDestructiveDiskToolInvocation. Every
+// candidate tool token's name is matched by basename and lower-cased
+// before comparison, so `WIPEFS`/`Wipefs`/`/sbin/wipefs` are all
+// recognized identically to `wipefs` (case-insensitive on
+// case-insensitive filesystems — macOS/Windows — a command name is not a
+// safe place to assume lowercase).
+func isDestructiveDiskTool(tokens []string) bool {
+	for i, t := range tokens {
+		name := strings.ToLower(path.Base(t))
+		args := argsAfter(tokens, i+1)
+		if isDestructiveDiskToolInvocation(name, args) {
+			return true
+		}
+	}
+	return false
 }
 
 // compileUserDenylist compiles each entry of safety.denylist_extra into a

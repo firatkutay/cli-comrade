@@ -241,10 +241,40 @@ type RunSummary struct {
 	AbortReason string
 }
 
+// normalizeStepDecisions returns a copy of plan in which every step
+// carries an Evaluated Decision. LOW#6: safety.Decision's zero value
+// (Action: Allow, EffectiveRisk: RiskRead — both enum zero values) is
+// indistinguishable from a legitimate read-Allow verdict, so a Step that
+// somehow reached Execute without ever passing through
+// safety.Engine.Evaluate (no current caller does this — every production
+// path populates Decision via GeneratePlan or an ask-mode edit's
+// re-evaluation — this is convention-enforced hardening, not a live-bug
+// fix) would otherwise run UNPROMPTED regardless of its actual command,
+// the opposite of this package's fail-closed-to-destructive stance
+// everywhere else. Any step whose Decision.Evaluated is already true
+// (every step Evaluate ever produced, including Block) is returned
+// completely unchanged; only an unevaluated step is re-derived, via
+// safetyEngine.Evaluate(step.Command, step.Risk) — the same call every
+// other re-evaluation point in this file (resolveAskChoice's [d]üzenle
+// case, executeStepWithSelfCorrection's revision path) already makes.
+func normalizeStepDecisions(plan Plan, safetyEngine *safety.Engine) Plan {
+	steps := make([]Step, len(plan.Steps))
+	for i, step := range plan.Steps {
+		if !step.Decision.Evaluated {
+			step.Decision = safetyEngine.Evaluate(step.Command, step.Risk)
+		}
+		steps[i] = step
+	}
+	return Plan{Summary: plan.Summary, Steps: steps}
+}
+
 // Execute runs plan under mode, using deps for everything I/O-shaped
-// (execution, prompting, LLM self-correction, audit logging). It never
-// runs a Blocked step in any mode, including auto with --yolo — that
-// invariant is enforced structurally, and checked at TWO points per
+// (execution, prompting, LLM self-correction, audit logging). Every step
+// is first passed through normalizeStepDecisions, so a step whose
+// Decision was never actually produced by safety.Engine.Evaluate is
+// re-derived before any mode loop below ever inspects it (LOW#6). It
+// never runs a Blocked step in any mode, including auto with --yolo —
+// that invariant is enforced structurally, and checked at TWO points per
 // step, not one: (1) at the top of each mode's loop, against the plan's
 // original Decision, and (2) again against the RESOLVED step's Decision
 // after ask mode's resolveAskChoice (and auto mode's equivalent
@@ -256,6 +286,8 @@ type RunSummary struct {
 // Blocked step as a final, defense-in-depth guard, independent of both
 // checks above.
 func Execute(ctx context.Context, plan Plan, mode Mode, deps RunDeps) (RunSummary, error) {
+	plan = normalizeStepDecisions(plan, deps.Safety)
+
 	switch mode {
 	case ModeInfo:
 		executeInfo(deps, plan)

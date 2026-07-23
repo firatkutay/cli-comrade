@@ -43,4 +43,15 @@ type Decision struct {
 	Reason        string
 	EffectiveRisk RiskClass
 	MatchedRule   string
+
+	// Evaluated is true only for a Decision that actually came out of
+	// Engine.Evaluate (every return path: the Block path via
+	// blockDecision, and both the Confirm and Allow paths at the end of
+	// Evaluate). A zero-value Decision — Action: Allow, EffectiveRisk:
+	// RiskRead, both enum zero values — is otherwise indistinguishable
+	// from a legitimate read-Allow verdict; Evaluated is what lets a
+	// caller (internal/engine's Execute) detect a Step that reached it
+	// with an unpopulated Decision and re-derive it instead of running it
+	// unprompted. See internal/engine/runner.go's normalizeStepDecisions.
+	Evaluated bool
 }

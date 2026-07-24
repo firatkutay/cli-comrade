@@ -92,8 +92,8 @@ together — and doing so prints a loud warning on every use.
   `read` / `write` / `network` / `elevated` / `destructive`.
 - **Local rule engine + denylist** (`internal/safety`) — a regex/AST-based
   second check that never trusts the LLM's own label; hard-blocks known
-  catastrophic patterns (`rm -rf /`, `mkfs`, `dd of=/dev/...`, `diskpart
-  clean`, fork bombs, etc.) regardless of mode.
+  catastrophic patterns (`rm -rf /`, `mkfs`, `dd of=/dev/...`,
+  `diskpart clean`, fork bombs, etc.) regardless of mode.
 - **Redaction** (`internal/redact`) — every payload sent to the LLM is
   scrubbed of API-key-shaped strings, `password=`/`token=`, bearer headers,
   etc. before it leaves the machine.
@@ -157,9 +157,10 @@ Full setup (remote Ollama hosts, fallback-chain syntax) and the
 The install scripts download the matching release archive via GitHub's
 no-API `releases/latest/download` redirect (or a tag-scoped URL when
 pinned), verify it against that release's `checksums.txt` (`sha256sum -c` /
-`Get-FileHash`) **before** installing anything, and print a `comrade init
-<shell>` hint when done. Set `COMRADE_VERSION` (env var, or `-Version` on
-Windows) to pin an exact release instead of installing the latest one.
+`Get-FileHash`) **before** installing anything, and print a
+`comrade init <shell>` hint when done. Set `COMRADE_VERSION` (env var,
+or `-Version` on Windows) to pin an exact release instead of installing
+the latest one.
 If the install directory isn't already on `PATH`, the script also adds it
 to your shell rc file automatically (opt out with `COMRADE_NO_MODIFY_PATH`)
 — see [docs/INSTALL.md](docs/INSTALL.md) for the exact mechanism.
@@ -473,9 +474,9 @@ sağlayıcıları listeler; `comrade config get <Tab>` her gerçek config
 anahtarını listeler; `comrade init <Tab>` desteklenen shell'leri listeler.
 
 **`comrade init` zaten kurulu mu?** Tamamlamalar ve boşluk ipucu, mevcut
-hook'un üzerine eklenen yeni içeriktir — bunları almak için `comrade
-init <shell>`'i bir kez yeniden çalıştırın (idempotenttir: mevcut
-hook'unuza dokunulmaz, yeni içerik yalnızca onun yanına eklenir).
+hook'un üzerine eklenen yeni içeriktir — bunları almak için
+`comrade init <shell>`'i bir kez yeniden çalıştırın (idempotenttir:
+mevcut hook'unuza dokunulmaz, yeni içerik yalnızca onun yanına eklenir).
 Ayrıntılar:
 [docs/TECHNICAL.tr.md §9](docs/TECHNICAL.tr.md#9-shell-entegrasyonu).
 

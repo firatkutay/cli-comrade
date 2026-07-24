@@ -86,18 +86,18 @@ hostu belirler:
   hatalı bir değer `comrade config set` ile onarma yolunu da
   kilitleyebilirdi).
 - Gerçek bir LLM istemcisi kurulurken (`do`/`fix`/`chat`/`explain`
-  çalıştığında) etkin sağlayıcının base_url'ü tekrar kontrol edilir ve bu
-  kez reddedilirse istemci hiç oluşturulmaz — `comrade config
-  set`/`get`/`edit` gibi onarım komutları bu sert kontrolden geçmediği
-  için her zaman kullanılabilir kalır. Ayrıntılar için bkz.
+  çalıştığında) etkin sağlayıcının base_url'ü tekrar kontrol edilir ve
+  bu kez reddedilirse istemci hiç oluşturulmaz — `comrade config set`/
+  `get`/`edit` gibi onarım komutları bu sert kontrolden geçmediği için
+  her zaman kullanılabilir kalır. Ayrıntılar için bkz.
   [SECURITY.md](SECURITY.md).
 
 ### API anahtarları — ayrı bir mekanizma
 
-API anahtarları YUKARIDAKİ config anahtarlarından değil, `comrade auth
-login <provider>` ile ayrı bir kimlik bilgisi deposundan yönetilir
-(bkz. SECURITY.md). Sağlayıcı bazlı ortam değişkeni takma adları da
-vardır (öncelik sırasıyla):
+API anahtarları YUKARIDAKİ config anahtarlarından değil,
+`comrade auth login <provider>` ile ayrı bir kimlik bilgisi deposundan
+yönetilir (bkz. SECURITY.md). Sağlayıcı bazlı ortam değişkeni takma
+adları da vardır (öncelik sırasıyla):
 
 | Sağlayıcı | Ortam değişkenleri |
 |---|---|
@@ -151,10 +151,10 @@ comrade config set llm.fallback ollama/llama3.1,openai_compat/gpt-4o-mini
 `openai_compat`, her OpenAI-uyumlu uç nokta tarafından paylaşılan tek bir
 connector'dur. `llm.model`'in kendi config varsayılanı boştur (`""`);
 ama boş bırakıldığında `openai_compat` connector'ı, yalnızca OpenAI'nin
-kendisinde var olan `gpt-5.4-mini`'ye düşer (fallback). `llm.openai_compat.
-base_url`'i başka bir sağlayıcıya yönlendirip `llm.model`'i o
-sağlayıcının gerçekten sunduğu bir modele ayarlamazsanız, istek
-zamanında şöyle bir hatayla başarısız olur:
+kendisinde var olan `gpt-5.4-mini`'ye düşer (fallback).
+`llm.openai_compat.base_url`'i başka bir sağlayıcıya yönlendirip
+`llm.model`'i o sağlayıcının gerçekten sunduğu bir modele
+ayarlamazsanız, istek zamanında şöyle bir hatayla başarısız olur:
 
 ```
 openai_compat: http 404: The model 'gpt-5.4-mini' does not exist
@@ -180,10 +180,11 @@ sonra: hâlâ gönderilmiş OpenAI varsayılanındaysanız `base_url`'i sorar
 geçebilirsiniz, sonra `comrade config set llm.model` ile ayarlarsınız)
 — girilen model, artık etkin olan bu sağlayıcıya uygulanır. Anahtarı
 test eden ping'in sonucu "model bulunamadı" (gövdesinde "model" geçen
-bir 404) derse, anahtar yine de kaydedilir ve size `comrade config
-models` çalıştırıp ardından `comrade config set llm.model <model>`
-demenizi söyler — yani leftover-default bir 404, belirsiz bir "ağ
-sorunu" değil, doğrudan bir çözüm yönergesi verir.
+bir 404) derse, anahtar yine de kaydedilir ve size
+`comrade config models` çalıştırıp ardından
+`comrade config set llm.model <model>` demenizi söyler — yani
+leftover-default bir 404, belirsiz bir "ağ sorunu" değil, doğrudan bir
+çözüm yönergesi verir.
 
 ### Dil çözümleme sırası
 
@@ -254,9 +255,9 @@ değişkeni > dosyadaki `general.profile` değeri > hiçbiri.
 | Windows | `%APPDATA%\cli-comrade\config.toml` |
 
 The file is created automatically, with defaults, on first run. See
-its path with `comrade config path`; view it with `comrade config
-list`; read/write a single key with `comrade config get <key>` /
-`comrade config set <key> <value>`.
+its path with `comrade config path`; view it with
+`comrade config list`; read/write a single key with
+`comrade config get <key>` / `comrade config set <key> <value>`.
 
 ### Effective-value precedence
 
@@ -308,8 +309,8 @@ works.
 `llm.openai_compat.base_url` and `llm.ollama.base_url` are not plain
 strings — `comrade config set` (and every config load) validates them
 against the same rule in `internal/config/validate.go`, because this
-value decides which host receives the API key via an `Authorization:
-Bearer` header:
+value decides which host receives the API key via an
+`Authorization: Bearer` header:
 
 - **Rejected** (`comrade config set` errors, the value is not saved): the
   scheme isn't `http`/`https`, the host is empty, or the host is a
@@ -338,9 +339,9 @@ Bearer` header:
 ### API keys — a separate mechanism
 
 API keys are NOT one of the config keys above — they're managed
-through a separate credential store via `comrade auth login
-<provider>` (see SECURITY.md). Provider-specific env var aliases also
-exist (checked in this priority order):
+through a separate credential store via `comrade auth login <provider>`
+(see SECURITY.md). Provider-specific env var aliases also exist
+(checked in this priority order):
 
 | Provider | Env vars |
 |---|---|
@@ -411,11 +412,12 @@ comrade config set llm.model qwen-plus     # or qwen-turbo / qwen-max
 
 `comrade auth login <provider>` always makes that provider the
 **active** one — it persists `llm.provider` and (only when it actually
-changed) prints `Active provider set to <provider>.`; logging back into
-an already-active provider stays silent. `comrade auth login
-openai_compat`, after reading the API key: if `base_url` is still
-pointed at the shipped OpenAI default, it prompts for the provider's
-address (bare Enter keeps OpenAI); then, if `base_url` is now
+changed) prints `Active provider set to <provider>.`; logging back
+into an already-active provider stays silent.
+`comrade auth login openai_compat`, after reading the API key: if
+`base_url` is still pointed at the shipped OpenAI default, it prompts
+for the provider's address (bare Enter keeps OpenAI); then, if
+`base_url` is now
 non-OpenAI **and** `llm.model` is empty, it also prompts for the model
 name (e.g. `qwen-plus` — you can leave it blank and set it later with
 `comrade config set llm.model`) — the model you enter applies to this
@@ -470,11 +472,11 @@ the file's own `general.profile` value > none.
 - A profile cannot set `general.profile` INSIDE ITSELF (a profile
   activating another profile would be unbounded recursion) —
   `comrade config profile set <name> general.profile ...` is rejected.
-- A profile MAY override `safety.*` keys, but `profile use`/`profile
-  show` print a HIGHLIGHTED warning whenever it does. The runtime
-  destructive/elevated confirmation gate itself is untouched by this —
-  only `--yolo` plus `safety.confirm_destructive=false` together can ever
-  bypass it (see the security exception above).
+- A profile MAY override `safety.*` keys, but `profile use`/
+  `profile show` print a HIGHLIGHTED warning whenever it does. The
+  runtime destructive/elevated confirmation gate itself is untouched by
+  this — only `--yolo` plus `safety.confirm_destructive=false` together
+  can ever bypass it (see the security exception above).
 - An undefined active profile, or an unknown key inside a defined
   profile, never FAILS a config load — it prints a warning to stderr
   (in English, like every other config-package-level warning) and is

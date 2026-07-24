@@ -13,8 +13,8 @@ comrade auth login <provider>   # örn: comrade auth login anthropic
 
 veya ilgili ortam değişkenini ayarlayın (bkz. CONFIGURATION.md'nin
 "API anahtarları" tablosu — örn. `ANTHROPIC_API_KEY`). Hangi
-sağlayıcıların bir anahtarı olduğunu görmek için: `comrade auth
-status`.
+sağlayıcıların bir anahtarı olduğunu görmek için:
+`comrade auth status`.
 
 ### Ollama çalışmıyor / bağlanamıyor
 
@@ -63,8 +63,8 @@ Ayrıntılı bir Qwen örneği için bkz. [CONFIGURATION.md](CONFIGURATION.md)
    kılar — comrade bloğunun diğer prompt-özelleştirme araçlarından
    SONRA gelmesi gerekir (`comrade init powershell` zaten dosyanın
    sonuna ekler; elle taşımayın).
-5. Kanca hiç kurulamıyorsa (ör. betikli olmayan bir ortam): `comrade
-   fix -- <komut>` ile komutu comrade'in kendisi çalıştırıp
+5. Kanca hiç kurulamıyorsa (ör. betikli olmayan bir ortam):
+   `comrade fix -- <komut>` ile komutu comrade'in kendisi çalıştırıp
    gözlemlemesini sağlayın, ya da hatayı doğrudan yapıştırın (paste
    modu her zaman çalışır, kanca gerektirmez).
 
@@ -216,8 +216,8 @@ providers" — for a worked Qwen example.
    LAST thing that touches it.
 3. fish: uses the `fish_postexec` event; fish allows multiple handlers
    on the same event, so another plugin using it should not conflict —
-   if you suspect it does anyway, check with `functions --details
-   fish_postexec`.
+   if you suspect it does anyway, check with
+   `functions --details fish_postexec`.
 4. PowerShell: the hook adds a `prompt` function to `$PROFILE`; if
    another tool (e.g. oh-my-posh, starship) defines its OWN `prompt`
    function AFTER comrade's in `$PROFILE`, it overrides comrade's —
@@ -241,8 +241,8 @@ This is not a bug — it's a shell-capability limitation:
   key, which would break magic-space, multiline editing, and paste.
   Use **Tab / double-Tab** after `comrade ` (or any subcommand)
   instead — it gives the same next-word list. Requires `comrade init`
-  to have been run and the shell reloaded (this installs `comrade
-  completion bash`).
+  to have been run and the shell reloaded (this installs
+  `comrade completion bash`).
 - **fish**: fish's own built-in autosuggestions already show
   comrade's completions.
 - **To get the dim ghost hint:** use **zsh** (`comrade init zsh`) or

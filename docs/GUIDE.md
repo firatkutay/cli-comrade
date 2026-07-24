@@ -89,8 +89,8 @@ Akış şöyle işler:
    (`base_url`) sorar — sadece Enter'a basarsanız OpenAI'de kalırsınız.
 3. Girdiğiniz adres OpenAI'den farklıysa **ve** henüz bir model
    seçilmediyse, kullanmak istediğiniz modelin adını sorar (ör.
-   `qwen-plus`) — boş bırakabilirsiniz, sonra `comrade config set
-   llm.model <model>` ile ayarlarsınız.
+   `qwen-plus`) — boş bırakabilirsiniz, sonra
+   `comrade config set llm.model <model>` ile ayarlarsınız.
 4. Anahtarı test eder: anahtar reddedilirse (401/403) hiçbir şey
    kaydedilmez; "model bulunamadı" (404) hatası alırsa anahtar yine de
    kaydedilir ve size `comrade config models` çalıştırıp doğru modeli
@@ -222,11 +222,13 @@ bir terminal/TTY gerektirir). Oturum içi komutlar:
   `edit` (`$EDITOR`'da açar, yoksa vi/Windows'ta notepad) / `path`
   (dosya yolunu yazdırır).
 - **Profiller** — iş/kişisel gibi ayrı yapılandırmalar için:
-  `comrade config profile add work --from-current`, `comrade config
-  profile use work`, ya da tek seferlik `--profile work`. Dikkat: `config
-  set` dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil
-  İÇİNDEKİ bir anahtarı değiştirmek için `comrade config profile set
-  work llm.provider openai_compat` kullanın.
+  `comrade config profile add work --from-current`,
+  `comrade config profile use work`, ya da tek seferlik
+  `--profile work`. Dikkat: `config set` dosya-seviyesi değeri
+  değiştirir, AKTİF PROFİLİ değil — bir profil İÇİNDEKİ bir anahtarı
+  değiştirmek için
+  `comrade config profile set work llm.provider openai_compat`
+  kullanın.
 - **Plan önizlemesi** — `general.plan_review=ask` ayarlayın (ya da
   `--review` verin) ki adımlar çalışmadan önce yeniden sıralayabileceğiniz/
   atlayabileceğiniz/düzenleyebileceğiniz interaktif bir önizleme ekranı
@@ -249,12 +251,12 @@ bir terminal/TTY gerektirir). Oturum içi komutlar:
   `destructive` (geri alınamaz silme/format). comrade'in kendi yerel
   kural motoru bu etikete asla körü körüne güvenmez — sadece
   YÜKSELTEBİLİR, asla düşüremez.
-- `elevated` ve `destructive` adımlar **her modda** onay ister — `auto`
-  modda bile. Bu, `safety.confirm_destructive=false`/`safety.
-  confirm_elevated=false` **ve** `--yolo` birlikte olmadıkça değişmez;
-  o zaman bile her kullanımda kırmızı bir uyarı basılır.
-- Sabit bir **kara liste (denylist)** vardır: `rm -rf /`, `mkfs`, `dd
-  of=/dev/...`, `diskpart clean`, drive-root `Remove-Item -Recurse`,
+- `elevated` ve `destructive` adımlar **her modda** onay ister —
+  `auto` modda bile. Bu, `safety.confirm_destructive=false`/
+  `safety.confirm_elevated=false` **ve** `--yolo` birlikte olmadıkça
+  değişmez; o zaman bile her kullanımda kırmızı bir uyarı basılır.
+- Sabit bir **kara liste (denylist)** vardır: `rm -rf /`, `mkfs`,
+  `dd of=/dev/...`, `diskpart clean`, drive-root `Remove-Item -Recurse`,
   fork bomb gibi kalıplar hiçbir modda, hiçbir bayrakla çalışmaz —
   engellenir.
 - Tam güvenlik modeli: [docs/SECURITY.md](SECURITY.md).
@@ -376,9 +378,9 @@ The flow:
    asks for the model name you want (e.g. `qwen-plus`) — you can leave it
    blank and set it later with `comrade config set llm.model <model>`.
 4. Tests the key: a rejected key (401/403) is never saved; a "model not
-   found" (404) still saves the key and tells you to run `comrade config
-   models` to pick the right one; any other failure saves the key too,
-   just flagging that it couldn't verify.
+   found" (404) still saves the key and tells you to run
+   `comrade config models` to pick the right one; any other failure
+   saves the key too, just flagging that it couldn't verify.
 
 After login, the provider you logged into becomes your **active
 provider** (`comrade "..."` now uses it, and the model you entered
@@ -404,9 +406,9 @@ comrade config set llm.model llama3.1    # optional — leave unset to auto-pick
 ```
 
 Install Ollama from [ollama.com](https://ollama.com) if you haven't —
-comrade does not install it for you. There is no `comrade auth login
-ollama`; it's rejected outright, because this provider needs no key at
-all.
+comrade does not install it for you. There is no
+`comrade auth login ollama`; it's rejected outright, because this
+provider needs no key at all.
 
 **Verify:**
 
@@ -505,11 +507,11 @@ If the command starts with a dash: `comrade explain -- <command>`.
   `$EDITOR`, or vi, or notepad on Windows) / `path` (prints the file
   path).
 - **Profiles** — for separate setups like work/personal:
-  `comrade config profile add work --from-current`, `comrade config
-  profile use work`, or a one-off `--profile work`. Note: `config set`
-  writes the file-level value, NOT the active profile — to change a key
-  INSIDE a profile use `comrade config profile set work llm.provider
-  openai_compat`.
+  `comrade config profile add work --from-current`,
+  `comrade config profile use work`, or a one-off `--profile work`.
+  Note: `config set` writes the file-level value, NOT the active
+  profile — to change a key INSIDE a profile use
+  `comrade config profile set work llm.provider openai_compat`.
 - **Plan preview** — set `general.plan_review=ask` (or pass `--review`)
   to see an interactive preview where you can reorder/skip/edit steps
   before they run (ask mode, multi-step plans); `--no-review` always
@@ -535,9 +537,9 @@ If the command starts with a dash: `comrade explain -- <command>`.
   `safety.confirm_destructive=false`/`safety.confirm_elevated=false`
   **and** `--yolo` together, and even then a red warning prints on
   every use.
-- There's a fixed **denylist**: patterns like `rm -rf /`, `mkfs`, `dd
-  of=/dev/...`, `diskpart clean`, drive-root `Remove-Item -Recurse`, and
-  fork bombs never run in any mode, with any flag — they're blocked.
+- There's a fixed **denylist**: patterns like `rm -rf /`, `mkfs`,
+  `dd of=/dev/...`, `diskpart clean`, drive-root `Remove-Item -Recurse`,
+  and fork bombs never run in any mode, with any flag — they're blocked.
 - Full safety model: [docs/SECURITY.md](SECURITY.md).
 
 ### Shell integration and suggestions

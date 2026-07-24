@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -151,14 +152,45 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			// prompt at all. Runs BEFORE pingProvider so a newly-entered
 			// endpoint is both the one pinged and the one persisted, never
 			// a stale one.
+			// promptOpenAICompatModelIfEmpty (below) needs the effective
+			// base_url AFTER promptOpenAICompatBaseURLIfDefault has had a
+			// chance to change it — cfg itself is never mutated by that
+			// call (it only writes through loader.SetAndSave), so cfg is
+			// reloaded from disk in between; the second reload afterward
+			// picks up a model the user may have just entered, so the
+			// 404-model-not-found branch below (which names the model
+			// that was actually pinged) sees it too.
+			//
+			// Both prompts share ONE bufio.Reader over cmd.InOrStdin(),
+			// built once here rather than inside each prompt function:
+			// bufio.Reader.Read greedily drains its underlying reader into
+			// its own internal buffer on first use, so a second,
+			// independently-constructed bufio.Reader wrapping the SAME
+			// cmd.InOrStdin() would see nothing left to read — silently
+			// losing a model line a piped/scripted caller supplied right
+			// after the base_url line in one shot.
 			if provider == "openai_compat" {
 				loader, err := newLoader()
 				if err != nil {
 					return err
 				}
-				if err := promptOpenAICompatBaseURLIfDefault(cmd, loader, cfg, tr); err != nil {
+				reader := bufio.NewReader(cmd.InOrStdin())
+				if err := promptOpenAICompatBaseURLIfDefault(cmd, loader, cfg, tr, reader); err != nil {
 					return err
 				}
+				reloaded, _, err := loader.Load()
+				if err != nil {
+					return err
+				}
+				cfg = *reloaded
+				if err := promptOpenAICompatModelIfEmpty(cmd, loader, cfg, tr, reader); err != nil {
+					return err
+				}
+				reloaded, _, err = loader.Load()
+				if err != nil {
+					return err
+				}
+				cfg = *reloaded
 			}
 
 			store, err := newSecretsStore(cmd.ErrOrStderr(), tr)
@@ -213,10 +245,33 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 					_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyBaseURLUnsafe, provider, invalid.Key, invalid.Raw, invalid.Key))
 					return err
 				}
+				// A 404 whose body mentions "model" is the provider saying
+				// the MODEL name is wrong, not the key — most commonly the
+				// openai_compat default (defaultOpenAICompatModel,
+				// client.go) surviving against a non-OpenAI provider that
+				// has never heard of it. Distinct, known cause, same as the
+				// isBaseURLRejection branch above: reported as a notice
+				// naming the actual model that was pinged, not the generic
+				// "could not verify it right now" framing, which would
+				// misleadingly suggest a network hiccup. The key is stored
+				// regardless — it was never the problem.
+				var statusErr *llm.StatusError
+				if errors.As(pingErr, &statusErr) && statusErr.StatusCode == http.StatusNotFound &&
+					strings.Contains(strings.ToLower(statusErr.Message), "model") {
+					effectiveModel := cfg.LLM.Model
+					if effectiveModel == "" {
+						effectiveModel = llm.DefaultOpenAICompatModel()
+					}
+					if err := store.Set(cmd.Context(), provider, key); err != nil {
+						return fmt.Errorf("auth login: store key: %w", err)
+					}
+					_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthModelNotFound, effectiveModel))
+					return err
+				}
 				if err := store.Set(cmd.Context(), provider, key); err != nil {
 					return fmt.Errorf("auth login: store key: %w", err)
 				}
-				_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyPingFailed, provider, pingErr))
+				_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthStoredKeyPingFailed, pingErr))
 				return err
 			}
 			if err := store.Set(cmd.Context(), provider, key); err != nil {
@@ -248,19 +303,22 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 // config. The trade-off is a user who explicitly re-set base_url back to
 // literally OpenAI's own URL gets one harmless extra prompt (Enter keeps
 // it) — vastly preferable to the check never triggering for anyone.
-func promptOpenAICompatBaseURLIfDefault(cmd *cobra.Command, loader *config.Loader, cfg config.Config, tr i18n.Translator) error {
+func promptOpenAICompatBaseURLIfDefault(cmd *cobra.Command, loader *config.Loader, cfg config.Config, tr i18n.Translator, reader *bufio.Reader) error {
 	if cfg.LLM.OpenAICompat.BaseURL != config.Default().LLM.OpenAICompat.BaseURL {
 		return nil
 	}
-	return promptOpenAICompatBaseURL(cmd, loader, tr, cfg.LLM.OpenAICompat.BaseURL)
+	return promptOpenAICompatBaseURL(cmd, loader, tr, cfg.LLM.OpenAICompat.BaseURL, reader)
 }
 
-// promptOpenAICompatBaseURL reads a single line from cmd.InOrStdin(),
-// naming currentDefault (the still-in-effect shipped default) in the
-// prompt itself (MsgAuthOpenAICompatBaseURLPrompt). An empty line (a bare
-// Enter) leaves llm.openai_compat.base_url untouched — genuine OpenAI
-// users must not be forced to retype their endpoint — and returns nil
-// without writing anything. A non-empty line is validated with
+// promptOpenAICompatBaseURL reads a single line from reader (a
+// bufio.Reader the caller built over cmd.InOrStdin() — see
+// newAuthLoginCmd's own doc comment on why this and
+// promptOpenAICompatModelIfEmpty must share ONE reader rather than each
+// building its own), naming currentDefault (the still-in-effect shipped
+// default) in the prompt itself (MsgAuthOpenAICompatBaseURLPrompt). An
+// empty line (a bare Enter) leaves llm.openai_compat.base_url untouched —
+// genuine OpenAI users must not be forced to retype their endpoint — and
+// returns nil without writing anything. A non-empty line is validated with
 // config.CheckBaseURL, the SAME reject-class check
 // internal/llm/client.go's buildProvider applies at client-construction
 // time: a rejected value is reported via the existing
@@ -269,8 +327,7 @@ func promptOpenAICompatBaseURLIfDefault(cmd *cobra.Command, loader *config.Loade
 // accepted value is persisted via loader.SetAndSave before this returns,
 // so the caller's subsequent pingProvider call (which re-Loads config
 // from disk) sees it too.
-func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18n.Translator, currentDefault string) error {
-	reader := bufio.NewReader(cmd.InOrStdin())
+func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18n.Translator, currentDefault string, reader *bufio.Reader) error {
 	const key = "llm.openai_compat.base_url"
 	for {
 		if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthOpenAICompatBaseURLPrompt, currentDefault)); err != nil {
@@ -315,6 +372,57 @@ func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18
 		_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthOpenAICompatBaseURLSaved, value))
 		return err
 	}
+}
+
+// promptOpenAICompatModelIfEmpty asks for this provider's model name when
+// cfg's base_url is no longer OpenAI's own default (i.e. the user is
+// pointed at some other OpenAI-compatible provider — Qwen, Groq, GLM,
+// etc.) AND llm.model is still empty. Without this, buildProvider
+// (internal/llm/client.go) silently falls back to
+// llm.DefaultOpenAICompatModel() — an OpenAI-specific model name — against
+// a provider that has never heard of it, failing with a confusing 404 far
+// downstream of this command. Called by newAuthLoginCmd right after
+// promptOpenAICompatBaseURLIfDefault, against cfg RELOADED from disk after
+// that call (never the cfg loaded before it), so a base_url the user just
+// typed at that prompt is what decides whether this one fires too — the
+// prompt's own local cfg parameter is never mutated by
+// promptOpenAICompatBaseURLIfDefault (it only writes through
+// loader.SetAndSave), so checking the original cfg here would miss a
+// provider switch that just happened in the very same invocation.
+//
+// reader is the SAME bufio.Reader promptOpenAICompatBaseURLIfDefault (via
+// promptOpenAICompatBaseURL) was given — never a second one independently
+// wrapping cmd.InOrStdin(), which would silently lose a model line a
+// piped/scripted caller supplied right after the base_url line (see
+// newAuthLoginCmd's own doc comment on the shared-reader rationale). An
+// empty line (a bare Enter) leaves llm.model untouched — the user can
+// always set it later with `comrade config set llm.model` — matching
+// promptOpenAICompatBaseURL's own empty-line behavior. A non-empty line is
+// persisted via loader.SetAndSave before this returns, so the caller's
+// subsequent pingProvider call (which re-Loads config from disk) sees it
+// too. Unlike promptOpenAICompatBaseURL, there is no format to validate —
+// any non-empty model name is accepted as-is; the provider's own API is
+// what will accept or reject it, surfaced via the ping's own
+// MsgAuthModelNotFound classification.
+func promptOpenAICompatModelIfEmpty(cmd *cobra.Command, loader *config.Loader, cfg config.Config, tr i18n.Translator, reader *bufio.Reader) error {
+	if cfg.LLM.OpenAICompat.BaseURL == config.Default().LLM.OpenAICompat.BaseURL {
+		return nil
+	}
+	if cfg.LLM.Model != "" {
+		return nil
+	}
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthOpenAICompatModelPrompt)); err != nil {
+		return err
+	}
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("auth login: read model: %w", err)
+	}
+	value := strings.TrimSpace(line)
+	if value == "" {
+		return nil
+	}
+	return loader.SetAndSave("llm.model", value)
 }
 
 // pingProvider is `comrade auth login`'s own use of pingProviderWithKey

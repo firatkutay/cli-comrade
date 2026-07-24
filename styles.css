@@ -775,3 +775,256 @@ body.reveals-enabled .reveal.is-visible { opacity: 1; transform: none; }
   .safety__demo:hover, .code:hover { transform: none; }
   body.reveals-enabled .reveal { opacity: 1; transform: none; }
 }
+
+/* ============================================================
+   GUIDE PAGE (guide.html) — hero, TOC sidebar, prose, code,
+   tables. Same phosphor identity; calmer rhythm for reading.
+   ============================================================ */
+.guide-hero {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: clamp(2rem, 6vw, 4rem) clamp(1rem, 4vw, 2rem) clamp(1rem, 3vw, 2rem);
+}
+.guide-hero__title {
+  font-size: var(--step-3);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.8rem;
+}
+.guide-hero__sub { color: var(--dim); margin: 0; max-width: 56ch; }
+
+.guide-layout {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 2rem) clamp(2.5rem, 6vw, 4rem);
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: start;
+}
+.guide-content { min-width: 0; }
+
+/* ---------- TOC: the guide's index screen ---------- */
+.toc {
+  position: sticky;
+  top: 112px; /* clears the collapsed topbar once you scroll */
+  background: var(--bg-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+.toc__title {
+  font-family: var(--pixel);
+  font-size: 0.62rem;
+  letter-spacing: 1px;
+  color: var(--blue);
+  margin: 0 0 0.7rem;
+}
+.toc__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
+.toc__link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  text-decoration: none;
+  color: var(--dim);
+  font-size: 0.82rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.toc__link:hover { color: var(--green); background: rgba(99, 224, 34, 0.06); }
+.toc__num { font-family: var(--pixel); font-size: 0.6rem; color: var(--blue); flex: none; }
+
+/* ---------- guide sections ---------- */
+.gsec {
+  border-top: 1px solid var(--hair);
+  padding: clamp(1.8rem, 4vw, 2.8rem) 0;
+  scroll-margin-top: 130px; /* anchor jumps clear the sticky topbar */
+  min-width: 0;
+}
+.gsec .section__title { margin: 0 0 1.2rem; }
+.gsub {
+  font-family: var(--mono);
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--green);
+  letter-spacing: 0.2px;
+  margin: 1.8rem 0 0.7rem;
+}
+.gp { margin: 0 0 1rem; color: var(--ink); font-size: 0.95rem; max-width: 72ch; }
+.gsec b { color: var(--amber); }
+.gsec a:not(.btn) {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.gsec a:not(.btn):hover { color: var(--green); }
+
+/* term definition panel */
+.gterm {
+  background: var(--bg-2);
+  border: 1px solid var(--hair);
+  border-left: 3px solid var(--blue);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  margin: 0 0 1rem;
+  color: var(--dim);
+  font-size: 0.9rem;
+  max-width: 72ch;
+}
+
+/* non-negotiable safety callout */
+.gwarn {
+  background: rgba(255, 95, 86, 0.05);
+  border: 1px solid rgba(255, 95, 86, 0.4);
+  border-radius: var(--radius);
+  padding: 0.95rem 1.15rem;
+  margin: 1.2rem 0;
+  color: var(--ink);
+  font-size: 0.92rem;
+  max-width: 72ch;
+  box-shadow: 0 0 30px -16px rgba(255, 95, 86, 0.5);
+}
+.gwarn__tag {
+  display: block;
+  font-family: var(--pixel);
+  font-size: 0.6rem;
+  letter-spacing: 0.8px;
+  color: var(--red);
+  margin-bottom: 0.45rem;
+}
+
+/* labels above one-line commands */
+.gcode-label {
+  font-family: var(--pixel);
+  font-size: 0.6rem;
+  letter-spacing: 0.8px;
+  color: var(--blue);
+  margin: 1rem 0 0.4rem;
+}
+
+/* multi-line command block (single-line commands reuse .code) */
+.codeblock {
+  background: #060a0e;
+  border: 1px solid var(--hair-strong);
+  border-radius: 10px;
+  margin: 0 0 0.8rem;
+  overflow: hidden;
+}
+.codeblock__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.7rem 0.5rem 1rem;
+  border-bottom: 1px solid var(--hair);
+}
+.codeblock__label {
+  font-family: var(--pixel);
+  font-size: 0.6rem;
+  letter-spacing: 0.8px;
+  color: var(--dim);
+}
+.codeblock__pre {
+  margin: 0;
+  padding: 0.8rem 1rem 0.9rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  line-height: 1.7;
+  color: var(--ink);
+  white-space: pre;
+}
+.c-comment { color: var(--dim); }
+
+/* numbered flow steps + bullet list */
+.gsteps {
+  margin: 0.2rem 0 1rem;
+  padding-left: 1.3rem;
+  display: grid;
+  /* minmax(0,1fr): a bare auto track is floored at the items'
+     min-content width, so a long inline-code chip would widen the
+     track past the container and leak into body overflow */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  color: var(--dim);
+  font-size: 0.92rem;
+  max-width: 70ch;
+}
+.gsteps li::marker { color: var(--green); font-weight: 700; }
+.glist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
+  max-width: 75ch;
+}
+.glist li { position: relative; padding-left: 1.3rem; color: var(--dim); font-size: 0.92rem; }
+.glist li::before { content: "\25B8"; position: absolute; left: 0; color: var(--blue); }
+/* last-resort wrap for chips on very narrow phones */
+.glist li, .gsteps li, .gp, .gterm, .gwarn { overflow-wrap: break-word; }
+
+/* mode cards: "when to use" footer line (guide only) */
+.mode__when {
+  margin: 0.7rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--hair);
+  color: var(--dim);
+  font-size: 0.82rem;
+}
+
+/* risk ladder — read < write < network < elevated < destructive */
+.risk-ladder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 1.2rem;
+}
+.risk-ladder .badge { margin-right: 0; }
+.risk-ladder__sep { color: var(--dim); font-size: 0.8rem; }
+.badge--network { color: var(--ink); background: rgba(211, 221, 211, 0.08); border: 1px solid rgba(211, 221, 211, 0.35); }
+.badge--elevated { color: var(--amber); background: rgba(255, 189, 46, 0.12); border: 1px solid rgba(255, 189, 46, 0.5); }
+
+/* tables (chat commands, shells, file locations) */
+.gtable {
+  background: var(--bg-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  margin: 0.4rem 0 1rem;
+}
+.gtable table { width: 100%; border-collapse: collapse; min-width: 520px; }
+.gtable th {
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--blue);
+  padding: 0.65rem 0.95rem;
+  border-bottom: 1px solid var(--hair-strong);
+}
+.gtable td {
+  padding: 0.6rem 0.95rem;
+  border-top: 1px solid var(--hair);
+  color: var(--dim);
+  font-size: 0.88rem;
+  vertical-align: top;
+}
+.gtable tr:first-child td { border-top: 0; }
+.gtable code { color: var(--green); font-size: 0.84rem; }
+
+/* guide responsive */
+@media (max-width: 1023px) {
+  .guide-layout { grid-template-columns: minmax(0, 1fr); }
+  .toc { position: static; }
+  .toc__list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .toc__list { grid-template-columns: minmax(0, 1fr); }
+  .gtable table { min-width: 480px; }
+}

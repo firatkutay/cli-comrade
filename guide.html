@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kullanım Kılavuzu / User Guide — cli-comrade</title>
+  <meta name="description" content="cli-comrade kullanım kılavuzu: kurulumdan günlük kullanıma, baştan sona. The cli-comrade user guide: from install to daily use, start to finish." />
+  <meta name="theme-color" content="#05070a" />
+
+  <!-- Open Graph / link previews -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="cli-comrade — Kullanım Kılavuzu / User Guide" />
+  <meta property="og:description" content="Kurulumdan günlük kullanıma, baştan sona, terminalle arası iyi olmayanlar için. From install to daily use, start to finish — for people who aren't comfortable with a terminal." />
+  <meta property="og:image" content="./assets/logo.png" />
+  <meta property="og:url" content="https://firatkutay.github.io/cli-comrade/guide.html" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main" data-tr="İçeriğe atla" data-en="Skip to content">İçeriğe atla</a>
+
+  <!-- ============ STICKY TOP BAR (same as index) ============ -->
+  <header class="topbar" role="banner">
+    <div class="topbar__inner">
+      <a class="brand" href="./index.html" aria-label="cli-comrade">
+        <img class="brand__logo" src="./assets/logo.png" width="819" height="232" alt="cli-comrade" />
+      </a>
+
+      <nav class="topnav" aria-label="Ana / Primary">
+        <a class="ghlink" href="./index.html">
+          <svg class="ghlink__icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8.156 1.835a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.195v7.52c0 .138.112.25.25.25H5.5V9.75A1.75 1.75 0 0 1 7.25 8h1.5a1.75 1.75 0 0 1 1.75 1.75V14h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195l-5.25-4.2zM6.906.664a1.75 1.75 0 0 1 2.188 0l5.25 4.2c.415.332.656.835.656 1.366v7.52A1.75 1.75 0 0 1 13.25 15.5h-3.5a.75.75 0 0 1-.75-.75V9.75a.25.25 0 0 0-.25-.25h-1.5a.25.25 0 0 0-.25.25v5a.75.75 0 0 1-.75.75h-3.5a1.75 1.75 0 0 1-1.75-1.75V6.23c0-.531.241-1.034.657-1.366l5.25-4.2z"/></svg>
+          <span data-tr="Ana Sayfa" data-en="Home">Ana Sayfa</span>
+        </a>
+        <div class="langtoggle" role="group" data-tr-aria="Dil seçimi" data-en-aria="Language selection" aria-label="Dil seçimi">
+          <button type="button" class="langtoggle__btn" data-lang="tr" aria-pressed="true">TR</button>
+          <button type="button" class="langtoggle__btn" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="ghlink" href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer">
+          <svg class="ghlink__icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span data-tr="GitHub" data-en="GitHub">GitHub</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ GUIDE HERO ============ -->
+    <section class="guide-hero">
+      <p class="eyebrow" data-tr="// kullanım kılavuzu" data-en="// user guide">// kullanım kılavuzu</p>
+      <h1 class="guide-hero__title" data-tr="Kullanım Kılavuzu" data-en="User Guide">Kullanım Kılavuzu</h1>
+      <p class="guide-hero__sub"
+         data-tr="Kurulumdan günlük kullanıma, baştan sona — terminalle arası iyi olmayanlar için."
+         data-en="From install to daily use, start to finish — for people who aren't comfortable with a terminal.">Kurulumdan günlük kullanıma, baştan sona — terminalle arası iyi olmayanlar için.</p>
+    </section>
+
+    <div class="guide-layout">
+      <!-- ============ TABLE OF CONTENTS ============ -->
+      <nav class="toc" data-tr-aria="İçindekiler" data-en-aria="Contents" aria-label="İçindekiler">
+        <p class="toc__title" data-tr="// içindekiler" data-en="// contents">// içindekiler</p>
+        <ul class="toc__list">
+          <li><a class="toc__link" href="#what"><span class="toc__num" aria-hidden="true">01</span><span data-tr="comrade nedir?" data-en="What comrade is">comrade nedir?</span></a></li>
+          <li><a class="toc__link" href="#install"><span class="toc__num" aria-hidden="true">02</span><span data-tr="Kurulum" data-en="Install">Kurulum</span></a></li>
+          <li><a class="toc__link" href="#first-run"><span class="toc__num" aria-hidden="true">03</span><span data-tr="İlk çalıştırma: sağlayıcı" data-en="First run: provider">İlk çalıştırma: sağlayıcı</span></a></li>
+          <li><a class="toc__link" href="#modes"><span class="toc__num" aria-hidden="true">04</span><span data-tr="3 davranış modu" data-en="3 behavior modes">3 davranış modu</span></a></li>
+          <li><a class="toc__link" href="#commands"><span class="toc__num" aria-hidden="true">05</span><span data-tr="Ana işler" data-en="Main commands">Ana işler</span></a></li>
+          <li><a class="toc__link" href="#helpers"><span class="toc__num" aria-hidden="true">06</span><span data-tr="Günlük yardımcılar" data-en="Everyday helpers">Günlük yardımcılar</span></a></li>
+          <li><a class="toc__link" href="#safety"><span class="toc__num" aria-hidden="true">07</span><span data-tr="Güvenlik" data-en="Safety">Güvenlik</span></a></li>
+          <li><a class="toc__link" href="#shell"><span class="toc__num" aria-hidden="true">08</span><span data-tr="Shell entegrasyonu" data-en="Shell integration">Shell entegrasyonu</span></a></li>
+          <li><a class="toc__link" href="#files"><span class="toc__num" aria-hidden="true">09</span><span data-tr="Dosyalar nerede?" data-en="Where things live">Dosyalar nerede?</span></a></li>
+        </ul>
+      </nav>
+
+      <div class="guide-content">
+        <!-- ============ 01 WHAT ============ -->
+        <section class="gsec" id="what">
+          <p class="eyebrow">// 01</p>
+          <h2 class="section__title" data-tr="comrade nedir?" data-en="What comrade is">comrade nedir?</h2>
+          <p class="gp"><b>comrade</b><span
+             data-tr=", terminalde ne yazacağınızı bilmenize gerek kalmadan, düz Türkçe veya İngilizce ile isteğinizi yazdığınızda sizin yerinize doğru komutu üreten bir yapay zeka yoldaşıdır. Siz &quot;docker kur&quot; ya da &quot;8080 portunu kim kullanıyor bul&quot; dersiniz; comrade durumu (işletim sisteminiz, son hatanız, çalışma dizininiz gibi) toplar, bir yapay zeka sağlayıcısına sorar, adım adım bir plan üretir ve seçtiğiniz davranış moduna göre bu planı ya çalıştırır, ya her adımda size sorar ya da sadece açıklar."
+             data-en=" is an AI companion that lets you type a plain-language request — in Turkish or English — instead of knowing what to type at the terminal. You say &quot;install docker&quot; or &quot;find and kill whatever's using port 8080&quot;; comrade gathers context (your OS, your last error, your working directory), asks an AI provider, produces a step-by-step plan, and — depending on your chosen behavior mode — either runs the plan, asks you at every step, or just explains it.">, terminalde ne yazacağınızı bilmenize gerek kalmadan, düz Türkçe veya İngilizce ile isteğinizi yazdığınızda sizin yerinize doğru komutu üreten bir yapay zeka yoldaşıdır. Siz "docker kur" ya da "8080 portunu kim kullanıyor bul" dersiniz; comrade durumu (işletim sisteminiz, son hatanız, çalışma dizininiz gibi) toplar, bir yapay zeka sağlayıcısına sorar, adım adım bir plan üretir ve seçtiğiniz davranış moduna göre bu planı ya çalıştırır, ya her adımda size sorar ya da sadece açıklar.</span></p>
+          <p class="gp"><span data-tr="Hiçbir komut sizin bilginiz/onayınız olmadan sinsice çalışmaz — bkz. " data-en="Nothing runs behind your back — see ">Hiçbir komut sizin bilginiz/onayınız olmadan sinsice çalışmaz — bkz. </span><a href="#modes" data-tr="3 davranış modu" data-en="the 3 behavior modes">3 davranış modu</a><span data-tr=" ve " data-en=" and "> ve </span><a href="#safety" data-tr="güvenlik" data-en="safety">güvenlik</a><span data-tr="." data-en=" below.">.</span></p>
+          <aside class="gterm"><span data-tr="Terim: " data-en="Term: ">Terim: </span><b data-tr="&quot;sağlayıcı&quot; (provider)" data-en="a &quot;provider&quot;">"sağlayıcı" (provider)</b><span
+             data-tr=" — isteğinizi anlayıp yanıtlayan yapay zeka servisi (Anthropic, Google, yerel Ollama gibi). comrade bir sağlayıcı olmadan çalışamaz; ilk kurulumdan sonraki tek zorunlu adım budur."
+             data-en=" is the AI service that understands and answers your request (Anthropic, Google, or a local Ollama, for example). comrade can't do anything without one configured — that's the one required step after install."> — isteğinizi anlayıp yanıtlayan yapay zeka servisi (Anthropic, Google, yerel Ollama gibi). comrade bir sağlayıcı olmadan çalışamaz; ilk kurulumdan sonraki tek zorunlu adım budur.</span></aside>
+        </section>
+
+        <!-- ============ 02 INSTALL ============ -->
+        <section class="gsec" id="install">
+          <p class="eyebrow">// 02</p>
+          <h2 class="section__title" data-tr="Kurulum" data-en="Install">Kurulum</h2>
+          <p class="gp" data-tr="En hızlı yol, işletim sisteminize göre tek satırlık bir script'tir:" data-en="The fastest path is a one-line script for your OS:">En hızlı yol, işletim sisteminize göre tek satırlık bir script'tir:</p>
+
+          <p class="gcode-label">macOS / Linux</p>
+          <div class="code">
+            <code>curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh</code>
+            <button type="button" class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh"><span class="copy-label">Kopyala</span></button>
+          </div>
+
+          <p class="gcode-label">Windows (PowerShell)</p>
+          <div class="code">
+            <code>irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex</code>
+            <button type="button" class="copy" data-copy="irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex"><span class="copy-label">Kopyala</span></button>
+          </div>
+
+          <p class="gp" data-tr="Homebrew (macOS/Linux) ve Scoop (Windows) kullananlar için:" data-en="If you use Homebrew (macOS/Linux) or Scoop (Windows):">Homebrew (macOS/Linux) ve Scoop (Windows) kullananlar için:</p>
+
+          <p class="gcode-label">Homebrew</p>
+          <div class="code">
+            <code>brew install firatkutay/tap/comrade</code>
+            <button type="button" class="copy" data-copy="brew install firatkutay/tap/comrade"><span class="copy-label">Kopyala</span></button>
+          </div>
+
+          <p class="gcode-label">Scoop</p>
+          <div class="codeblock">
+            <div class="codeblock__bar">
+              <span class="codeblock__label">scoop</span>
+              <button type="button" class="copy" data-copy="scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket&#10;scoop install comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <pre class="codeblock__pre"><code>scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
+scoop install comrade</code></pre>
+          </div>
+
+          <p class="gp"><span
+             data-tr="Script'ler indirdiği paketi kurmadan önce checksum'a karşı doğrular; kurulum dizini PATH'inizde değilse otomatik olarak ekler (yeni bir terminal gerekir). Diğer kanallar (.deb/.rpm, ham arşivler, kaynaktan derleme) ve ortam değişkeni referansı için: "
+             data-en="The scripts verify the downloaded package against its checksum before installing anything, and add the install directory to your PATH automatically if it's missing (a new terminal is required). For other channels (.deb/.rpm, raw archives, building from source) and the full env-var reference: ">Script'ler indirdiği paketi kurmadan önce checksum'a karşı doğrular; kurulum dizini PATH'inizde değilse otomatik olarak ekler (yeni bir terminal gerekir). Diğer kanallar (.deb/.rpm, ham arşivler, kaynaktan derleme) ve ortam değişkeni referansı için: </span><a href="https://github.com/firatkutay/cli-comrade/blob/main/docs/INSTALL.md" target="_blank" rel="noopener noreferrer">docs/INSTALL.md</a><span data-tr="." data-en=".">.</span></p>
+
+          <p class="gp" data-tr="Kurulumun bittiğini doğrulamak için yeni bir terminal açıp:" data-en="Confirm it worked by opening a new terminal and running:">Kurulumun bittiğini doğrulamak için yeni bir terminal açıp:</p>
+          <div class="code">
+            <code>comrade --version</code>
+            <button type="button" class="copy" data-copy="comrade --version"><span class="copy-label">Kopyala</span></button>
+          </div>
+        </section>
+
+        <!-- ============ 03 FIRST RUN ============ -->
+        <section class="gsec" id="first-run">
+          <p class="eyebrow">// 03</p>
+          <h2 class="section__title" data-tr="İlk çalıştırma — bir sağlayıcı ayarlayın" data-en="First run — set up a provider">İlk çalıştırma — bir sağlayıcı ayarlayın</h2>
+          <p class="gp"
+             data-tr="comrade'i kurar kurmaz hiçbir yapay zeka komutu (do/fix/explain/chat) çalışmaz — çünkü henüz bir sağlayıcı anahtarı yok. İki yol var:"
+             data-en="Right after install, no AI command (do/fix/explain/chat) will work yet — there's no provider key configured. Two paths:">comrade'i kurar kurmaz hiçbir yapay zeka komutu (do/fix/explain/chat) çalışmaz — çünkü henüz bir sağlayıcı anahtarı yok. İki yol var:</p>
+
+          <h3 class="gsub" data-tr="A) Bulut sağlayıcı (API anahtarı ile) — en hızlı yol" data-en="A) Cloud provider (API key) — fastest">A) Bulut sağlayıcı (API anahtarı ile) — en hızlı yol</h3>
+          <div class="code">
+            <code>comrade auth login anthropic</code>
+            <button type="button" class="copy" data-copy="comrade auth login anthropic"><span class="copy-label">Kopyala</span></button>
+          </div>
+          <p class="gp"><span
+             data-tr="Bu, sizden API anahtarınızı ister, saklamadan önce küçük bir test isteği gönderir ve anahtarı işletim sistemi keychain'inde saklar. "
+             data-en="This asks for your API key, sends a small test request before storing it, and saves it in your OS keychain. ">Bu, sizden API anahtarınızı ister, saklamadan önce küçük bir test isteği gönderir ve anahtarı işletim sistemi keychain'inde saklar. </span><code class="inline-code">google</code><span
+             data-tr=" (Gemini) için de aynı şekilde çalışır: "
+             data-en=" (Gemini) works the same way: "> (Gemini) için de aynı şekilde çalışır: </span><code class="inline-code">comrade auth login google</code><span data-tr="." data-en=".">.</span></p>
+
+          <p class="gp"
+             data-tr="OpenAI, Qwen, Groq, Mistral, GLM/Zhipu, Kimi/Moonshot, OpenRouter, LM Studio gibi OpenAI-uyumlu bir sağlayıcı kullanacaksanız:"
+             data-en="For an OpenAI-compatible provider — OpenAI, Qwen, Groq, Mistral, GLM/Zhipu, Kimi/Moonshot, OpenRouter, LM Studio:">OpenAI, Qwen, Groq, Mistral, GLM/Zhipu, Kimi/Moonshot, OpenRouter, LM Studio gibi OpenAI-uyumlu bir sağlayıcı kullanacaksanız:</p>
+          <div class="code">
+            <code>comrade auth login openai_compat</code>
+            <button type="button" class="copy" data-copy="comrade auth login openai_compat"><span class="copy-label">Kopyala</span></button>
+          </div>
+
+          <p class="gp" data-tr="Akış şöyle işler:" data-en="The flow:">Akış şöyle işler:</p>
+          <ol class="gsteps">
+            <li data-tr="API anahtarınızı sorar." data-en="Asks for your API key.">API anahtarınızı sorar.</li>
+            <li><span
+               data-tr="Hâlâ varsayılan OpenAI adresindeyseniz, sağlayıcının adresini ("
+               data-en="If you're still pointed at the shipped OpenAI default, asks for the provider's address (">Hâlâ varsayılan OpenAI adresindeyseniz, sağlayıcının adresini (</span><code class="inline-code">base_url</code><span
+               data-tr=") sorar — sadece Enter'a basarsanız OpenAI'de kalırsınız."
+               data-en=") — press Enter to stay on OpenAI.">) sorar — sadece Enter'a basarsanız OpenAI'de kalırsınız.</span></li>
+            <li><span
+               data-tr="Girdiğiniz adres OpenAI'den farklıysa ve henüz bir model seçilmediyse, kullanmak istediğiniz modelin adını sorar (ör. qwen-plus) — boş bırakabilirsiniz, sonra "
+               data-en="If the address you entered is non-OpenAI and no model is set yet, asks for the model name you want (e.g. qwen-plus) — you can leave it blank and set it later with ">Girdiğiniz adres OpenAI'den farklıysa ve henüz bir model seçilmediyse, kullanmak istediğiniz modelin adını sorar (ör. qwen-plus) — boş bırakabilirsiniz, sonra </span><code class="inline-code">comrade config set llm.model &lt;model&gt;</code><span
+               data-tr=" ile ayarlarsınız."
+               data-en="."> ile ayarlarsınız.</span></li>
+            <li><span
+               data-tr="Anahtarı test eder: anahtar reddedilirse (401/403) hiçbir şey kaydedilmez; &quot;model bulunamadı&quot; (404) hatası alırsa anahtar yine de kaydedilir ve size "
+               data-en="Tests the key: a rejected key (401/403) is never saved; a &quot;model not found&quot; (404) still saves the key and tells you to run ">Anahtarı test eder: anahtar reddedilirse (401/403) hiçbir şey kaydedilmez; "model bulunamadı" (404) hatası alırsa anahtar yine de kaydedilir ve size </span><code class="inline-code">comrade config models</code><span
+               data-tr=" çalıştırıp doğru modeli seçmenizi söyler; başka bir hata olursa yine kaydeder ama doğrulayamadığını belirtir."
+               data-en=" to pick the right one; any other failure saves the key too, just flagging that it couldn't verify."> çalıştırıp doğru modeli seçmenizi söyler; başka bir hata olursa yine kaydeder ama doğrulayamadığını belirtir.</span></li>
+          </ol>
+
+          <p class="gp"><span
+             data-tr="Girişten sonra, giriş yaptığınız sağlayıcı "
+             data-en="After login, the provider you logged into becomes your ">Girişten sonra, giriş yaptığınız sağlayıcı </span><b data-tr="etkin sağlayıcınız" data-en="active provider">etkin sağlayıcınız</b><span
+             data-tr=" olur ("
+             data-en=" ("> olur (</span><code class="inline-code">comrade "..."</code><span
+             data-tr=" artık onu kullanır ve girdiğiniz model ona uygulanır)."
+             data-en=" now uses it, and the model you entered applies to it)."> artık onu kullanır ve girdiğiniz model ona uygulanır).</span></p>
+
+          <div class="codeblock">
+            <div class="codeblock__bar">
+              <span class="codeblock__label" data-tr="örnek — qwen/dashscope" data-en="example — qwen/dashscope">örnek — qwen/dashscope</span>
+            </div>
+            <pre class="codeblock__pre"><code>comrade auth login openai_compat
+<span class="c-comment"># API key: </span><span class="c-comment" data-tr="&lt;anahtarınız&gt;" data-en="&lt;your key&gt;">&lt;anahtarınız&gt;</span>
+<span class="c-comment"># Provider address (base_url) [Enter = OpenAI]: https://dashscope-intl.aliyuncs.com/compatible-mode/v1</span>
+<span class="c-comment"># Model [Enter = skip]: qwen-plus</span></code></pre>
+          </div>
+
+          <h3 class="gsub" data-tr="B) Yerel / çevrimdışı (Ollama) — anahtar gerekmez" data-en="B) Local / offline (Ollama) — no key needed">B) Yerel / çevrimdışı (Ollama) — anahtar gerekmez</h3>
+          <p class="gp" data-tr="Kendi makinenizde çalışan bir modeli kullanmak isterseniz:" data-en="To run a model on your own machine:">Kendi makinenizde çalışan bir modeli kullanmak isterseniz:</p>
+          <div class="codeblock">
+            <div class="codeblock__bar">
+              <span class="codeblock__label">ollama</span>
+              <button type="button" class="copy" data-copy="ollama pull llama3.1&#10;comrade config set llm.provider ollama&#10;comrade config set llm.model llama3.1"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <pre class="codeblock__pre"><code>ollama pull llama3.1                     <span class="c-comment" data-tr="# önce modeli Ollama ile indirin" data-en="# pull the model with Ollama first"># önce modeli Ollama ile indirin</span>
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    <span class="c-comment" data-tr="# opsiyonel — boş bırakırsanız kurulu bir model otomatik seçilir" data-en="# optional — leave unset to auto-pick a pulled model"># opsiyonel — boş bırakırsanız kurulu bir model otomatik seçilir</span></code></pre>
+          </div>
+          <p class="gp"><span
+             data-tr="Ollama kurulu değilse "
+             data-en="Install Ollama from ">Ollama kurulu değilse </span><a href="https://ollama.com" target="_blank" rel="noopener noreferrer">ollama.com</a><span
+             data-tr="'dan kurun — comrade bunu sizin için kurmaz. "
+             data-en=" if you haven't — comrade does not install it for you. There is no ">'dan kurun — comrade bunu sizin için kurmaz. </span><code class="inline-code">comrade auth login ollama</code><span
+             data-tr=" diye bir şey YOKTUR ve reddedilir; bu sağlayıcının hiç anahtara ihtiyacı yoktur."
+             data-en="; it's rejected outright, because this provider needs no key at all."> diye bir şey YOKTUR ve reddedilir; bu sağlayıcının hiç anahtara ihtiyacı yoktur.</span></p>
+
+          <h3 class="gsub" data-tr="Kontrol edin" data-en="Verify">Kontrol edin</h3>
+          <div class="codeblock">
+            <pre class="codeblock__pre"><code>comrade auth status    <span class="c-comment" data-tr="# hangi sağlayıcılarda anahtar var, gösterir (değerleri asla yazdırmaz)" data-en="# shows which providers have a key (never prints values)"># hangi sağlayıcılarda anahtar var, gösterir (değerleri asla yazdırmaz)</span>
+comrade doctor         <span class="c-comment" data-tr="# yapılandırmanızı uçtan uca kontrol eder" data-en="# checks your setup end-to-end"># yapılandırmanızı uçtan uca kontrol eder</span>
+comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanmış bir istek gönderir (bir token harcar)" data-en="# + sends a real, authenticated request (spends one token)"># + gerçek, doğrulanmış bir istek gönderir (bir token harcar)</span></code></pre>
+          </div>
+          <p class="gp"><span data-tr="Ayrıntılı sağlayıcı/model referansı için: " data-en="Full provider/model reference: ">Ayrıntılı sağlayıcı/model referansı için: </span><a href="https://github.com/firatkutay/cli-comrade/blob/main/docs/CONFIGURATION.md" target="_blank" rel="noopener noreferrer">docs/CONFIGURATION.md</a><span data-tr="." data-en=".">.</span></p>
+        </section>
+
+        <!-- ============ 04 MODES ============ -->
+        <section class="gsec" id="modes">
+          <p class="eyebrow">// 04</p>
+          <h2 class="section__title" data-tr="3 davranış modu" data-en="3 behavior modes">3 davranış modu</h2>
+          <p class="gp"
+             data-tr="comrade'in ne kadar &quot;kendi başına&quot; davranacağını belirleyen üç mod var:"
+             data-en="Three modes control how much comrade does on its own:">comrade'in ne kadar "kendi başına" davranacağını belirleyen üç mod var:</p>
+
+          <div class="modes">
+            <article class="mode mode--default">
+              <span class="mode__badge" data-tr="Varsayılan" data-en="Default">Varsayılan</span>
+              <h3 class="mode__name">ask</h3>
+              <p class="mode__desc"><span
+                 data-tr="Her adımdan önce kısa bir gerekçe + komutun kendisini gösterir, onay ister: "
+                 data-en="Before every step: a short rationale + the command itself, then confirms: ">Her adımdan önce kısa bir gerekçe + komutun kendisini gösterir, onay ister: </span><code class="inline-code" data-tr="[e]vet / [h]ayır / [d]üzenle / [a]çıkla / [t]ümü" data-en="[y]es / [n]o / [e]dit / [x]plain / [a]ll">[e]vet / [h]ayır / [d]üzenle / [a]çıkla / [t]ümü</code><span
+                 data-tr=". &quot;Tümü&quot;nden sonra kalan write/network adımları sormadan çalışır, ama elevated/destructive adımlar yine tek tek sorar."
+                 data-en=". After &quot;all&quot;, remaining write/network steps run without asking, but elevated/destructive steps still ask individually.">. "Tümü"nden sonra kalan write/network adımları sormadan çalışır, ama elevated/destructive adımlar yine tek tek sorar.</span></p>
+              <p class="mode__when" data-tr="Günlük kullanım, yeni başlayanlar" data-en="Everyday use, beginners">Günlük kullanım, yeni başlayanlar</p>
+            </article>
+            <article class="mode">
+              <h3 class="mode__name">auto</h3>
+              <p class="mode__desc" data-tr="Her adımı kendisi çalıştırır, tek satırlık durum yazar." data-en="Runs each step itself, printing a one-line status.">Her adımı kendisi çalıştırır, tek satırlık durum yazar.</p>
+              <p class="mode__when" data-tr="Güvendiğiniz, tekrarlayan görevler" data-en="Repeated tasks you already trust">Güvendiğiniz, tekrarlayan görevler</p>
+            </article>
+            <article class="mode">
+              <h3 class="mode__name">info</h3>
+              <p class="mode__desc" data-tr="Hiçbir şey çalıştırmaz — sadece nedeni ve kopyalanabilir çözüm komutlarını açıklar." data-en="Runs nothing — just explains the cause and copy-pasteable fix commands.">Hiçbir şey çalıştırmaz — sadece nedeni ve kopyalanabilir çözüm komutlarını açıklar.</p>
+              <p class="mode__when" data-tr="Sadece ne olduğunu öğrenmek istediğinizde" data-en="Just want to understand">Sadece ne olduğunu öğrenmek istediğinizde</p>
+            </article>
+          </div>
+
+          <div class="gwarn">
+            <span class="gwarn__tag" data-tr="// güvenlik istisnası — pazarlık edilemez" data-en="// safety exception — non-negotiable">// güvenlik istisnası — pazarlık edilemez</span>
+            <span data-tr="" data-en="Even in "></span><code class="inline-code">auto</code><span
+               data-tr=" modda bile yıkıcı ("
+               data-en=" mode, a "> modda bile yıkıcı (</span><code class="inline-code">destructive</code><span
+               data-tr=") bir adım HER ZAMAN onay ister — bu, config'te "
+               data-en=") step ALWAYS asks for confirmation — this only changes if ">) bir adım HER ZAMAN onay ister — bu, config'te </span><code class="inline-code">safety.confirm_destructive=false</code><span
+               data-tr=" ve "
+               data-en=" in config and "> ve </span><code class="inline-code">--yolo</code><span
+               data-tr=" bayrağı birlikte kullanılmadıkça değişmez, ve o zaman bile her kullanımda kırmızı bir uyarı basılır."
+               data-en=" are used together, and even then a red warning prints on every use."> bayrağı birlikte kullanılmadıkça değişmez, ve o zaman bile her kullanımda kırmızı bir uyarı basılır.</span>
+          </div>
+
+          <p class="gp" data-tr="Modu değiştirme yolları:" data-en="Switching mode:">Modu değiştirme yolları:</p>
+          <div class="code">
+            <code><span data-tr="comrade &quot;docker kur&quot; --auto" data-en="comrade &quot;install docker&quot; --auto">comrade "docker kur" --auto</span>      <span class="c-comment" data-tr="# sadece bu çalıştırma için" data-en="# this run only"># sadece bu çalıştırma için</span></code>
+          </div>
+          <div class="code">
+            <code>comrade config set general.mode auto   <span class="c-comment" data-tr="# kalıcı varsayılan" data-en="# persistent default"># kalıcı varsayılan</span></code>
+            <button type="button" class="copy" data-copy="comrade config set general.mode auto"><span class="copy-label">Kopyala</span></button>
+          </div>
+        </section>
+
+        <!-- ============ 05 MAIN COMMANDS ============ -->
+        <section class="gsec" id="commands">
+          <p class="eyebrow">// 05</p>
+          <h2 class="section__title" data-tr="Ana işler" data-en="The main things you'll do">Ana işler</h2>
+
+          <h3 class="gsub">comrade fix</h3>
+          <p class="gp"
+             data-tr="Son başarısız komutunuzu teşhis eder ve bir düzeltme önerir. Bunun otomatik çalışması için önce shell entegrasyonunu kurmanız GEREKİR:"
+             data-en="Diagnoses your last failed command and proposes a fix. For it to auto-capture that error, you MUST set up shell integration first:">Son başarısız komutunuzu teşhis eder ve bir düzeltme önerir. Bunun otomatik çalışması için önce shell entegrasyonunu kurmanız GEREKİR:</p>
+          <div class="code">
+            <code>comrade init        <span class="c-comment" data-tr="# shell'inizi otomatik algılar (bash/zsh/fish/PowerShell)" data-en="# auto-detects your shell (bash/zsh/fish/PowerShell)"># shell'inizi otomatik algılar (bash/zsh/fish/PowerShell)</span></code>
+            <button type="button" class="copy" data-copy="comrade init"><span class="copy-label">Kopyala</span></button>
+          </div>
+          <p class="gp"><span data-tr="...ve ardından " data-en="...then ">...ve ardından </span><b data-tr="terminalinizi yeniden başlatın" data-en="restart your terminal">terminalinizi yeniden başlatın</b><span
+             data-tr=" — kanca (hook) yeni açılan oturumlara uygulanır, mevcut oturuma değil. Kurulmadıysa veya yeni bir terminal açmadıysanız, comrade fix hiçbir hatayı otomatik yakalamaz; bunun yerine:"
+             data-en=" — the hook applies to newly opened shells, not your current session. Without it (or before restarting), comrade fix never captures an error automatically; instead:"> — kanca (hook) yeni açılan oturumlara uygulanır, mevcut oturuma değil. Kurulmadıysa veya yeni bir terminal açmadıysanız, comrade fix hiçbir hatayı otomatik yakalamaz; bunun yerine:</span></p>
+          <div class="code">
+            <code>comrade fix -- npm run build   <span class="c-comment" data-tr="# comrade komutu kendisi çalıştırıp gözlemler" data-en="# comrade runs and observes the command itself"># comrade komutu kendisi çalıştırıp gözlemler</span></code>
+            <button type="button" class="copy" data-copy="comrade fix -- npm run build"><span class="copy-label">Kopyala</span></button>
+          </div>
+          <p class="gp"
+             data-tr="ya da hatayı doğrudan terminale yapıştırmanız istenir (yapıştırma modu her zaman çalışır, kancaya ihtiyaç duymaz)."
+             data-en="or you'll be prompted to paste the error directly (paste mode always works, no hook required).">ya da hatayı doğrudan terminale yapıştırmanız istenir (yapıştırma modu her zaman çalışır, kancaya ihtiyaç duymaz).</p>
+
+          <h3 class="gsub" data-tr="comrade &quot;&lt;düz metin istek&gt;&quot;" data-en="comrade &quot;&lt;plain-language request&gt;&quot;">comrade "&lt;düz metin istek&gt;"</h3>
+          <p class="gp"><span
+             data-tr="Varsayılan komuttur, ayrı bir alt komut yazmanıza gerek yoktur ("
+             data-en="The default command, no subcommand needed (same as ">Varsayılan komuttur, ayrı bir alt komut yazmanıza gerek yoktur (</span><code class="inline-code">comrade do "..."</code><span
+             data-tr=" ile aynı):"
+             data-en="):"> ile aynı):</span></p>
+          <div class="code">
+            <code><span data-tr="comrade &quot;8080 portunu kim kullanıyor bul ve kapat&quot;" data-en="comrade &quot;find and kill whatever's using port 8080&quot;">comrade "8080 portunu kim kullanıyor bul ve kapat"</span></code>
+          </div>
+          <div class="code">
+            <code><span data-tr="comrade docker kur" data-en="comrade install docker">comrade docker kur</span></code>
+          </div>
+
+          <h3 class="gsub" data-tr="comrade explain &quot;&lt;komut&gt;&quot;" data-en="comrade explain &quot;&lt;command&gt;&quot;">comrade explain "&lt;komut&gt;"</h3>
+          <p class="gp"
+             data-tr="Bir komutu ÇALIŞTIRMADAN, bayrak bayrak açıklar. Korkutucu bir komutu anlamanın güvenli yolu:"
+             data-en="Explains a command flag-by-flag WITHOUT running it. The safe way to understand a scary command:">Bir komutu ÇALIŞTIRMADAN, bayrak bayrak açıklar. Korkutucu bir komutu anlamanın güvenli yolu:</p>
+          <div class="code">
+            <code>comrade explain "git rebase -i HEAD~5"</code>
+            <button type="button" class="copy" data-copy="comrade explain &quot;git rebase -i HEAD~5&quot;"><span class="copy-label">Kopyala</span></button>
+          </div>
+          <p class="gp"><span data-tr="Komut tire (-) ile başlıyorsa: " data-en="If the command starts with a dash: ">Komut tire (-) ile başlıyorsa: </span><code class="inline-code" data-tr="comrade explain -- &lt;komut&gt;" data-en="comrade explain -- &lt;command&gt;">comrade explain -- &lt;komut&gt;</code><span data-tr="." data-en=".">.</span></p>
+
+          <h3 class="gsub">comrade chat</h3>
+          <p class="gp"
+             data-tr="Bağlamı koruyan interaktif bir sohbet oturumu (gerçek bir terminal/TTY gerektirir). Oturum içi komutlar:"
+             data-en="An interactive, context-preserving chat session (requires a real terminal/TTY). In-session slash commands:">Bağlamı koruyan interaktif bir sohbet oturumu (gerçek bir terminal/TTY gerektirir). Oturum içi komutlar:</p>
+          <div class="gtable">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col" data-tr="Komut" data-en="Command">Komut</th>
+                  <th scope="col" data-tr="Ne yapar" data-en="What it does">Ne yapar</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code data-tr="/do &lt;istek&gt;" data-en="/do &lt;request&gt;">/do &lt;istek&gt;</code></td>
+                  <td data-tr="Gerçek, güvenlik-kontrollü comrade işlem hattını çalıştırır" data-en="Runs the real, safety-gated comrade pipeline">Gerçek, güvenlik-kontrollü comrade işlem hattını çalıştırır</td>
+                </tr>
+                <tr>
+                  <td><code>/mode auto|ask|info</code></td>
+                  <td data-tr="Bu oturumun modunu değiştirir" data-en="Changes this session's mode">Bu oturumun modunu değiştirir</td>
+                </tr>
+                <tr>
+                  <td><code>/clear</code></td>
+                  <td data-tr="Sohbet geçmişini sıfırlar" data-en="Resets the conversation history">Sohbet geçmişini sıfırlar</td>
+                </tr>
+                <tr>
+                  <td><code data-tr="/save &lt;dosya&gt;" data-en="/save &lt;file&gt;">/save &lt;dosya&gt;</code></td>
+                  <td data-tr="Dökümü dosyaya kaydeder (oturum başka hiçbir şekilde diske yazılmaz — gizlilik)" data-en="Exports the transcript to a file (the only way a session is ever written to disk — privacy)">Dökümü dosyaya kaydeder (oturum başka hiçbir şekilde diske yazılmaz — gizlilik)</td>
+                </tr>
+                <tr>
+                  <td><code>/help</code></td>
+                  <td data-tr="Yardımı gösterir" data-en="Shows help">Yardımı gösterir</td>
+                </tr>
+                <tr>
+                  <td><code>/exit</code></td>
+                  <td data-tr="Oturumu sonlandırır" data-en="Ends the session">Oturumu sonlandırır</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ============ 06 EVERYDAY HELPERS ============ -->
+        <section class="gsec" id="helpers">
+          <p class="eyebrow">// 06</p>
+          <h2 class="section__title" data-tr="Günlük yardımcılar" data-en="Everyday helpers">Günlük yardımcılar</h2>
+          <ul class="glist">
+            <li><code class="inline-code">comrade undo</code><span
+               data-tr=" — geri alınabilir son işlemi tersine çevirir, ya da elle yapılacak adımları gösterir. Her zaman "
+               data-en=" — reverses the last reversible action, or shows the manual steps. Always runs in "> — geri alınabilir son işlemi tersine çevirir, ya da elle yapılacak adımları gösterir. Her zaman </span><code class="inline-code">ask</code><span
+               data-tr=" modunda çalışır — bir "
+               data-en=" mode — there is NO "> modunda çalışır — bir </span><code class="inline-code">--yolo</code><span
+               data-tr=" yolu YOKTUR, çünkü bir geri alma orijinal işlemden daha az değil, daha fazla dikkat ister. "
+               data-en=" path here, since a reversal deserves more scrutiny than the original action, not less. "> yolu YOKTUR, çünkü bir geri alma orijinal işlemden daha az değil, daha fazla dikkat ister. </span><code class="inline-code">comrade undo --list</code><span
+               data-tr=" son geri alınabilir işlemleri listeler; "
+               data-en=" lists recent reversible actions; bounded by "> son geri alınabilir işlemleri listeler; </span><code class="inline-code">audit.retention_days</code><span
+               data-tr=" (varsayılan 90 gün) ile sınırlıdır."
+               data-en=" (default 90 days)."> (varsayılan 90 gün) ile sınırlıdır.</span></li>
+            <li><code class="inline-code">comrade history</code><span
+               data-tr=" — denetim kaydından (audit log) son çalıştırılan komutları gösterir ("
+               data-en=" — shows recently executed commands from the audit log (e.g. "> — denetim kaydından (audit log) son çalıştırılan komutları gösterir (</span><code class="inline-code">--limit 50</code><span
+               data-tr=" gibi)."
+               data-en=")."> gibi).</span></li>
+            <li><code class="inline-code">comrade config</code><span data-tr=" — " data-en=" — "> — </span><code class="inline-code" data-tr="get &lt;anahtar&gt;" data-en="get &lt;key&gt;">get &lt;anahtar&gt;</code> / <code class="inline-code" data-tr="set &lt;anahtar&gt; &lt;değer&gt;" data-en="set &lt;key&gt; &lt;value&gt;">set &lt;anahtar&gt; &lt;değer&gt;</code> / <code class="inline-code">list</code><span
+               data-tr=" (her anahtarın kaynağını da gösterir) / "
+               data-en=" (also shows each key's source) / "> (her anahtarın kaynağını da gösterir) / </span><code class="inline-code">models</code><span
+               data-tr=" (etkin sağlayıcı için modelleri listeler, seçip "
+               data-en=" (lists models for the active provider, picks and persists to "> (etkin sağlayıcı için modelleri listeler, seçip </span><code class="inline-code">llm.model</code><span
+               data-tr="'e kaydeder) / "
+               data-en=") / ">'e kaydeder) / </span><code class="inline-code">edit</code><span
+               data-tr=" ("
+               data-en=" (opens "> (</span><code class="inline-code">$EDITOR</code><span
+               data-tr="'da açar, yoksa vi/Windows'ta notepad) / "
+               data-en=", or vi, or notepad on Windows) / ">'da açar, yoksa vi/Windows'ta notepad) / </span><code class="inline-code">path</code><span
+               data-tr=" (dosya yolunu yazdırır)."
+               data-en=" (prints the file path)."> (dosya yolunu yazdırır).</span></li>
+            <li><b data-tr="Profiller" data-en="Profiles">Profiller</b><span
+               data-tr=" — iş/kişisel gibi ayrı yapılandırmalar için: "
+               data-en=" — for separate setups like work/personal: "> — iş/kişisel gibi ayrı yapılandırmalar için: </span><code class="inline-code">comrade config profile add work --from-current</code>, <code class="inline-code">comrade config profile use work</code><span
+               data-tr=", ya da tek seferlik "
+               data-en=", or a one-off ">, ya da tek seferlik </span><code class="inline-code">--profile work</code><span
+               data-tr=". Dikkat: "
+               data-en=". Note: ">. Dikkat: </span><code class="inline-code">config set</code><span
+               data-tr=" dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil İÇİNDEKİ bir anahtarı değiştirmek için "
+               data-en=" writes the file-level value, NOT the active profile — to change a key INSIDE a profile use "> dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil İÇİNDEKİ bir anahtarı değiştirmek için </span><code class="inline-code">comrade config profile set work llm.provider openai_compat</code><span
+               data-tr=" kullanın."
+               data-en="."> kullanın.</span></li>
+            <li><b data-tr="Plan önizlemesi" data-en="Plan preview">Plan önizlemesi</b><span
+               data-tr=" — "
+               data-en=" — set "> — </span><code class="inline-code">general.plan_review=ask</code><span
+               data-tr=" ayarlayın (ya da "
+               data-en=" (or pass "> ayarlayın (ya da </span><code class="inline-code">--review</code><span
+               data-tr=" verin) ki adımlar çalışmadan önce yeniden sıralayabileceğiniz/atlayabileceğiniz/düzenleyebileceğiniz interaktif bir önizleme ekranı görün (ask modda, çok adımlı planlarda); "
+               data-en=") to see an interactive preview where you can reorder/skip/edit steps before they run (ask mode, multi-step plans); "> verin) ki adımlar çalışmadan önce yeniden sıralayabileceğiniz/atlayabileceğiniz/düzenleyebileceğiniz interaktif bir önizleme ekranı görün (ask modda, çok adımlı planlarda); </span><code class="inline-code">--no-review</code><span
+               data-tr=" bunu her zaman kapatır."
+               data-en=" always forces it off."> bunu her zaman kapatır.</span></li>
+            <li><b data-tr="Maliyet görünürlüğü" data-en="Cost visibility">Maliyet görünürlüğü</b><span
+               data-tr=" — herhangi bir çalıştırmaya "
+               data-en=" — add "> — herhangi bir çalıştırmaya </span><code class="inline-code">--usage</code><span
+               data-tr=" ekleyin, ya da kalıcı olarak "
+               data-en=" to any run, or make it permanent with "> ekleyin, ya da kalıcı olarak </span><code class="inline-code">comrade config set general.show_usage true</code><span
+               data-tr=" yapın; her çalıştırma sonunda token/maliyet özeti yazılır."
+               data-en="; a token/cost summary prints at the end of every run."> yapın; her çalıştırma sonunda token/maliyet özeti yazılır.</span></li>
+            <li><code class="inline-code">comrade doctor</code><span
+               data-tr=" — salt-okunur, uçtan uca bir öz-tanı; "
+               data-en=" — a read-only, end-to-end self-diagnostic; "> — salt-okunur, uçtan uca bir öz-tanı; </span><code class="inline-code">--live</code><span
+               data-tr=" ile gerçek bir doğrulanmış istek gönderir (bir token harcar)."
+               data-en=" sends a real authenticated request (spends one token)."> ile gerçek bir doğrulanmış istek gönderir (bir token harcar).</span></li>
+            <li><code class="inline-code">comrade upgrade</code><span
+               data-tr=" — yeni bir sürümü kontrol eder/kurar; "
+               data-en=" — checks for / installs a newer version; "> — yeni bir sürümü kontrol eder/kurar; </span><code class="inline-code">--check</code><span
+               data-tr=" sadece rapor verir, kurmaz. Yalnızca resmi paket kanallarından kurulmuş sürümlerde çalışır (kaynaktan "
+               data-en=" only reports, never installs. Only works on versions installed via the official package channels (not a local "> sadece rapor verir, kurmaz. Yalnızca resmi paket kanallarından kurulmuş sürümlerde çalışır (kaynaktan </span><code class="inline-code">go build</code><span
+               data-tr=" ile yapılan yerel derlemelerde değil)."
+               data-en=" from source)."> ile yapılan yerel derlemelerde değil).</span></li>
+          </ul>
+        </section>
+
+        <!-- ============ 07 SAFETY ============ -->
+        <section class="gsec" id="safety">
+          <p class="eyebrow">// 07</p>
+          <h2 class="section__title" data-tr="Güvenlik, sade anlatım" data-en="Safety, in plain words">Güvenlik, sade anlatım</h2>
+
+          <div class="risk-ladder">
+            <span class="badge badge--read">read</span><span class="risk-ladder__sep" aria-hidden="true">&lt;</span>
+            <span class="badge badge--write">write</span><span class="risk-ladder__sep" aria-hidden="true">&lt;</span>
+            <span class="badge badge--network">network</span><span class="risk-ladder__sep" aria-hidden="true">&lt;</span>
+            <span class="badge badge--elevated">elevated</span><span class="risk-ladder__sep" aria-hidden="true">&lt;</span>
+            <span class="badge badge--destructive">destructive</span>
+          </div>
+
+          <ul class="glist">
+            <li><span
+               data-tr="Her üretilen komut bir risk sınıfına etiketlenir: "
+               data-en="Every generated command is labeled with a risk class: ">Her üretilen komut bir risk sınıfına etiketlenir: </span><code class="inline-code">read</code><span data-tr=" (okuma) &lt; " data-en=" &lt; "> (okuma) &lt; </span><code class="inline-code">write</code><span data-tr=" (yazma) &lt; " data-en=" &lt; "> (yazma) &lt; </span><code class="inline-code">network</code><span data-tr=" (ağ) &lt; " data-en=" &lt; "> (ağ) &lt; </span><code class="inline-code">elevated</code> (sudo/admin) &lt; <code class="inline-code">destructive</code><span
+               data-tr=" (geri alınamaz silme/format). comrade'in kendi yerel kural motoru bu etikete asla körü körüne güvenmez — sadece YÜKSELTEBİLİR, asla düşüremez."
+               data-en=" (irreversible delete/format). comrade's own local rule engine never blindly trusts that label — it can only RAISE it, never lower it."> (geri alınamaz silme/format). comrade'in kendi yerel kural motoru bu etikete asla körü körüne güvenmez — sadece YÜKSELTEBİLİR, asla düşüremez.</span></li>
+            <li><code class="inline-code">elevated</code><span data-tr=" ve " data-en=" and "> ve </span><code class="inline-code">destructive</code><span
+               data-tr=" adımlar her modda onay ister — "
+               data-en=" steps ask for confirmation in every mode — even "> adımlar her modda onay ister — </span><code class="inline-code">auto</code><span
+               data-tr=" modda bile. Bu, "
+               data-en=". This only changes with "> modda bile. Bu, </span><code class="inline-code">safety.confirm_destructive=false</code>/<wbr /><code class="inline-code">safety.confirm_elevated=false</code><span
+               data-tr=" ve "
+               data-en=" and "> ve </span><code class="inline-code">--yolo</code><span
+               data-tr=" birlikte olmadıkça değişmez; o zaman bile her kullanımda kırmızı bir uyarı basılır."
+               data-en=" together, and even then a red warning prints on every use."> birlikte olmadıkça değişmez; o zaman bile her kullanımda kırmızı bir uyarı basılır.</span></li>
+            <li><span data-tr="Sabit bir " data-en="There's a fixed ">Sabit bir </span><b data-tr="kara liste (denylist)" data-en="denylist">kara liste (denylist)</b><span
+               data-tr=" vardır: "
+               data-en=": patterns like "> vardır: </span><code class="inline-code">rm -rf /</code>, <code class="inline-code">mkfs</code>, <code class="inline-code">dd of=/dev/...</code>, <code class="inline-code">diskpart clean</code><span
+               data-tr=", drive-root "
+               data-en=", drive-root ">, drive-root </span><code class="inline-code">Remove-Item -Recurse</code><span
+               data-tr=" ve fork bomb gibi kalıplar hiçbir modda, hiçbir bayrakla çalışmaz — engellenir."
+               data-en=", and fork bombs never run in any mode, with any flag — they're blocked."> ve fork bomb gibi kalıplar hiçbir modda, hiçbir bayrakla çalışmaz — engellenir.</span></li>
+            <li><span data-tr="Tam güvenlik modeli: " data-en="Full safety model: ">Tam güvenlik modeli: </span><a href="https://github.com/firatkutay/cli-comrade/blob/main/docs/SECURITY.md" target="_blank" rel="noopener noreferrer">docs/SECURITY.md</a><span data-tr="." data-en=".">.</span></li>
+          </ul>
+        </section>
+
+        <!-- ============ 08 SHELL INTEGRATION ============ -->
+        <section class="gsec" id="shell">
+          <p class="eyebrow">// 08</p>
+          <h2 class="section__title" data-tr="Shell entegrasyonu ve öneriler" data-en="Shell integration and suggestions">Shell entegrasyonu ve öneriler</h2>
+          <p class="gp"><code class="inline-code">comrade init [bash|zsh|fish|powershell]</code><span
+             data-tr=" (argümansız çağrılırsa "
+             data-en=" (auto-detects from "> (argümansız çağrılırsa </span><code class="inline-code">$SHELL</code><span
+             data-tr="'den otomatik algılar) hem fix'in ihtiyaç duyduğu kancayı hem de Tab-tamamlamayı tek seferde kurar. Kurulumdan sonra "
+             data-en=" if you omit the shell) installs both the hook fix needs and Tab completion in one step. Afterward, ">'den otomatik algılar) hem fix'in ihtiyaç duyduğu kancayı hem de Tab-tamamlamayı tek seferde kurar. Kurulumdan sonra </span><b data-tr="yeni bir terminal açın" data-en="open a new terminal">yeni bir terminal açın</b><span
+             data-tr=" — değişiklik mevcut oturuma değil, yeni açılan kabuklara uygulanır."
+             data-en=" — the change applies to newly opened shells, not your current session."> — değişiklik mevcut oturuma değil, yeni açılan kabuklara uygulanır.</span></p>
+          <p class="gp"><span data-tr="" data-en="What happens when you type "></span><code class="inline-code">comrade</code><span
+             data-tr=" yazıp bir boşluk bıraktığınızda öneriler nasıl görünür, shell'e göre değişir:"
+             data-en=" and hit space varies by shell:"> yazıp bir boşluk bıraktığınızda öneriler nasıl görünür, shell'e göre değişir:</span></p>
+          <div class="gtable">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Shell</th>
+                  <th scope="col" data-tr="Boşlukta ne olur" data-en="What happens on space">Boşlukta ne olur</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>zsh</code></td>
+                  <td data-tr="Soluk gri satır-içi bir &quot;hayalet&quot; ipucu belirir (ör. comrade auth login → [anthropic|openai_compat|google])" data-en="A dim inline &quot;ghost&quot; hint appears (e.g. comrade auth login → [anthropic|openai_compat|google])">Soluk gri satır-içi bir "hayalet" ipucu belirir (ör. comrade auth login → [anthropic|openai_compat|google])</td>
+                </tr>
+                <tr>
+                  <td><code>PowerShell</code></td>
+                  <td data-tr="Tab-tamamlama listesi satırın altında otomatik açılır" data-en="The Tab-completion list auto-opens below the line">Tab-tamamlama listesi satırın altında otomatik açılır</td>
+                </tr>
+                <tr>
+                  <td><code>fish</code></td>
+                  <td data-tr="fish'in kendi yerleşik yazarken-tamamlama özelliği önerileri gösterir" data-en="fish's own built-in as-you-type completion shows suggestions">fish'in kendi yerleşik yazarken-tamamlama özelliği önerileri gösterir</td>
+                </tr>
+                <tr>
+                  <td><code>bash</code></td>
+                  <td data-tr="Hayalet metin YOKTUR (readline'ın bir sınırı) — bunun yerine comrade sonrası Tab'a iki kez basın" data-en="No ghost text (a readline limitation) — press Tab twice after comrade instead">Hayalet metin YOKTUR (readline'ın bir sınırı) — bunun yerine comrade sonrası Tab'a iki kez basın</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ============ 09 WHERE THINGS LIVE ============ -->
+        <section class="gsec" id="files">
+          <p class="eyebrow">// 09</p>
+          <h2 class="section__title" data-tr="Dosyalar nerede duruyor?" data-en="Where things live">Dosyalar nerede duruyor?</h2>
+          <div class="gtable">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col" data-tr="Ne" data-en="What">Ne</th>
+                  <th scope="col">Linux/macOS</th>
+                  <th scope="col">Windows</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-tr="Config" data-en="Config">Config</td>
+                  <td><code>~/.config/cli-comrade/config.toml</code><span data-tr=" (ya da " data-en=" (or "> (ya da </span><code>$XDG_CONFIG_HOME</code>)</td>
+                  <td><code>%APPDATA%\cli-comrade\config.toml</code></td>
+                </tr>
+                <tr>
+                  <td data-tr="Denetim kaydı + son komut" data-en="Audit log + last command">Denetim kaydı + son komut</td>
+                  <td><code>~/.local/state/cli-comrade/</code><span data-tr=" (ya da " data-en=" (or "> (ya da </span><code>$XDG_STATE_HOME</code>)</td>
+                  <td><code>%LOCALAPPDATA%\cli-comrade\</code></td>
+                </tr>
+                <tr>
+                  <td data-tr="API anahtarları" data-en="API keys">API anahtarları</td>
+                  <td data-tr="İşletim sistemi keychain'i (yoksa 0600 izinli dosya) — asla config'e düz metin yazılmaz" data-en="OS keychain (falls back to a 0600-permission file) — never plaintext in config">İşletim sistemi keychain'i (yoksa 0600 izinli dosya) — asla config'e düz metin yazılmaz</td>
+                  <td data-tr="Aynı" data-en="Same">Aynı</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="gp"><span
+             data-tr="Bir sorunla karşılaşırsanız (Ollama bağlanmıyor, hayalet ipucu çıkmıyor, PATH bulunamıyor, checksum hatası vb.): "
+             data-en="If something goes wrong (Ollama won't connect, no ghost hint, PATH not found, a checksum error, ...): ">Bir sorunla karşılaşırsanız (Ollama bağlanmıyor, hayalet ipucu çıkmıyor, PATH bulunamıyor, checksum hatası vb.): </span><a href="https://github.com/firatkutay/cli-comrade/blob/main/docs/TROUBLESHOOTING.md" target="_blank" rel="noopener noreferrer">docs/TROUBLESHOOTING.md</a><span data-tr="." data-en=".">.</span></p>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer" role="contentinfo">
+    <div class="footer__inner">
+      <div class="footer__links">
+        <a href="./index.html" data-tr="Ana Sayfa" data-en="Home">Ana Sayfa</a>
+        <a href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/firatkutay/cli-comrade/releases" target="_blank" rel="noopener noreferrer" data-tr="Sürümler" data-en="Releases">Sürümler</a>
+        <a href="https://github.com/firatkutay/cli-comrade#readme" target="_blank" rel="noopener noreferrer" data-tr="Dokümanlar" data-en="Docs">Dokümanlar</a>
+        <a href="https://github.com/firatkutay/cli-comrade/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
+      </div>
+      <p class="footer__meta">
+        <span class="footer__ver">v0.4.0</span>
+        <span class="sep">·</span>
+        <span data-tr="Terminalde yoldaşlıkla yapıldı." data-en="Built with terminal camaraderie.">Terminalde yoldaşlıkla yapıldı.</span>
+      </p>
+    </div>
+  </footer>
+
+  <script src="./script.js"></script>
+</body>
+</html>

@@ -50,6 +50,31 @@ kurmaz.
    gözlemlemesini sağlayın, ya da hatayı doğrudan yapıştırın (paste
    modu her zaman çalışır, kanca gerektirmez).
 
+### `comrade ` yazıp boşluk bırakınca gri hayalet-öneri (inline ipucu) çıkmıyor
+
+Bu bir hata değil — donanımsal bir kısıt:
+
+- Soluk gri satır-içi "hayalet" ipucu (ör. `comrade auth login ` →
+  soluk `[anthropic|openai_compat|google]`) yalnızca **zsh ve
+  PowerShell**'de çalışır.
+- **bash** (Ubuntu ve çoğu Linux dağıtımında varsayılan shell):
+  hayalet metin YOKTUR — bash'in readline'ı, boşluk tuşunu yeniden
+  bağlamadan bunu yapamaz, bu da magic-space, çok satırlı düzenleme ve
+  yapıştırmayı bozar. Bunun yerine `comrade ` (veya herhangi bir alt
+  komuttan) sonra **Tab / çift Tab** kullanın — aynı sonraki-kelime
+  listesini verir. `comrade init`'in çalıştırılmış ve shell'in yeniden
+  başlatılmış olması gerekir (bu, `comrade completion bash`'i kurar).
+- **fish**: fish'in kendi yerleşik autosuggestion özelliği zaten
+  comrade'in tamamlamalarını gösterir.
+- **Hayalet ipucunu görmek için:** **zsh** (`comrade init zsh`) veya
+  **PowerShell** kullanın, ardından YENİ bir shell oturumu açın (ya da
+  rc dosyasını `source` edin) ki widget yüklensin. Daha eski bir
+  comrade sürümünden yükselttiyseniz (widget v0.2.0'da eklendi),
+  `comrade init <shell>`'i bir kez daha çalıştırın (idempotent'tir) —
+  boşluk-ipucu widget'ını almak için.
+- Ayrıntılı shell-desteği tablosu için README'deki "Kabuk (shell)
+  tamamlama" bölümüne bakın.
+
 ### Windows: "çalıştırılamıyor çünkü bu sistemde betik çalıştırma devre dışı bırakılmış" (ExecutionPolicy)
 
 `comrade init powershell` `$PROFILE`'a yazar, ama PowerShell'in
@@ -167,6 +192,30 @@ does not install Ollama for you.
    environment): use `comrade fix -- <command>` to have comrade itself
    run and observe the command, or just paste the error directly
    (paste mode always works, no hook required).
+
+### No dim inline ghost hint appears after `comrade ` + space
+
+This is not a bug — it's a shell-capability limitation:
+
+- The dim inline "ghost" hint (e.g. `comrade auth login ` → dim
+  `[anthropic|openai_compat|google]`) only works in **zsh and
+  PowerShell**.
+- **bash** (the default on Ubuntu and most Linux distros): no ghost
+  text — bash's readline can't do this without rebinding the space
+  key, which would break magic-space, multiline editing, and paste.
+  Use **Tab / double-Tab** after `comrade ` (or any subcommand)
+  instead — it gives the same next-word list. Requires `comrade init`
+  to have been run and the shell reloaded (this installs `comrade
+  completion bash`).
+- **fish**: fish's own built-in autosuggestions already show
+  comrade's completions.
+- **To get the dim ghost hint:** use **zsh** (`comrade init zsh`) or
+  **PowerShell**, then open a NEW shell session (or `source` the rc
+  file) so the widget loads. If you upgraded from an older comrade
+  (the widget shipped in v0.2.0), re-run `comrade init <shell>` once
+  — it's idempotent — to pick up the space-hint widget.
+- See the README's "Shell completion" section for the full
+  shell-support table.
 
 ### Windows: "cannot be loaded because running scripts is disabled on this system" (ExecutionPolicy)
 

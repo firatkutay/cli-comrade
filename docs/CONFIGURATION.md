@@ -109,6 +109,76 @@ vardır (öncelik sırasıyla):
 Çözümleme sırası: OS keychain > 0600 dosya yedeği > yukarıdaki ortam
 değişkenleri.
 
+### Yerel LLM (Ollama)
+
+comrade'i hiçbir API anahtarı gerektirmeden, tamamen çevrimdışı, yerel
+bir modele karşı çalıştırın:
+
+```sh
+ollama pull llama3.1                     # önce modeli Ollama ile indirin
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    # opsiyonel — boş bırakılırsa kurulu bir model otomatik seçilir
+comrade "docker kur"
+```
+
+Anahtar gerekmez — `ollama`, `comrade auth login`/kimlik bilgisi
+deposu üzerinden çözülecek hiçbir şeyi olmayan tek sağlayıcıdır.
+
+`comrade config models`, etkin sağlayıcı için o an kullanılabilir
+modelleri listeler ve interaktif olarak birini seçmenizi sağlar (seçim
+`llm.model`'e kaydedilir): `ollama` için `llm.ollama.base_url`'in canlı
+model listesini sorgular; `openai_compat` için aynı şekilde o uç
+noktanın model listesini sorgular.
+
+**Uzak Ollama sunucusu** — `llm.ollama.base_url`'i yerel varsayılan
+yerine erişilebilir herhangi bir Ollama sunucusuna yönlendirin:
+
+```sh
+comrade config set llm.ollama.base_url http://<host>:11434
+```
+
+**Fallback zinciri** — `llm.fallback` (`KindStringSlice`), birincil
+sağlayıcı hata verir veya zaman aşımına uğrarsa sırayla denenecek
+`<sağlayıcı>/<model>` girdilerinin virgülle ayrılmış bir listesidir.
+Diğer her anahtar gibi `comrade config set` ile ayarlanır:
+
+```sh
+comrade config set llm.fallback ollama/llama3.1,openai_compat/gpt-4o-mini
+```
+
+### OpenAI-uyumlu sağlayıcılar (Qwen, Groq, Mistral, OpenRouter, LM Studio, ...)
+
+`openai_compat`, her OpenAI-uyumlu uç nokta tarafından paylaşılan tek bir
+connector'dur, ama `llm.model` varsayılan olarak yalnızca OpenAI'nin
+kendisinde var olan `gpt-5.4-mini`'ye ayarlıdır.
+`llm.openai_compat.base_url`'i başka bir sağlayıcıya yönlendirip
+`llm.model`'i o sağlayıcının gerçekten sunduğu bir modele
+ayarlamazsanız, istek zamanında şöyle bir hatayla başarısız olur:
+
+```
+openai_compat: http 404: The model 'gpt-5.4-mini' does not exist
+```
+
+Çözüm — hem `base_url`'i hem `llm.model`'i ayarlayın. Qwen/DashScope
+örneği:
+
+```sh
+comrade config set llm.provider openai_compat
+comrade config set llm.openai_compat.base_url https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+comrade config set llm.model qwen-plus     # ya da qwen-turbo / qwen-max
+```
+
+`comrade auth login openai_compat`, API anahtarını okuduktan sonra:
+hâlâ gönderilmiş OpenAI varsayılanındaysanız `base_url`'i sorar (boş
+geçmek OpenAI'de kalır); ardından `base_url` artık OpenAI-DIŞI **ve**
+`llm.model` boşsa, model adını da sorar (ör. `qwen-plus` — boş
+geçebilirsiniz, sonra `comrade config set llm.model` ile ayarlarsınız).
+Anahtarı test eden ping'in sonucu "model bulunamadı" (gövdesinde
+"model" geçen bir 404) derse, anahtar yine de kaydedilir ve size
+`comrade config models` çalıştırıp ardından `comrade config set
+llm.model <model>` demenizi söyler — yani leftover-default bir 404,
+belirsiz bir "ağ sorunu" değil, doğrudan bir çözüm yönergesi verir.
+
 ### Dil çözümleme sırası
 
 `general.language` `tr`/`en` olarak açıkça ayarlanmışsa kazanır; `auto`
@@ -331,11 +401,17 @@ comrade config set llm.openai_compat.base_url https://dashscope-intl.aliyuncs.co
 comrade config set llm.model qwen-plus     # or qwen-turbo / qwen-max
 ```
 
-`comrade auth login openai_compat` prompts for `base_url` the first
-time (only while it's still pointed at the shipped OpenAI default), but
-it does **not** prompt for a model — set `llm.model` yourself, or run
-`comrade config models` afterward to list and pick from the endpoint's
-actual model names.
+`comrade auth login openai_compat`, after reading the API key: if
+`base_url` is still pointed at the shipped OpenAI default, it prompts
+for the provider's address (bare Enter keeps OpenAI); then, if
+`base_url` is now non-OpenAI **and** `llm.model` is empty, it also
+prompts for the model name (e.g. `qwen-plus` — you can leave it blank
+and set it later with `comrade config set llm.model`). If the
+verification ping that follows comes back as "model not found" (a 404
+whose body mentions "model"), the key is still saved and you're told to
+run `comrade config models` and then `comrade config set llm.model
+<model>` — so a leftover-default 404 gives you a directive fix instead
+of a vague "network issue" message.
 
 ### Language resolution order
 

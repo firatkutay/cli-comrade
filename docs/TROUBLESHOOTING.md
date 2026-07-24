@@ -25,6 +25,23 @@ listesini çekmeyi deneyip bağlantıyı doğrulayın. Ollama kurulu değilse
 [ollama.com](https://ollama.com)'dan kurun; comrade'in kendisi Ollama'yı
 kurmaz.
 
+### `http 404: The model '...' does not exist` (openai_compat)
+
+`llm.provider = "openai_compat"` iken `llm.model` varsayılan olarak
+`gpt-5.4-mini`'dir — bu yalnızca OpenAI'nin kendisinde var olan bir
+modeldir. `base_url` başka bir OpenAI-uyumlu sağlayıcıya (Qwen/DashScope,
+Groq, Mistral, OpenRouter, LM Studio, ...) yönlendirilmişse ve
+`llm.model` o sağlayıcının gerçekten sunduğu bir modele ayarlanmamışsa,
+her istek bu hatayla başarısız olur. Çözüm:
+
+```sh
+comrade config models              # uç noktanın gerçek model adlarını listeler, birini seçin
+comrade config set llm.model <yukarıdaki-listeden-model>
+```
+
+Ayrıntılı bir Qwen örneği için bkz. [CONFIGURATION.md](CONFIGURATION.md)
+— "OpenAI-uyumlu sağlayıcılar" bölümü.
+
 ### Shell kancası (hook) tetiklenmiyor / `comrade fix` her zaman yapıştırma moduna düşüyor
 
 1. `comrade init` çalıştırıldı mı ve bir sonraki adımda **yeni bir

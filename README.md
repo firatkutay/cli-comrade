@@ -194,6 +194,10 @@ comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
 
+New to the terminal? [docs/GUIDE.md](docs/GUIDE.md) walks through all of
+the above — install, provider setup, the 3 modes, and daily use — in
+plain language, bilingual (TR/EN).
+
 ### Shell completion
 
 `comrade init <shell>` installs Tab-completion automatically alongside
@@ -228,6 +232,7 @@ alongside it). Details:
 
 ### Docs
 
+- [docs/GUIDE.md](docs/GUIDE.md) — the full "install to daily use" user guide (bilingual).
 - [docs/INSTALL.md](docs/INSTALL.md) — every install channel, in detail.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — every config key.
 - [docs/SECURITY.md](docs/SECURITY.md) — the full safety/security model.
@@ -368,6 +373,22 @@ Tam model: [docs/SECURITY.md](docs/SECURITY.md).
 Config'te tanımlı sıralı bir fallback zinciri, bir sağlayıcı hata verir
 veya zaman aşımına uğrarsa sıradakine geçer.
 
+### Yerel LLM (Ollama)
+
+comrade'i, API anahtarı gerektirmeden, tamamen çevrimdışı olarak yerel
+bir modele karşı çalıştırın:
+
+```sh
+ollama pull llama3.1                     # önce modeli Ollama ile indirin
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    # opsiyonel — boş bırakılırsa kurulu bir model otomatik seçilir
+comrade "docker kur"
+```
+
+Tam kurulum (uzak Ollama sunucuları, fallback-zinciri sözdizimi) ve
+`openai_compat` model-seçim tuzağı (Qwen, Groq, Mistral, ...):
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
 ### Kurulum
 
 | Kanal | Komut | Durum |
@@ -422,6 +443,10 @@ comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
 
+Terminalle arası pek iyi değil misiniz? [docs/GUIDE.md](docs/GUIDE.md),
+yukarıdakilerin hepsini — kurulum, sağlayıcı ayarı, 3 mod, günlük
+kullanım — sade dille, çift dilli (TR/EN) olarak anlatır.
+
 ### Kabuk (shell) tamamlama
 
 `comrade init <shell>`, shell kancasıyla birlikte Tab-tamamlamayı da
@@ -456,6 +481,7 @@ Ayrıntılar:
 
 ### Dokümanlar
 
+- [docs/GUIDE.md](docs/GUIDE.md) — "kurulumdan günlük kullanıma" tam kullanım kılavuzu (çift dilli).
 - [docs/INSTALL.md](docs/INSTALL.md) — tüm kurulum kanalları, ayrıntılı.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — her config anahtarı.
 - [docs/SECURITY.md](docs/SECURITY.md) — tam güvenlik modeli.

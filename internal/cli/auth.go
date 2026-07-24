@@ -135,6 +135,46 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 				return fmt.Errorf("%s", tr.T(i18n.MsgAuthNoKeyEnteredError))
 			}
 
+			loader, err := newLoader()
+			if err != nil {
+				return err
+			}
+
+			// Activate the provider being logged into. Without this,
+			// pingProviderWithKey's own `cfg.LLM.Provider != provider`
+			// guard (llmping.go) — there to null out a STALE model name
+			// left over from whatever provider WAS active when switching
+			// — fires on every fresh-install-or-never-switched login:
+			// llm.provider defaults to "anthropic" (config/schema.go) and
+			// auth login never touched it before this fix, so logging into
+			// openai_compat while llm.provider was still "anthropic"
+			// wiped cfg.LLM.Model straight back to "" at ping time —
+			// silently discarding a model just entered at
+			// promptOpenAICompatModelIfEmpty below, pinging the OpenAI
+			// default model against a non-OpenAI provider, and (worse)
+			// leaving the WRONG provider active afterward with the new
+			// model as its GLOBAL llm.model, poisoning it for the next
+			// unrelated `comrade "..."` run. Persisted and reloaded BEFORE
+			// the openai_compat-specific prompts below, so their own
+			// base_url/model logic — and the eventual ping, and the
+			// 404-branch's effectiveModel — all see the real, now-active
+			// provider and the model that was actually entered. Only
+			// writes/prints when the provider actually changes; logging
+			// back into an already-active provider stays silent.
+			if cfg.LLM.Provider != provider {
+				if err := loader.SetAndSave("llm.provider", provider); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthProviderActivated, provider)); err != nil {
+					return err
+				}
+				reloaded, _, err := loader.Load()
+				if err != nil {
+					return err
+				}
+				cfg = *reloaded
+			}
+
 			// The bug this fixes: openai_compat is a single connector
 			// shared by every OpenAI-compatible provider (Mistral, Groq,
 			// GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter, LM Studio —
@@ -170,10 +210,6 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			// losing a model line a piped/scripted caller supplied right
 			// after the base_url line in one shot.
 			if provider == "openai_compat" {
-				loader, err := newLoader()
-				if err != nil {
-					return err
-				}
 				reader := bufio.NewReader(cmd.InOrStdin())
 				if err := promptOpenAICompatBaseURLIfDefault(cmd, loader, cfg, tr, reader); err != nil {
 					return err
@@ -255,6 +291,19 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 				// "could not verify it right now" framing, which would
 				// misleadingly suggest a network hiccup. The key is stored
 				// regardless — it was never the problem.
+				//
+				// Caveat: this is a substring match on the provider's own
+				// free-text error message, not a structured error code —
+				// a 404 for an UNRELATED reason (a route that happens to
+				// 404, a resource lookup) whose body happens to contain
+				// the word "model" would still be misclassified as this
+				// notice instead of the generic ping-failed one. The key
+				// is stored either way, so the only cost of a false
+				// positive is a misleading (not harmful) message; no
+				// provider in this codebase's connectors is known to
+				// trigger that today (see
+				// TestAuthLoginOpenAICompatReportsPingFailedOn404WithoutModelWording
+				// for the negative case this DOES correctly classify).
 				var statusErr *llm.StatusError
 				if errors.As(pingErr, &statusErr) && statusErr.StatusCode == http.StatusNotFound &&
 					strings.Contains(strings.ToLower(statusErr.Message), "model") {

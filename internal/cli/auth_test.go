@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -304,6 +305,152 @@ func TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet(t *testing.T) {
 	got, err := loader.Get("llm.openai_compat.base_url")
 	require.NoError(t, err)
 	assert.Equal(t, srv.URL, got, "base_url must be unchanged — the unread sentinel must never be persisted")
+}
+
+// TestAuthLoginOpenAICompatUsesEnteredModelEvenWhenDefaultProviderIsStillActive
+// is the independent-review-reported MAJOR bug's own regression test.
+// llm.provider is deliberately left UNSET here (still config.Default()'s
+// "anthropic") — the PRIMARY, fresh-install case — while base_url is
+// pointed at a non-OpenAI provider and a model is entered at the
+// interactive prompt. Before the fix, pingProviderWithKey's own
+// `cfg.LLM.Provider != provider` guard (llmping.go) fired because
+// llm.provider was still "anthropic" at ping time, silently wiping the
+// just-entered model back to "" and pinging the OpenAI default
+// (gpt-5.4-mini) against the fake provider instead. This test captures
+// the ACTUAL "model" field of the request body the fake server received
+// and asserts it is the ENTERED model, not the default — proving the ping
+// now runs as the real provider with the real model — and separately
+// proves (a) llm.provider is now persisted as openai_compat and (b) the
+// 404 notice names the model that was ACTUALLY pinged (== entered model),
+// not a stale/default one.
+func TestAuthLoginOpenAICompatUsesEnteredModelEvenWhenDefaultProviderIsStillActive(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	var gotModel string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		gotModel = body.Model
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"The model '` + body.Model + `' does not exist"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\nqwen-plus\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, "qwen-plus", gotModel, "the ping must send the ENTERED model, not the OpenAI default (gpt-5.4-mini)")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", gotProvider, "auth login must activate the provider it just logged into")
+
+	assert.Contains(t, stdout.String(),
+		"Key saved ✓  But model 'qwen-plus' doesn't exist on this provider.",
+		"the 404 notice must name the model that was ACTUALLY pinged, not a stale/default one")
+}
+
+// TestAuthLoginOpenAICompatSharedReaderConsumesBothPipedLines is the
+// shared-bufio.Reader regression test called out separately from the
+// masked-default-provider case above: base_url and model are piped
+// through cmd.InOrStdin() in ONE shot. Before newAuthLoginCmd's RunE built
+// ONE bufio.Reader and threaded it through both prompts, a second,
+// independently-constructed bufio.Reader over the same cmd.InOrStdin()
+// would already have drained the underlying reader on its first Read,
+// silently losing the model line — this test proves BOTH piped lines are
+// consumed by asserting both persisted values, not just that the command
+// succeeded.
+func TestAuthLoginOpenAICompatSharedReaderConsumesBothPipedLines(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"qwen-plus","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\nqwen-plus\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, gotBaseURL, "the FIRST piped line must be consumed as base_url")
+
+	gotModel, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "qwen-plus", gotModel, "the SECOND piped line must still be consumed as the model — proof the reader is shared, not rebuilt per prompt")
+
+	assert.Contains(t, stdout.String(), "Test request succeeded")
+}
+
+// TestAuthLoginActivatesProviderAndPrintsNoticeOnlyWhenChanged proves (a)
+// `comrade auth login <provider>` persists llm.provider = <provider> when
+// it was not already active, and (b) MsgAuthProviderActivated is silent
+// on a routine re-login into an ALREADY-active provider — no noise for
+// the common case.
+func TestAuthLoginActivatesProviderAndPrintsNoticeOnlyWhenChanged(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"gpt-5.4-mini","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
+
+	// FIRST login: llm.provider is still the default "anthropic" — must
+	// change, persist, and print the activation notice.
+	var stdout1 strings.Builder
+	cmd1 := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-first"), fakeTTY(true))
+	cmd1.SetOut(&stdout1)
+	cmd1.SetErr(&strings.Builder{})
+	cmd1.SetArgs([]string{"openai_compat"})
+	require.NoError(t, cmd1.Execute())
+
+	assert.Contains(t, stdout1.String(), "Active provider set to openai_compat.")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", gotProvider)
+
+	// SECOND login: llm.provider is ALREADY openai_compat — must stay
+	// silent, no redundant write or notice.
+	var stdout2 strings.Builder
+	cmd2 := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-second"), fakeTTY(true))
+	cmd2.SetOut(&stdout2)
+	cmd2.SetErr(&strings.Builder{})
+	cmd2.SetArgs([]string{"openai_compat"})
+	require.NoError(t, cmd2.Execute())
+
+	assert.NotContains(t, stdout2.String(), "Active provider set to", "logging back into an already-active provider must not print the activation notice")
 }
 
 // TestPromptOpenAICompatBaseURLEmitsCleartextWarningForWarnClassURL is

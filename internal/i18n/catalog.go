@@ -332,6 +332,18 @@ const (
 	// One arg: the provider name.
 	MsgAuthEnterKeyPrompt MessageID = "auth_enter_key_prompt"
 
+	// MsgAuthProviderActivated confirms `comrade auth login <provider>`
+	// persisted llm.provider = provider (via Loader.SetAndSave), printed
+	// ONLY when the active provider actually changed — logging back into
+	// an already-active provider stays silent. Without this activation,
+	// pingProviderWithKey's own `cfg.LLM.Provider != provider` guard
+	// (llmping.go) nulls out cfg.LLM.Model whenever the configured
+	// llm.provider (default: "anthropic", config/schema.go) doesn't match
+	// the provider being logged into — silently discarding a model just
+	// entered at MsgAuthOpenAICompatModelPrompt and pinging the wrong
+	// provider's default model. One arg: the provider name.
+	MsgAuthProviderActivated MessageID = "auth_provider_activated"
+
 	// MsgAuthStoredKeyPingFailed reports a stored key whose live test
 	// request failed for a reason OTHER than the provider rejecting the
 	// key itself (network/timeout/5xx/parse — see MsgAuthKeyRejected for
@@ -1454,6 +1466,7 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgVerificationStillFails:   "verification: %s still fails (exit %d)",
 
 	MsgAuthEnterKeyPrompt:         "Enter API key for %s: ",
+	MsgAuthProviderActivated:      "Active provider set to %s.\n",
 	MsgAuthStoredKeyPingFailed:    "Key saved ✓  Couldn't verify it right now (%v) — likely a network issue, not a bad key.\n",
 	MsgAuthKeyRejected:            "The provider rejected this key for %s (%v) — it was not saved. Double-check the key and try \"comrade auth login %s\" again.\n",
 	MsgAuthStoredKeyPingSucceeded: "Stored key for %s. Test request succeeded (model=%s, latency=%s).\n",
@@ -1782,6 +1795,7 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgVerificationStillFails:   "doğrulama: %s hâlâ başarısız (çıkış %d)",
 
 	MsgAuthEnterKeyPrompt:         "%s için API anahtarını girin: ",
+	MsgAuthProviderActivated:      "Etkin sağlayıcı %s olarak ayarlandı.\n",
 	MsgAuthStoredKeyPingFailed:    "Anahtar kaydedildi ✓  Şimdi doğrulanamadı (%v) — ağ/bağlantı olabilir, anahtarın yanlış olduğu anlamına gelmez.\n",
 	MsgAuthKeyRejected:            "%s için bu anahtar sağlayıcı tarafından reddedildi (%v) — kaydedilmedi. Anahtarı kontrol edip \"comrade auth login %s\" komutunu tekrar deneyin.\n",
 	MsgAuthStoredKeyPingSucceeded: "%s için anahtar kaydedildi. Test isteği başarılı oldu (model=%s, gecikme=%s).\n",

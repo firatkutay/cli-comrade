@@ -1167,6 +1167,73 @@ const (
 
 	// MsgFlagLive is --live's --help description.
 	MsgFlagLive MessageID = "flag_live"
+
+	// --- undo ---
+	//
+	// `comrade undo` (internal/undo + internal/engine.Undoer +
+	// internal/cli/undo.go): its two flag descriptions, its own usage
+	// errors (no target run found, --run named an unrecognized id,
+	// nothing in the target run was reversible at all), --list's table
+	// header/empty-log message, and the notes buildUndoPlan attaches to a
+	// step it skipped or downgraded to the LLM/manual tier — every one of
+	// these in a single, clearly-marked block per the task's own request.
+
+	// MsgFlagUndoRun is --run's --help description.
+	MsgFlagUndoRun MessageID = "flag_undo_run"
+	// MsgFlagUndoList is --list's --help description.
+	MsgFlagUndoList MessageID = "flag_undo_list"
+
+	// MsgUndoRunNotFoundError is `comrade undo --run <id>`'s error when no
+	// recorded run matches the given id. One arg: the given id.
+	MsgUndoRunNotFoundError MessageID = "undo_run_not_found_error"
+	// MsgUndoNoTargetError is `comrade undo`'s error when no eligible
+	// (non-legacy, not already undone) run exists in the audit log at
+	// all.
+	MsgUndoNoTargetError MessageID = "undo_no_target_error"
+	// MsgUndoNothingReversibleError is `comrade undo`'s error when the
+	// selected run's every step either failed (never took effect) or
+	// otherwise has nothing left to reverse.
+	MsgUndoNothingReversibleError MessageID = "undo_nothing_reversible_error"
+
+	// MsgUndoListHeader is `comrade undo --list`'s table header row.
+	MsgUndoListHeader MessageID = "undo_list_header"
+	// MsgUndoListEmpty is printed instead of an empty table when the
+	// audit log has no recorded runs at all.
+	MsgUndoListEmpty MessageID = "undo_list_empty"
+
+	// MsgUndoStepSkippedNote reports one step buildUndoPlan skipped
+	// because its recorded exit code was nonzero (it never took effect).
+	// Two args: the 1-based step number (within the run, oldest-first),
+	// the original command text.
+	MsgUndoStepSkippedNote MessageID = "undo_step_skipped_note"
+	// MsgUndoStepDowngradedNote reports one step whose heuristic-derived
+	// undo command was NOT trusted, because it uses a relative path and
+	// the step's own recorded working directory differs from the
+	// directory `comrade undo` is running in now — see internal/undo.
+	// Derived.UsesRelativePath's own doc comment for why this is never
+	// silently rewritten. Three args: the original command text, the
+	// step's recorded working directory, the current working directory.
+	MsgUndoStepDowngradedNote MessageID = "undo_step_downgraded_note"
+	// MsgUndoLLMFallbackNote reports that at least one step in the target
+	// run could not be resolved by the local heuristic table at all (or
+	// was downgraded — see MsgUndoStepDowngradedNote), so the WHOLE
+	// undo plan is being asked of the LLM tier instead of the
+	// deterministic one, per internal/cli's own documented
+	// all-or-nothing-per-run design (see runUndo/buildUndoPlan's doc
+	// comment for why a partial heuristic/LLM merge was deliberately not
+	// attempted).
+	MsgUndoLLMFallbackNote MessageID = "undo_llm_fallback_note"
+
+	// MsgUndoHeuristicRationale is the rationale text attached to a
+	// heuristic-derived undo step (internal/undo.Derive found a
+	// deterministic reversal, with no LLM call at all). One arg: the
+	// original command text it reverses.
+	MsgUndoHeuristicRationale MessageID = "undo_heuristic_rationale"
+	// MsgUndoPlanSummary is the Summary text for a purely heuristic-
+	// derived undo Plan (every eligible step in the run was resolved by
+	// internal/undo.Derive — no LLM tier needed at all). Two args: how
+	// many steps the derived plan has, the target run's own RunID.
+	MsgUndoPlanSummary MessageID = "undo_plan_summary"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -1446,6 +1513,23 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgDoctorFailedSummary: "comrade doctor: %d check(s) failed",
 
 	MsgFlagLive: "send a real, minimal authenticated request to the active provider (spends a token; never on by default)",
+
+	MsgFlagUndoRun:  "undo a specific recorded run by id, instead of the newest eligible one",
+	MsgFlagUndoList: "list recent recorded runs instead of undoing one",
+
+	MsgUndoRunNotFoundError:       "No recorded run matches --run %q.",
+	MsgUndoNoTargetError:          "No reversible run was found in the audit log yet (or every recorded run has already been undone).",
+	MsgUndoNothingReversibleError: "Every step in that run either failed or never took effect; there is nothing to undo.",
+
+	MsgUndoListHeader: "RUN ID\tTIME\tSTEPS\tREQUEST",
+	MsgUndoListEmpty:  "No recorded runs yet.",
+
+	MsgUndoStepSkippedNote:    "step %d (%s): skipped — it exited with a nonzero status and never took effect",
+	MsgUndoStepDowngradedNote: "step (%s): its automatic undo command uses a relative path, but it was recorded in %s while this undo is running in %s — asking the model instead of guessing",
+	MsgUndoLLMFallbackNote:    "one or more steps could not be reversed with a built-in rule; asking the model for the whole undo plan instead",
+
+	MsgUndoHeuristicRationale: "Reverses: %s",
+	MsgUndoPlanSummary:        "Reverses %d step(s) from run %s, newest first.",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -1725,4 +1809,21 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgDoctorFailedSummary: "comrade doctor: %d kontrol başarısız oldu",
 
 	MsgFlagLive: "aktif sağlayıcıya gerçek, minimal bir kimlik doğrulamalı istek gönder (bir token harcar; asla varsayılan olarak açık değildir)",
+
+	MsgFlagUndoRun:  "en yeni uygun çalıştırma yerine, belirli bir kayıtlı çalıştırmayı kimliğine göre geri al",
+	MsgFlagUndoList: "bir çalıştırmayı geri almak yerine son kayıtlı çalıştırmaları listele",
+
+	MsgUndoRunNotFoundError:       "--run %q ile eşleşen kayıtlı bir çalıştırma yok.",
+	MsgUndoNoTargetError:          "Denetim kaydında henüz geri alınabilir bir çalıştırma bulunamadı (ya da tüm kayıtlı çalıştırmalar zaten geri alındı).",
+	MsgUndoNothingReversibleError: "Bu çalıştırmadaki her adım ya başarısız oldu ya da hiçbir etki yaratmadı; geri alınacak bir şey yok.",
+
+	MsgUndoListHeader: "ÇALIŞTIRMA ID\tZAMAN\tADIM\tİSTEK",
+	MsgUndoListEmpty:  "Henüz kayıtlı bir çalıştırma yok.",
+
+	MsgUndoStepSkippedNote:    "adım %d (%s): atlandı — sıfırdan farklı bir durumla sonuçlandı ve hiçbir etki yaratmadı",
+	MsgUndoStepDowngradedNote: "adım (%s): otomatik geri alma komutu göreli bir yol kullanıyor, ancak %s dizininde kaydedildi ve bu geri alma %s dizininde çalışıyor — tahmin etmek yerine modele soruluyor",
+	MsgUndoLLMFallbackNote:    "bir veya daha fazla adım yerleşik bir kuralla geri alınamadı; bunun yerine tüm geri alma planı modele soruluyor",
+
+	MsgUndoHeuristicRationale: "Geri alınan: %s",
+	MsgUndoPlanSummary:        "%d adımı, %s çalıştırmasından en yeniden en eskiye doğru geri alır.",
 }

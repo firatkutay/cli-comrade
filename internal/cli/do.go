@@ -128,6 +128,8 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		Yolo:               flags.yolo,
 		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
 		Request:            request,
+		RunID:              newRunID(),
+		WorkingDir:         sysCtx.WorkingDir,
 		Translator:         tr,
 	}
 

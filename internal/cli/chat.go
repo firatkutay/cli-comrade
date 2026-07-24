@@ -119,6 +119,8 @@ func runChatDo(ctx context.Context, cfg config.Config, client engine.Completer, 
 		ConfirmElevated:    cfg.Safety.ConfirmElevated,
 		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
 		Request:            "chat /do: " + request,
+		RunID:              newRunID(),
+		WorkingDir:         sysCtx.WorkingDir,
 		Translator:         tr,
 	}
 

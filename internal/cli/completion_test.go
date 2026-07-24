@@ -61,7 +61,7 @@ func TestCompleteRootSuggestsTopLevelCommandsExcludingHidden(t *testing.T) {
 	candidates, directive := completionCandidates(t, "")
 
 	assert.Equal(t, []string{
-		"auth", "chat", "config", "do", "explain", "fix",
+		"auth", "chat", "config", "do", "doctor", "explain", "fix",
 		"help", "history", "init", "upgrade",
 	}, candidates)
 	assert.NotContains(t, candidates, "hook")

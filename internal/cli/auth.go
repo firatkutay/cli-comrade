@@ -317,13 +317,12 @@ func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18
 	}
 }
 
-// pingProvider sends a minimal completion through a Client scoped to
-// exactly one attempt — provider, using key directly (bypassing the
-// stored-credential resolver entirely, since key was just entered and
-// may not even be persisted successfully yet by the time this races
-// against it) — reusing the user's other effective settings (base_url,
-// timeout) from the loaded config so e.g. an openai_compat login against
-// a non-OpenAI endpoint pings the right place.
+// pingProvider is `comrade auth login`'s own use of pingProviderWithKey
+// (llmping.go): it loads cfg itself (key was just entered and may not
+// even be persisted successfully yet by the time this races against it,
+// so the stored-credential resolver is bypassed entirely — key is used
+// directly instead), then delegates the actual ping to the shared helper
+// `comrade doctor --live` also uses.
 func pingProvider(cmd *cobra.Command, newLoader loaderFactory, provider, key string) (llm.CompletionResponse, time.Duration, error) {
 	loader, err := newLoader()
 	if err != nil {
@@ -333,23 +332,7 @@ func pingProvider(cmd *cobra.Command, newLoader loaderFactory, provider, key str
 	if err != nil {
 		return llm.CompletionResponse{}, 0, err
 	}
-	cfg.LLM.Fallback = nil
-	if cfg.LLM.Provider != provider {
-		cfg.LLM.Provider = provider
-		cfg.LLM.Model = ""
-	}
-
-	client, err := llm.New(*cfg, llm.WithKeyResolver(func(string) (string, error) { return key, nil }))
-	if err != nil {
-		return llm.CompletionResponse{}, 0, err
-	}
-
-	start := time.Now()
-	resp, err := client.Complete(cmd.Context(), llm.CompletionRequest{
-		Messages:  []llm.Message{{Role: "user", Content: "ping"}},
-		MaxTokens: 16,
-	})
-	return resp, time.Since(start), err
+	return pingProviderWithKey(cmd.Context(), *cfg, provider, key)
 }
 
 func newAuthLogoutCmd(newLoader loaderFactory) *cobra.Command {

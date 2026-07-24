@@ -187,13 +187,15 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 
 	historyCmd := newHistoryCmd(newLoader)
 	upgradeCmd := newUpgradeCmd(newLoader, defaultUpgradeDeps(version))
+	doctorCmd := newDoctorCmd(newLoader, defaultDoctorDeps(version))
 	historyCmd.GroupID = groupInfo
 	upgradeCmd.GroupID = groupInfo
+	doctorCmd.GroupID = groupInfo
 
 	root.AddCommand(
 		doCmd, fixCmd, explainCmd, chatCmd,
 		authCmd, initCmd, configCmd,
-		historyCmd, upgradeCmd,
+		historyCmd, upgradeCmd, doctorCmd,
 		newHookCmd(newLoader),
 		newHintCmd(),
 	)

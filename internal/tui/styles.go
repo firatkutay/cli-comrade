@@ -6,6 +6,7 @@ package tui
 import (
 	"charm.land/lipgloss/v2"
 
+	"github.com/firatkutay/cli-comrade/internal/doctor"
 	"github.com/firatkutay/cli-comrade/internal/safety"
 )
 
@@ -101,4 +102,78 @@ func editPromptStyle(colorEnabled bool) lipgloss.Style {
 		return lipgloss.NewStyle()
 	}
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(PromptYellow))
+}
+
+// doctorSeverityGlyphs maps each internal/doctor.Severity to the
+// checkmark-family symbol `comrade doctor` renders it as when color is
+// enabled, and doctorSeverityColors maps the same Severity to that
+// symbol's ANSI256 color — index by doctor.Severity's own integer
+// ordinal, exactly like riskColors indexes by safety.RiskClass above.
+var (
+	doctorSeverityGlyphs = [...]string{
+		doctor.SeverityOK:   "✓",
+		doctor.SeverityWarn: "⚠",
+		doctor.SeverityFail: "✗",
+		doctor.SeveritySkip: "-",
+	}
+	doctorSeverityColors = [...]string{
+		doctor.SeverityOK:   "10", // green
+		doctor.SeverityWarn: "3",  // yellow
+		doctor.SeverityFail: "1",  // red
+		doctor.SeveritySkip: "8",  // gray
+	}
+	// doctorSeverityWords is the word-fallback vocabulary
+	// DoctorSeverityLabel renders when colorEnabled is false — bracketed
+	// plain text, exactly like RiskBadge's own colorEnabled=false
+	// fallback ("[" + label + "]") a few lines above. Deliberately NOT
+	// routed through internal/i18n: this is internal, stable vocabulary
+	// (four fixed states), not prose — the same precedent RiskBadge and
+	// secrets.Source's un-translated "keychain"/"file" values already
+	// established in this codebase.
+	doctorSeverityWords = [...]string{
+		doctor.SeverityOK:   "[OK]",
+		doctor.SeverityWarn: "[WARN]",
+		doctor.SeverityFail: "[FAIL]",
+		doctor.SeveritySkip: "[SKIP]",
+	}
+)
+
+// doctorSeverityGlyph returns sev's checkmark-family symbol, or "?" for
+// an out-of-range Severity value (defensive only — every Severity this
+// package's own callers ever construct is one of the four named
+// constants).
+func doctorSeverityGlyph(sev doctor.Severity) string {
+	if int(sev) >= 0 && int(sev) < len(doctorSeverityGlyphs) {
+		return doctorSeverityGlyphs[sev]
+	}
+	return "?"
+}
+
+// doctorSeverityStyle returns the lipgloss.Style DoctorSeverityLabel
+// renders sev's glyph in. A completely unstyled Style when colorEnabled
+// is false, matching every other style function in this file.
+func doctorSeverityStyle(sev doctor.Severity, colorEnabled bool) lipgloss.Style {
+	if !colorEnabled {
+		return lipgloss.NewStyle()
+	}
+	color := "7"
+	if int(sev) >= 0 && int(sev) < len(doctorSeverityColors) {
+		color = doctorSeverityColors[sev]
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(color))
+}
+
+// DoctorSeverityLabel renders sev as a colored ✓/⚠/✗/- symbol when
+// colorEnabled, or the bracketed word fallback ([OK]/[WARN]/[FAIL]/
+// [SKIP]) otherwise — `comrade doctor`'s per-check severity marker (see
+// doctorSeverityWords' own doc comment for why this is deliberately not
+// i18n'd).
+func DoctorSeverityLabel(sev doctor.Severity, colorEnabled bool) string {
+	if !colorEnabled {
+		if int(sev) >= 0 && int(sev) < len(doctorSeverityWords) {
+			return doctorSeverityWords[sev]
+		}
+		return "[?]"
+	}
+	return doctorSeverityStyle(sev, colorEnabled).Render(doctorSeverityGlyph(sev))
 }

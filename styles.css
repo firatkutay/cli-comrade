@@ -988,8 +988,10 @@ body.reveals-enabled .reveal.is-visible { opacity: 1; transform: none; }
 /* ask-mode confirm legend: the chip is a single [data-tr]/[data-en]
    text node (its textContent is replaced on every language toggle), so
    the fix is style-only. inline-block makes the chip travel and wrap
-   as ONE unit instead of fragmenting mid-line with the paragraph. */
-.mode__desc .inline-code {
+   as ONE unit instead of fragmenting mid-line with the paragraph.
+   (Scoped to .guide-content so a future chip inside an index.html mode
+   card can never silently inherit this treatment.) */
+.guide-content .mode__desc .inline-code {
   display: inline-block;
   padding: 0.22rem 0.5rem;
   line-height: 1.55;
@@ -1056,16 +1058,16 @@ body.reveals-enabled .reveal.is-visible { opacity: 1; transform: none; }
   .toc__list { grid-template-columns: minmax(0, 1fr); }
   .gtable table { min-width: 480px; }
   .guide-content .modes { grid-template-columns: minmax(0, 1fr); }
-  /* Phones: cap the legend's line length so BOTH catalogs break right
-     after the middle separator — two balanced lines, no orphan token,
-     no mid-token cut. 31ch sits in the only window that works for both
-     (TR needs a 30–38ch first line, EN must stay under 32ch), and ch is
+  /* Phones: cap the legend's line length so BOTH catalogs break into
+     two balanced lines — no orphan token, no mid-token cut. The CLI's
+     legend tokens wrap tidily when the first line holds 23–31ch (TR:
+     "[e]vet [h]ayır [d]üzenle" = 23ch) and 17–25ch (EN: "[y]es [n]o
+     [e]dit" = 17ch); 24ch sits inside both windows, and ch is
      font-relative, so the math holds for any monospace fallback.
-     content-box keeps the 31ch budget pure text (global * is border-box). */
-  .mode__desc .inline-code {
+     content-box keeps the 24ch budget pure text (global * is border-box). */
+  .guide-content .mode__desc .inline-code {
     box-sizing: content-box;
-    max-width: 31ch;
-    font-size: 0.78rem;
+    max-width: 24ch;
     text-align: center;
   }
 }

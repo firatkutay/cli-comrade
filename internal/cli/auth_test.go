@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -18,6 +19,26 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/secrets"
 )
+
+// captureOpenAICompatBaseURLWarning swaps auth.go's
+// emitOpenAICompatBaseURLWarning seam for the duration of fn, returning
+// every string it was called with (in call order). Reassigning the real
+// os.Stderr variable would NOT work here: config.EmitBaseURLWarning
+// writes through config's own package-level baseURLWarningWriter, which
+// already captured the original *os.File at THAT package's var-init
+// time, before this test ever ran — only the injectable seam (or a
+// non-portable OS-level fd dup2) can intercept it.
+func captureOpenAICompatBaseURLWarning(t *testing.T, fn func()) []string {
+	t.Helper()
+	var got []string
+	original := emitOpenAICompatBaseURLWarning
+	emitOpenAICompatBaseURLWarning = func(warning string) { got = append(got, warning) }
+	t.Cleanup(func() { emitOpenAICompatBaseURLWarning = original })
+
+	fn()
+
+	return got
+}
 
 // withMockKeychain switches go-keyring's package-level provider to its
 // in-memory mock for the duration of t, so newSecretsStore's underlying
@@ -134,6 +155,199 @@ func TestAuthLoginStoresKeyAndReportsPingSuccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "sk-test-key-123", key)
 	assert.Equal(t, secrets.SourceKeychain, source)
+}
+
+// TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefault is this
+// bug's own regression test: llm.openai_compat.base_url is left at its
+// shipped default value (never pre-set here, unlike every other
+// openai_compat test in this file) which hardcodes OpenAI's own API.
+// Without the fix, pingProvider below would silently ping api.openai.com
+// with a wrong-provider (e.g. Qwen) key and fail with a 401 from OpenAI
+// itself instead of ever reaching the fake "Qwen" endpoint — this test
+// proves the interactive base_url prompt fires instead, that the fake
+// endpoint (not api.openai.com) is what actually receives the request,
+// and that the entered value is persisted before the ping runs.
+func TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefault(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	var requestCount int
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		gotHost = r.Host
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"qwen-max","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, 1, requestCount, "the fake endpoint must receive exactly one request")
+	wantHost := strings.TrimPrefix(srv.URL, "http://")
+	assert.Equal(t, wantHost, gotHost, "the request must land on the fake endpoint")
+	assert.NotEqual(t, "api.openai.com", gotHost, "the request must NOT land on OpenAI's real API")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, got, "the entered base_url must be persisted")
+
+	assert.Contains(t, stdout.String(), "llm.openai_compat.base_url is still the default OpenAI endpoint")
+	assert.Contains(t, stdout.String(), "Saved llm.openai_compat.base_url = "+srv.URL)
+	assert.Contains(t, stdout.String(), "Stored key for openai_compat")
+	assert.Contains(t, stdout.String(), "Test request succeeded")
+}
+
+// TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefaultInTurkish is
+// the same proof in Turkish — this project's established TR-smoke-test
+// convention (exact substring pin, not merely "TR appears").
+func TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefaultInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"qwen-max","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Contains(t, stdout.String(), "llm.openai_compat.base_url hâlâ varsayılan OpenAI uç noktası")
+	assert.Contains(t, stdout.String(), "llm.openai_compat.base_url = "+srv.URL+" olarak kaydedildi")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, got)
+}
+
+// TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet proves the
+// prompt is a no-op once llm.openai_compat.base_url's effective VALUE no
+// longer equals the shipped default (set explicitly via `comrade config
+// set` here — the same precondition every OTHER openai_compat test in
+// this file already relies on): stdin is pre-loaded with a URL that must
+// NEVER be read — if the prompt fired anyway, it would persist that
+// sentinel value over the real one and the ping would hit the wrong
+// host — so leaving base_url == srv.URL after Execute, and the ping
+// actually landing on srv (proven by the captured Authorization header),
+// is proof the flow is unchanged and no extra prompt was ever emitted.
+func TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"gpt-5.4-mini","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-test-key-123"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("http://should-never-be-read.invalid\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, "Bearer sk-test-key-123", gotAuth, "the ping must land on the pre-configured srv.URL, not the unread sentinel")
+	assert.Contains(t, stdout.String(), "Stored key for openai_compat")
+	assert.NotContains(t, stdout.String(), "llm.openai_compat.base_url is still the default", "no prompt must be emitted when base_url is already explicitly set")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, got, "base_url must be unchanged — the unread sentinel must never be persisted")
+}
+
+// TestPromptOpenAICompatBaseURLEmitsCleartextWarningForWarnClassURL is
+// the security-review fix's own regression test: entering a warned-but-
+// allowed endpoint (http:// to a non-loopback host — config.CheckBaseURL's
+// warn class, not its reject class) at the prompt must surface the SAME
+// cleartext-credential warning `comrade config set` prints for the exact
+// same value (config.EmitBaseURLWarning — reused, not duplicated), not
+// silently accept it. Calls promptOpenAICompatBaseURL directly (rather
+// than through the full auth-login flow) so the warn-class host never
+// needs an actual live connection — pingProvider is not involved here at
+// all.
+func TestPromptOpenAICompatBaseURLEmitsCleartextWarningForWarnClassURL(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("http://192.168.1.50:11434\n"))
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	warnings := captureOpenAICompatBaseURLWarning(t, func() {
+		promptErr := promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), "https://api.openai.com/v1")
+		require.NoError(t, promptErr)
+	})
+
+	require.Len(t, warnings, 1, "the accept path must emit exactly one warning")
+	assert.Equal(t,
+		"warning: llm.openai_compat.base_url is set to an http:// URL (192.168.1.50:11434); the API key will be sent unencrypted over the network to this host",
+		warnings[0])
+
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, "http://192.168.1.50:11434", got, "a warn-class (not reject-class) value must still be accepted and saved")
+}
+
+// TestPromptOpenAICompatBaseURLEmitsNoWarningForHTTPSURL proves the
+// warning is genuinely conditional — an https:// value (no cleartext
+// risk) must save without ever invoking the warning seam, exactly like
+// config.CheckBaseURL's own warning == "" case.
+func TestPromptOpenAICompatBaseURLEmitsNoWarningForHTTPSURL(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("https://dashscope.aliyuncs.com/compatible-mode/v1\n"))
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	warnings := captureOpenAICompatBaseURLWarning(t, func() {
+		promptErr := promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), "https://api.openai.com/v1")
+		require.NoError(t, promptErr)
+	})
+
+	assert.Empty(t, warnings, "an https:// endpoint carries no cleartext risk and must not warn")
+
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, "https://dashscope.aliyuncs.com/compatible-mode/v1", got)
 }
 
 func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {

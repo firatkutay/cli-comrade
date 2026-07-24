@@ -159,6 +159,23 @@ func captureBaseURLWarnings(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
+// TestEmitBaseURLWarningIsEmitBaseURLWarningExported proves
+// EmitBaseURLWarning (internal/cli's `comrade auth login openai_compat`
+// base_url-prompt reuse point) writes through the exact same
+// baseURLWarningWriter the unexported emitBaseURLWarning/`comrade config
+// set` path uses — same destination, same text, no divergence — and
+// that an empty warning is still a no-op through this exported path too.
+func TestEmitBaseURLWarningIsEmitBaseURLWarningExported(t *testing.T) {
+	buf := captureBaseURLWarnings(t)
+
+	EmitBaseURLWarning("warning: test message")
+	assert.Equal(t, "warning: test message\n", buf.String())
+
+	buf.Reset()
+	EmitBaseURLWarning("")
+	assert.Empty(t, buf.String(), "an empty warning must still be a no-op through the exported path")
+}
+
 // TestValidateBaseURL is SAST finding #3's table: neither
 // llm.openai_compat.base_url nor llm.ollama.base_url may send the
 // provider API key to an arbitrary or cloud-metadata/link-local host, but

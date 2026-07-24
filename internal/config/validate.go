@@ -373,6 +373,20 @@ func emitBaseURLWarning(warning string) {
 	fmt.Fprintln(baseURLWarningWriter, warning) //nolint:errcheck // best-effort stderr warning; a write failure here has no recovery action
 }
 
+// EmitBaseURLWarning is emitBaseURLWarning exported for internal/cli's
+// `comrade auth login openai_compat` base_url prompt (auth.go's
+// promptOpenAICompatBaseURL): the SAME warned-but-allowed cleartext-http
+// notice `comrade config set` prints via CheckBaseURL's own warning
+// return value must also surface when a user types a warn-class (http://
+// to a non-loopback host) endpoint into that interactive prompt — a
+// credential-entry point, exactly the case this warning exists for.
+// Calling this instead of writing a second, near-duplicate message keeps
+// the wording and destination (baseURLWarningWriter) identical between
+// both entry points.
+func EmitBaseURLWarning(warning string) {
+	emitBaseURLWarning(warning)
+}
+
 // validateLoadedConfig re-runs checkBaseURL against the ACTIVE provider's
 // (cfg.LLM.Provider) base_url only, from the fully-resolved config
 // (built-in defaults merged with the on-disk file merged with COMRADE_

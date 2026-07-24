@@ -290,13 +290,33 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (Completio
 		}
 
 		logAttempt(attempt.providerName, "", errClass(err), latency)
-		lastErr = fmt.Errorf("%s: %w", attempt.providerName, err)
+		lastErr = wrapAttemptError(attempt.providerName, err)
 
 		if errors.Is(err, ErrAuthRejected) {
 			return CompletionResponse{}, lastErr
 		}
 	}
 	return CompletionResponse{}, c.finalChainError(lastErr)
+}
+
+// wrapAttemptError prefixes err's message with providerName for
+// Complete/Stream's returned chain error, UNLESS err's own Error() text
+// already starts with that exact "providerName: " prefix. Two error
+// classes returned by this package's connectors already embed the
+// provider name as a leading prefix themselves: *StatusError (every
+// connector's non-2xx HTTP response — see errors.go's Error() method) and
+// the reachability wrap wrapReachabilityError/wrapOllamaReachabilityError
+// build for a transport-level failure (offline/unreachable). Applying
+// this same "%s: " prefix unconditionally on top of either produced a
+// doubled "openai_compat: openai_compat: http 401: ..." (and the
+// anthropic/google/ollama equivalents). Every other error class this
+// package returns (e.g. *KeyMissingError, ErrParseFailure) has no such
+// embedded prefix and still gets it added here, exactly as before.
+func wrapAttemptError(providerName string, err error) error {
+	if strings.HasPrefix(err.Error(), providerName+": ") {
+		return err
+	}
+	return fmt.Errorf("%s: %w", providerName, err)
 }
 
 // finalChainError wraps lastErr — the last configured attempt's own
@@ -412,7 +432,7 @@ func (c *Client) Stream(ctx context.Context, req CompletionRequest) (<-chan Chun
 		cancel()
 
 		logAttempt(attempt.providerName, "", errClass(err), 0)
-		lastErr = fmt.Errorf("%s: %w", attempt.providerName, err)
+		lastErr = wrapAttemptError(attempt.providerName, err)
 
 		if errors.Is(err, ErrAuthRejected) {
 			return nil, lastErr

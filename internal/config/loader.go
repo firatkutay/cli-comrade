@@ -20,6 +20,11 @@ const (
 	SourceFile Source = "file"
 	// SourceEnv means a COMRADE_ environment variable overrode the key.
 	SourceEnv Source = "env"
+	// SourceProfile means the key's effective value came from the active
+	// profile's own [profiles.<name>] table (config profiles' one new
+	// overlay layer, between the file's own top-level value and env —
+	// see newEffectiveViper's doc comment for the full precedence order).
+	SourceProfile Source = "profile"
 )
 
 // envAliases lists the explicit, named environment variable aliases
@@ -28,9 +33,10 @@ const (
 // viper.AutomaticEnv(). Both forms work for these three keys; see
 // bindEnvAliases and Loader.Source.
 var envAliases = map[string][]string{
-	"general.mode": {"COMRADE_MODE"},
-	"llm.provider": {"COMRADE_PROVIDER"},
-	"llm.model":    {"COMRADE_MODEL"},
+	"general.mode":    {"COMRADE_MODE"},
+	"llm.provider":    {"COMRADE_PROVIDER"},
+	"llm.model":       {"COMRADE_MODEL"},
+	"general.profile": {"COMRADE_PROFILE"},
 }
 
 // Loader loads, persists, and resolves the effective value of cli-comrade's
@@ -39,11 +45,26 @@ var envAliases = map[string][]string{
 // path) and pass it down explicitly.
 type Loader struct {
 	path string
+	// profileOverride is the --profile flag's value (the top precedence
+	// tier ResolveActiveProfile resolves against), threaded in via
+	// NewLoaderWithProfile. Empty for a Loader built with plain
+	// NewLoader, meaning "no flag override" — COMRADE_PROFILE and the
+	// file's own general.profile are still consulted normally.
+	profileOverride string
 }
 
 // NewLoader constructs a Loader for the config file at path. If path is
 // empty, the platform-default path (DefaultPath) is resolved and used.
 func NewLoader(path string) (*Loader, error) {
+	return NewLoaderWithProfile(path, "")
+}
+
+// NewLoaderWithProfile is NewLoader plus an explicit active-profile
+// override — the --profile flag's value, threaded through from
+// internal/cli's root command. An empty profileOverride behaves
+// identically to NewLoader (COMRADE_PROFILE, then the file's own
+// general.profile, are still consulted — see ResolveActiveProfile).
+func NewLoaderWithProfile(path, profileOverride string) (*Loader, error) {
 	if path == "" {
 		p, err := DefaultPath()
 		if err != nil {
@@ -51,7 +72,7 @@ func NewLoader(path string) (*Loader, error) {
 		}
 		path = p
 	}
-	return &Loader{path: path}, nil
+	return &Loader{path: path, profileOverride: profileOverride}, nil
 }
 
 // Path returns the config file path this Loader reads from and writes to.
@@ -105,7 +126,8 @@ func (l *Loader) Get(key string) (any, error) {
 }
 
 // Source reports whether key's effective value came from the environment,
-// the config file, or the built-in default.
+// the active profile's own table, the config file's top-level value, or
+// the built-in default.
 func (l *Loader) Source(key string) (Source, error) {
 	if !IsValidKey(key) {
 		return "", unknownKeyError(key)
@@ -126,6 +148,21 @@ func (l *Loader) Source(key string) (Source, error) {
 	if err := fv.ReadInConfig(); err != nil {
 		return "", fmt.Errorf("read config file %s: %w", l.path, err)
 	}
+
+	// general.profile is excluded here: it selects the active profile
+	// itself, and ValidateProfileKey already forbids it from ever being
+	// set INSIDE a profile — so it can never legitimately be SourceProfile.
+	if key != "general.profile" {
+		active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), fv.GetString("general.profile"))
+		if active != "" {
+			if raw, ok := fv.Get("profiles").(map[string]any); ok {
+				if profile, ok := raw[active].(map[string]any); ok && profileHasKey(profile, key) {
+					return SourceProfile, nil
+				}
+			}
+		}
+	}
+
 	if fv.IsSet(key) {
 		return SourceFile, nil
 	}
@@ -146,16 +183,17 @@ func (l *Loader) SetAndSave(key string, value any) error {
 		return err
 	}
 
-	v := viper.New()
-	v.SetConfigType("toml")
-	if err := v.MergeConfig(strings.NewReader(defaultConfigTOML)); err != nil {
-		return fmt.Errorf("config: parse built-in defaults: %w", err)
-	}
-	v.SetConfigFile(l.path)
-	if err := v.MergeInConfig(); err != nil {
-		return fmt.Errorf("read config file %s: %w", l.path, err)
+	v, err := l.mergedFileViper()
+	if err != nil {
+		return err
 	}
 
+	// v already has every existing [profiles.*] table merged in from the
+	// file (mergedFileViper's own MergeInConfig, above) — Set below only
+	// ever touches the ONE top-level key path this call was asked to
+	// change, so WriteConfigAs's full-map rewrite carries every profile
+	// table through untouched. See TestSetAndSavePreservesProfileTables
+	// (loader_test.go) for the pinned regression proof.
 	v.Set(key, value)
 
 	if err := v.WriteConfigAs(l.path); err != nil {
@@ -185,11 +223,14 @@ func (l *Loader) ensureFileExists() (bool, error) {
 	}
 }
 
-// newEffectiveViper builds a viper instance layered as: built-in defaults,
-// merged with the on-disk file, with COMRADE_ environment variables
-// (generic COMRADE_<SECTION>_<KEY> plus the explicit envAliases) bound on
-// top. l.path must already exist.
-func (l *Loader) newEffectiveViper() (*viper.Viper, error) {
+// mergedFileViper builds a fresh viper layered as built-in defaults
+// merged with the on-disk file (no env, no active-profile overlay) — the
+// common starting point every read/write path in this file needs before
+// applying its own next step (newEffectiveViper adds the profile overlay
+// and env binding on top; SetAndSave/CreateProfile/RemoveProfile/
+// SetProfileKey in profile_ops.go each apply their own one change and
+// call WriteConfigAs). l.path must already exist.
+func (l *Loader) mergedFileViper() (*viper.Viper, error) {
 	v := viper.New()
 	v.SetConfigType("toml")
 	if err := v.MergeConfig(strings.NewReader(defaultConfigTOML)); err != nil {
@@ -199,6 +240,37 @@ func (l *Loader) newEffectiveViper() (*viper.Viper, error) {
 	v.SetConfigFile(l.path)
 	if err := v.MergeInConfig(); err != nil {
 		return nil, fmt.Errorf("read config file %s: %w", l.path, err)
+	}
+
+	return v, nil
+}
+
+// newEffectiveViper builds a viper instance layered, low to high
+// precedence, as: built-in defaults < the on-disk file's top-level
+// values < the active profile's own [profiles.<name>] table (config
+// profiles' one new overlay layer) < COMRADE_ environment variables
+// (generic COMRADE_<SECTION>_<KEY> plus the explicit envAliases) — env
+// always stays king, which is exactly why the profile overlay below is
+// applied via MergeConfigMap (merges into viper's "config" precedence
+// layer) and NOT viper.Set (which would write into the highest-priority
+// "override" layer and invert this order — see applyProfileOverlay's own
+// doc comment). l.path must already exist.
+func (l *Loader) newEffectiveViper() (*viper.Viper, error) {
+	v, err := l.mergedFileViper()
+	if err != nil {
+		return nil, err
+	}
+
+	// Active-profile precedence mirrors ResolveMode's own shape:
+	// l.profileOverride (the --profile flag) > COMRADE_PROFILE > the
+	// file's own general.profile value, read here BEFORE env binding is
+	// set up below so this reflects defaults+file only, never an env
+	// override of general.profile itself (that's handled by the
+	// envAliases entry for general.profile, applied afterward, exactly
+	// like every other key).
+	active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), v.GetString("general.profile"))
+	if active != "" {
+		applyProfileOverlay(v, active)
 	}
 
 	v.SetEnvPrefix("comrade")

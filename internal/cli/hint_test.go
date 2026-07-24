@@ -47,7 +47,7 @@ func TestHintTableDriven(t *testing.T) {
 		{"auth lists its subcommands", []string{"comrade", "auth"}, "[login|logout|status]"},
 		{"auth login lists known providers via ValidArgsFunction", []string{"comrade", "auth", "login"}, authProviders},
 		{"auth logout lists known providers via ValidArgsFunction", []string{"comrade", "auth", "logout"}, authProviders},
-		{"config lists its subcommands", []string{"comrade", "config"}, "[edit|get|list|models|path|set]"},
+		{"config lists its subcommands", []string{"comrade", "config"}, "[edit|get|list|models|path|profile|set]"},
 		{"init lists supported shell names", []string{"comrade", "init"}, "[bash|zsh|fish|powershell]"},
 		{"unknown top-level token prints nothing", []string{"comrade", "bogus"}, ""},
 		{"unknown nested token prints nothing", []string{"comrade", "auth", "bogus"}, ""},

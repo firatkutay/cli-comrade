@@ -30,6 +30,7 @@ gösterir.
 | `general.color` | `true` | Renkli/lipgloss çıktı | `COMRADE_GENERAL_COLOR` |
 | `general.update_check` | `true` | GitHub Releases'ı haftada en fazla bir kez kontrol et | `COMRADE_GENERAL_UPDATE_CHECK` |
 | `general.show_usage` | `false` | Her çalıştırma sonrası token/maliyet özet satırı yaz (bkz. `--usage`) | `COMRADE_GENERAL_SHOW_USAGE` |
+| `general.profile` | *(boş)* | Etkin config profili adı (bkz. aşağıdaki "Config profilleri") | `COMRADE_PROFILE` |
 | `llm.provider` | `anthropic` | `anthropic`/`openai_compat`/`google`/`ollama` | `COMRADE_PROVIDER` |
 | `llm.model` | *(boş)* | Boşsa sağlayıcının kendi varsayılanı | `COMRADE_MODEL` |
 | `llm.fallback` | `[]` | Yedek sağlayıcı/model listesi (virgülle ayrılmış) | `COMRADE_LLM_FALLBACK` |
@@ -120,6 +121,51 @@ davranış birebir aynı kalır (oradaki gerçek işletim sistemi yerel
 mekanizması zaten `LANG`/`LC_ALL`'ın kendisidir, bu adım o platformlarda
 her zaman boş döner).
 
+### Config profilleri
+
+Adlandırılmış profiller (ör. `work`/`personal`, bulut/yerel), config
+dosyasının İÇİNDE `[profiles.<ad>]` tabloları olarak saklanır — ayrı
+dosyalar DEĞİL. Hiçbir profil tanımlanmadıysa tamamen etkisizdir; mevcut
+config dosyalarında hiçbir şey değişmez.
+
+**Etkin değer önceliği** (yeni bir katman, ortam değişkeni her zaman en
+üstte kalır):
+
+```
+varsayılanlar < dosya [general]/[llm]/... < dosya [profiles.<etkin>] < COMRADE_* ortam değişkenleri
+```
+
+**Etkin profil önceliği:** `--profile` bayrağı > `COMRADE_PROFILE` ortam
+değişkeni > dosyadaki `general.profile` değeri > hiçbiri.
+
+**Komutlar:**
+
+| Komut | Ne yapar |
+|---|---|
+| `comrade config profile list` | Her profili, aktif olanı ve anahtar sayısını listeler |
+| `comrade config profile show [<ad>]` | Bir profilin kendi anahtar/değerlerini yazdırır (varsayılan: etkin profil) |
+| `comrade config profile use <ad>` | Profili etkinleştirir (`general.profile`'ı ayarlar) |
+| `comrade config profile add <ad> [--from-current]` | Yeni (boş veya `--from-current` ile mevcut `[llm]` değerleriyle doldurulmuş) bir profil oluşturur |
+| `comrade config profile remove <ad>` | Profili siler; etkin profil oysa `general.profile`'ı temizler |
+| `comrade config profile set <ad> <anahtar> <değer>` | Bir profil içinde tek bir anahtarı doğrulayıp kaydeder |
+
+**Sınırlamalar:**
+
+- Kimlik bilgileri (API anahtarları) sağlayıcı bazlıdır, PROFİL bazlı
+  DEĞİLDİR — aynı sağlayıcıyı kullanan iki profil aynı saklanmış anahtarı
+  paylaşır.
+- Bir profil `general.profile`'ı KENDİ İÇİNDE ayarlayamaz (bir profilin
+  başka bir profili etkinleştirmesi sınırsız özyinelemeye yol açardı) —
+  `comrade config profile set <ad> general.profile ...` reddedilir.
+- Bir profil `safety.*` anahtarlarını GEÇERSİZ KILABİLİR, ama
+  `profile use`/`profile show` bunu yaptığında VURGULU bir uyarı basar.
+  Çalışma zamanındaki destructive/elevated onay kapısı bundan etkilenmez
+  — yalnızca `--yolo` + `safety.confirm_destructive=false` birlikte bunu
+  atlatabilir (bkz. yukarıdaki güvenlik istisnası).
+- Tanımsız bir etkin profil veya bir profil içindeki bilinmeyen bir
+  anahtar asla config yüklemesini BAŞARISIZ KILMAZ — stderr'e (İngilizce,
+  diğer paket-içi uyarılar gibi) bir uyarı yazılır ve yok sayılır.
+
 ---
 
 ## English
@@ -152,6 +198,7 @@ default**. `comrade config list` shows each key's actual source
 | `general.color` | `true` | Colored/lipgloss output | `COMRADE_GENERAL_COLOR` |
 | `general.update_check` | `true` | Check GitHub Releases at most once/week | `COMRADE_GENERAL_UPDATE_CHECK` |
 | `general.show_usage` | `false` | Print a per-run token/cost summary line (see `--usage`) | `COMRADE_GENERAL_SHOW_USAGE` |
+| `general.profile` | *(empty)* | Active config profile name (see "Config profiles" below) | `COMRADE_PROFILE` |
 | `llm.provider` | `anthropic` | `anthropic`/`openai_compat`/`google`/`ollama` | `COMRADE_PROVIDER` |
 | `llm.model` | *(empty)* | Empty means the provider's own default | `COMRADE_MODEL` |
 | `llm.fallback` | `[]` | Fallback provider/model chain (comma-separated) | `COMRADE_LLM_FALLBACK` |
@@ -238,3 +285,47 @@ typically unset on Windows — without this step, `auto` would always
 fall back to English there; Linux/macOS behavior is unchanged (the real
 OS locale mechanism there already IS `LANG`/`LC_ALL`, so this step
 always returns empty on those platforms).
+
+### Config profiles
+
+Named profiles (e.g. `work`/`personal`, cloud/local) are stored as
+`[profiles.<name>]` tables INSIDE the config file — not separate files.
+Inert until a profile is defined: an existing config file is completely
+unaffected.
+
+**Effective-value precedence** (one new layer, environment stays king):
+
+```
+defaults < file [general]/[llm]/... < file [profiles.<active>] < COMRADE_* env
+```
+
+**Active-profile precedence:** `--profile` flag > `COMRADE_PROFILE` env >
+the file's own `general.profile` value > none.
+
+**Commands:**
+
+| Command | What it does |
+|---|---|
+| `comrade config profile list` | Lists every profile, which is active, and its key count |
+| `comrade config profile show [<name>]` | Prints a profile's own key/value pairs (defaults to the active profile) |
+| `comrade config profile use <name>` | Activates a profile (sets `general.profile`) |
+| `comrade config profile add <name> [--from-current]` | Creates a new profile (empty, or seeded from the current `[llm]` section with `--from-current`) |
+| `comrade config profile remove <name>` | Deletes a profile; clears `general.profile` if it pointed there |
+| `comrade config profile set <name> <key> <value>` | Validates and persists a single key inside a profile |
+
+**Boundaries:**
+
+- Credentials (API keys) are per-PROVIDER, not per-profile — two profiles
+  using the same provider share one stored key.
+- A profile cannot set `general.profile` INSIDE ITSELF (a profile
+  activating another profile would be unbounded recursion) —
+  `comrade config profile set <name> general.profile ...` is rejected.
+- A profile MAY override `safety.*` keys, but `profile use`/`profile
+  show` print a HIGHLIGHTED warning whenever it does. The runtime
+  destructive/elevated confirmation gate itself is untouched by this —
+  only `--yolo` plus `safety.confirm_destructive=false` together can ever
+  bypass it (see the security exception above).
+- An undefined active profile, or an unknown key inside a defined
+  profile, never FAILS a config load — it prints a warning to stderr
+  (in English, like every other config-package-level warning) and is
+  ignored.

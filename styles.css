@@ -59,6 +59,15 @@ body::before {
 
 a { color: inherit; }
 
+/* Pre-paint language gate: the tiny inline <head> script adds
+   .lang-pending to <html> when the resolved language differs from the
+   page source, and script.js removes it right after the first
+   applyLang(). visibility (not display/opacity) keeps layout fully
+   computed, so nothing jumps when the page appears. The head script
+   force-removes the class after ~900ms even if script.js fails, and
+   without JS the class is never added — content stays visible. */
+html.lang-pending body { visibility: hidden; }
+
 img { max-width: 100%; height: auto; display: block; }
 
 /* ---------- focus / accessibility ---------- */
@@ -968,6 +977,25 @@ body.reveals-enabled .reveal.is-visible { opacity: 1; transform: none; }
 /* last-resort wrap for chips on very narrow phones */
 .glist li, .gsteps li, .gp, .gterm, .gwarn { overflow-wrap: break-word; }
 
+/* guide #modes layout: ask — the default mode, and the card carrying
+   the confirm legend — gets a full-width feature row; auto & info pair
+   beneath it. Inside the guide's 768px content column, three-up cards
+   are ~200px wide, which is what forced the legend into three ragged
+   lines. (Guide only: index.html has no .guide-content.) */
+.guide-content .modes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.guide-content .mode--default { grid-column: 1 / -1; }
+
+/* ask-mode confirm legend: the chip is a single [data-tr]/[data-en]
+   text node (its textContent is replaced on every language toggle), so
+   the fix is style-only. inline-block makes the chip travel and wrap
+   as ONE unit instead of fragmenting mid-line with the paragraph. */
+.mode__desc .inline-code {
+  display: inline-block;
+  padding: 0.22rem 0.5rem;
+  line-height: 1.55;
+  margin: 0.1rem 0;
+}
+
 /* mode cards: "when to use" footer line (guide only) */
 .mode__when {
   margin: 0.7rem 0 0;
@@ -1027,4 +1055,17 @@ body.reveals-enabled .reveal.is-visible { opacity: 1; transform: none; }
 @media (max-width: 560px) {
   .toc__list { grid-template-columns: minmax(0, 1fr); }
   .gtable table { min-width: 480px; }
+  .guide-content .modes { grid-template-columns: minmax(0, 1fr); }
+  /* Phones: cap the legend's line length so BOTH catalogs break right
+     after the middle separator — two balanced lines, no orphan token,
+     no mid-token cut. 31ch sits in the only window that works for both
+     (TR needs a 30–38ch first line, EN must stay under 32ch), and ch is
+     font-relative, so the math holds for any monospace fallback.
+     content-box keeps the 31ch budget pure text (global * is border-box). */
+  .mode__desc .inline-code {
+    box-sizing: content-box;
+    max-width: 31ch;
+    font-size: 0.78rem;
+    text-align: center;
+  }
 }

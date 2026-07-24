@@ -13,7 +13,13 @@
      LANGUAGE
      ----------------------------------------------------------- */
   var STORE_KEY = "cli-comrade-lang";
-  var lang = detectLang();
+  // The inline <head> gate script already resolved the language (same
+  // rules as detectLang) before first paint; reuse its answer so both
+  // stay in agreement. detectLang remains the standalone fallback.
+  var lang =
+    window.__comradeLang === "tr" || window.__comradeLang === "en"
+      ? window.__comradeLang
+      : detectLang();
 
   function detectLang() {
     var stored = null;
@@ -465,6 +471,9 @@
      INIT
      ----------------------------------------------------------- */
   applyLang(); // also starts the terminal
+  // Text is now in the resolved language — release the pre-paint gate
+  // set by the inline <head> script (no-op if it was never added).
+  document.documentElement.classList.remove("lang-pending");
   setupReveal();
   setupParallax();
   setupHeaderShrink();

@@ -97,6 +97,9 @@ Akış şöyle işler:
    seçmenizi söyler; başka bir hata olursa yine kaydeder ama
    doğrulayamadığını belirtir.
 
+Girişten sonra, giriş yaptığınız sağlayıcı **etkin sağlayıcınız** olur
+(`comrade "..."` artık onu kullanır ve girdiğiniz model ona uygulanır).
+
 Örnek — Qwen/DashScope:
 
 ```sh
@@ -224,6 +227,11 @@ bir terminal/TTY gerektirir). Oturum içi komutlar:
   set` dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil
   İÇİNDEKİ bir anahtarı değiştirmek için `comrade config profile set
   work llm.provider openai_compat` kullanın.
+- **Plan önizlemesi** — `general.plan_review=ask` ayarlayın (ya da
+  `--review` verin) ki adımlar çalışmadan önce yeniden sıralayabileceğiniz/
+  atlayabileceğiniz/düzenleyebileceğiniz interaktif bir önizleme ekranı
+  görün (`ask` modda, çok adımlı planlarda); `--no-review` bunu her
+  zaman kapatır.
 - **Maliyet görünürlüğü** — herhangi bir çalıştırmaya `--usage` ekleyin,
   ya da kalıcı olarak `comrade config set general.show_usage true` yapın;
   her çalıştırma sonunda token/maliyet özeti yazılır.
@@ -372,6 +380,10 @@ The flow:
    models` to pick the right one; any other failure saves the key too,
    just flagging that it couldn't verify.
 
+After login, the provider you logged into becomes your **active
+provider** (`comrade "..."` now uses it, and the model you entered
+applies to it).
+
 Example — Qwen/DashScope:
 
 ```sh
@@ -498,6 +510,10 @@ If the command starts with a dash: `comrade explain -- <command>`.
   writes the file-level value, NOT the active profile — to change a key
   INSIDE a profile use `comrade config profile set work llm.provider
   openai_compat`.
+- **Plan preview** — set `general.plan_review=ask` (or pass `--review`)
+  to see an interactive preview where you can reorder/skip/edit steps
+  before they run (ask mode, multi-step plans); `--no-review` always
+  forces it off.
 - **Cost visibility** — add `--usage` to any run, or make it permanent
   with `comrade config set general.show_usage true`; a token/cost
   summary prints at the end of every run.

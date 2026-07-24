@@ -27,8 +27,9 @@ kurmaz.
 
 ### `http 404: The model '...' does not exist` (openai_compat)
 
-`llm.provider = "openai_compat"` iken `llm.model` varsayılan olarak
-`gpt-5.4-mini`'dir — bu yalnızca OpenAI'nin kendisinde var olan bir
+`llm.provider = "openai_compat"` iken, `llm.model` boş bırakıldığında
+(config varsayılanı zaten boştur, `""`) connector `gpt-5.4-mini`'ye
+düşer (fallback) — bu yalnızca OpenAI'nin kendisinde var olan bir
 modeldir. `base_url` başka bir OpenAI-uyumlu sağlayıcıya (Qwen/DashScope,
 Groq, Mistral, OpenRouter, LM Studio, ...) yönlendirilmişse ve
 `llm.model` o sağlayıcının gerçekten sunduğu bir modele ayarlanmamışsa,
@@ -186,8 +187,9 @@ does not install Ollama for you.
 
 ### `http 404: The model '...' does not exist` (openai_compat)
 
-`llm.provider = "openai_compat"` defaults `llm.model` to
-`gpt-5.4-mini`, which only exists on OpenAI itself. If `base_url` is
+With `llm.provider = "openai_compat"`, when `llm.model` is empty (its
+own config default is already empty, `""`), the connector falls back
+to `gpt-5.4-mini`, which only exists on OpenAI itself. If `base_url` is
 pointed at another OpenAI-compatible provider (Qwen/DashScope, Groq,
 Mistral, OpenRouter, LM Studio, ...) without also setting `llm.model`
 to a model that provider actually serves, every request fails with

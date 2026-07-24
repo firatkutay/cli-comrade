@@ -275,6 +275,68 @@ exist (checked in this priority order):
 
 Resolution order: OS keychain > 0600 file fallback > the env vars above.
 
+### Local LLM (Ollama)
+
+Run comrade entirely offline against a locally-served model:
+
+```sh
+ollama pull llama3.1                     # pull the model with Ollama first
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    # optional — empty auto-picks a pulled model
+comrade "install docker"
+```
+
+No API key is needed — `ollama` is the one provider with nothing to
+resolve through `comrade auth login`/the credential store.
+
+`comrade config models` lists the models currently available for the
+active provider and lets you pick one interactively (persisting the
+choice to `llm.model`): for `ollama` it queries `llm.ollama.base_url`'s
+live model list; for `openai_compat` it queries that endpoint's model
+list the same way.
+
+**Remote Ollama host** — point `llm.ollama.base_url` at any reachable
+Ollama server instead of the local default:
+
+```sh
+comrade config set llm.ollama.base_url http://<host>:11434
+```
+
+**Fallback chain** — `llm.fallback` (`KindStringSlice`) is a
+comma-separated list of `<provider>/<model>` entries, tried in order if
+the primary provider errors or times out. It's set like any other key,
+via `comrade config set`:
+
+```sh
+comrade config set llm.fallback ollama/llama3.1,openai_compat/gpt-4o-mini
+```
+
+### OpenAI-compatible providers (Qwen, Groq, Mistral, OpenRouter, LM Studio, ...)
+
+`openai_compat` is one connector shared by every OpenAI-compatible
+endpoint, but `llm.model` defaults to `gpt-5.4-mini` — a model that only
+exists on OpenAI itself. Pointing `llm.openai_compat.base_url` at a
+different provider without also setting `llm.model` to a model that
+provider actually serves fails at request time with an error like:
+
+```
+openai_compat: http 404: The model 'gpt-5.4-mini' does not exist
+```
+
+Fix — set both `base_url` and `llm.model`. Qwen/DashScope example:
+
+```sh
+comrade config set llm.provider openai_compat
+comrade config set llm.openai_compat.base_url https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+comrade config set llm.model qwen-plus     # or qwen-turbo / qwen-max
+```
+
+`comrade auth login openai_compat` prompts for `base_url` the first
+time (only while it's still pointed at the shipped OpenAI default), but
+it does **not** prompt for a model — set `llm.model` yourself, or run
+`comrade config models` afterward to list and pick from the endpoint's
+actual model names.
+
 ### Language resolution order
 
 An explicit `general.language` of `tr`/`en` wins outright; `auto` (the

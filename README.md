@@ -126,6 +126,22 @@ Full model: [docs/SECURITY.md](docs/SECURITY.md).
 A config-driven fallback chain tries providers in order if one errors or
 times out.
 
+### Local LLM (Ollama)
+
+Run comrade fully offline against a locally-served model — no API key
+required:
+
+```sh
+ollama pull llama3.1                     # pull a model with Ollama first
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    # optional — leave unset to auto-pick a pulled model
+comrade "install docker"
+```
+
+Full setup (remote Ollama hosts, fallback-chain syntax) and the
+`openai_compat` model-selection gotcha (Qwen, Groq, Mistral, ...):
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
 ### Install
 
 | Channel | Command | Status |

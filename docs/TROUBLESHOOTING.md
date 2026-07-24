@@ -167,6 +167,23 @@ the model list as a connectivity check. If Ollama isn't installed at
 all, get it from [ollama.com](https://ollama.com) — comrade itself
 does not install Ollama for you.
 
+### `http 404: The model '...' does not exist` (openai_compat)
+
+`llm.provider = "openai_compat"` defaults `llm.model` to
+`gpt-5.4-mini`, which only exists on OpenAI itself. If `base_url` is
+pointed at another OpenAI-compatible provider (Qwen/DashScope, Groq,
+Mistral, OpenRouter, LM Studio, ...) without also setting `llm.model`
+to a model that provider actually serves, every request fails with
+this error. Fix:
+
+```sh
+comrade config models              # lists the endpoint's real model names, pick one
+comrade config set llm.model <model-from-the-list-above>
+```
+
+See [CONFIGURATION.md](CONFIGURATION.md) — "OpenAI-compatible
+providers" — for a worked Qwen example.
+
 ### The shell hook never fires / `comrade fix` always falls back to paste mode
 
 1. Did you run `comrade init`, and did you **open a new shell**

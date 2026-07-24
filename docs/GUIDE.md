@@ -139,7 +139,7 @@ comrade'in ne kadar "kendi başına" davranacağını belirleyen üç mod var:
 
 | Mod | Ne yapar | Ne zaman kullanılır |
 |---|---|---|
-| `ask` (**varsayılan**) | Her adımdan önce kısa bir gerekçe + komutun kendisini gösterir, onay ister: `[e]vet / [h]ayır / [d]üzenle / [a]çıkla / [t]ümü`. "Tümü"nden sonra kalan write/network adımları sormadan çalışır, ama elevated/destructive adımlar yine tek tek sorar. | Günlük kullanım, yeni başlayanlar |
+| `ask` (**varsayılan**) | Her adımdan önce kısa bir gerekçe + komutun kendisini gösterir, onay ister: `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü`. "Tümü"nden sonra kalan write/network adımları sormadan çalışır, ama elevated/destructive adımlar yine tek tek sorar. | Günlük kullanım, yeni başlayanlar |
 | `auto` | Her adımı kendisi çalıştırır, tek satırlık durum yazar. | Güvendiğiniz, tekrarlayan görevler |
 | `info` | Hiçbir şey çalıştırmaz — sadece nedeni ve kopyalanabilir çözüm komutlarını açıklar. | Sadece ne olduğunu öğrenmek istediğinizde |
 
@@ -426,7 +426,7 @@ Three modes control how much comrade does on its own:
 
 | Mode | What it does | When to use it |
 |---|---|---|
-| `ask` (**default**) | Before every step: a short rationale + the command itself, then confirms: `[y]es / [n]o / [e]dit / [x]plain / [a]ll`. After "all", remaining write/network steps run without asking, but elevated/destructive steps still ask individually. | Everyday use, beginners |
+| `ask` (**default**) | Before every step: a short rationale + the command itself, then confirms: `[y]es [n]o [e]dit [x]plain [a]ll`. After "all", remaining write/network steps run without asking, but elevated/destructive steps still ask individually. | Everyday use, beginners |
 | `auto` | Runs each step itself, printing a one-line status. | Repeated tasks you already trust |
 | `info` | Runs nothing — just explains the cause and copy-pasteable fix commands. | Just want to understand |
 

@@ -184,6 +184,26 @@ type RunDeps struct {
 	// time.Now.
 	Now func() time.Time
 
+	// PreApproved seeds executeAsk's own autoApproveRemaining exactly as
+	// if the user had already picked [t]ümü/[a]ll before the first step:
+	// every read/write/network step runs unprompted from the start. It
+	// does NOT touch the executeAsk loop's own
+	// `step.Decision.EffectiveRisk >= safety.RiskElevated` re-prompt
+	// condition at all — that check runs unconditionally regardless of
+	// autoApproveRemaining's value or how it was seeded, so a
+	// destructive/elevated step still confirms individually even with
+	// PreApproved set. internal/cli sets this to true after the
+	// interactive plan-preview/edit screen (internal/tui.ReviewPlan, via
+	// internal/cli/planreview.go) returns Approved — "approve all" in
+	// that screen carries the identical semantics "approve all" already
+	// has inside the ask-mode confirm loop itself; this field introduces
+	// no new safety surface, only an earlier seed of the very same state
+	// variable. Every RunDeps this package's own pre-existing tests
+	// construct as a plain struct literal leaves this false (its zero
+	// value), so it is purely additive — no existing caller/test's
+	// behavior changes.
+	PreApproved bool
+
 	// Translator resolves every user-facing string Execute itself prints
 	// (BLOCKED/--yolo-bypass lines, RunSummary.AbortReason text) in the
 	// user's resolved language (internal/cli builds it once per
@@ -359,7 +379,13 @@ func executeInfo(deps RunDeps, plan Plan) {
 func executeAsk(ctx context.Context, plan Plan, deps RunDeps) (RunSummary, error) {
 	var summary RunSummary
 	correctionsUsed := 0
-	autoApproveRemaining := false
+	// autoApproveRemaining starts seeded from deps.PreApproved (see that
+	// field's own doc comment) instead of always false — the ONLY change
+	// PreApproved makes to this loop. The re-prompt condition immediately
+	// below, on the very next line, is completely unmodified: it still
+	// forces an individual confirm for any step whose EffectiveRisk is
+	// elevated/destructive, seeded or not.
+	autoApproveRemaining := deps.PreApproved
 
 	i := 0
 	for ; i < len(plan.Steps); i++ {

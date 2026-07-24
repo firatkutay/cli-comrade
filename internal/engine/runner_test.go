@@ -487,6 +487,84 @@ func TestExecuteAskAllSkipsPromptForLowRiskButNotForDestructive(t *testing.T) {
 	assert.False(t, summary.Aborted)
 }
 
+// TestExecuteAskPreApprovedRunsLowRiskStepsWithoutPrompting proves
+// RunDeps.PreApproved seeds executeAsk's autoApproveRemaining exactly
+// like the user had already picked [t]ümü/[a]ll before step 1 — every
+// read/write/network step below runs unprompted, with NO scripted
+// fakePrompt responses at all (Confirm must never even be called for
+// them).
+func TestExecuteAskPreApprovedRunsLowRiskStepsWithoutPrompting(t *testing.T) {
+	exec := &fakeExecutor{}
+	prompt := &fakePrompt{} // no responses scripted: Confirm must never be called
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.PreApproved = true
+
+	plan := Plan{Steps: []Step{
+		allowStep("ls -la", safety.RiskRead),
+		allowStep("mkdir foo", safety.RiskWrite),
+		allowStep("curl example.com", safety.RiskNetwork),
+	}}
+	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, exec.callCount(), "every read/write/network step must run unprompted")
+	assert.Equal(t, 0, prompt.shownCount(), "PreApproved must skip the confirm prompt entirely for these steps")
+	assert.False(t, summary.Aborted)
+}
+
+// TestExecuteAskPreApprovedStillPromptsElevatedAndDestructive is this
+// task's own load-bearing proof: RunDeps.PreApproved never touches the
+// executeAsk loop's `EffectiveRisk >= safety.RiskElevated` re-prompt
+// condition — an elevated step and a destructive step both still confirm
+// individually even though PreApproved is set (mirroring
+// TestExecuteAskAllSkipsPromptForLowRiskButNotForDestructive's identical
+// proof for the in-loop [t]ümü/[a]ll case, just seeded from the start
+// instead of picked mid-run).
+func TestExecuteAskPreApprovedStillPromptsElevatedAndDestructive(t *testing.T) {
+	exec := &fakeExecutor{}
+	prompt := &fakePrompt{
+		responses: []promptResponse{
+			{choice: ChoiceYes}, // step 2 (elevated) — still prompted
+			{choice: ChoiceYes}, // step 3 (destructive) — still prompted
+		},
+	}
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.PreApproved = true
+
+	plan := Plan{Steps: []Step{
+		allowStep("mkdir foo", safety.RiskWrite),
+		confirmStep("sudo apt-get install -y docker.io", safety.RiskElevated),
+		confirmStep("rm -rf ./build", safety.RiskDestructive),
+	}}
+	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
+
+	require.NoError(t, err)
+	require.Equal(t, 3, exec.callCount(), "all three steps must run")
+	assert.Equal(t, 2, prompt.shownCount(), "step 1 (write, low-risk) must skip the prompt; the elevated and destructive steps must both still be prompted individually")
+	assert.False(t, summary.Aborted)
+}
+
+// TestExecuteAskPreApprovedNeverRunsBlockedStep proves PreApproved
+// carries no exception to the "Blocked NEVER executes in ANY mode"
+// invariant: a Blocked step is refused exactly as it would be without
+// PreApproved at all.
+func TestExecuteAskPreApprovedNeverRunsBlockedStep(t *testing.T) {
+	exec := &fakeExecutor{}
+	prompt := &fakePrompt{} // must never even be consulted
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.PreApproved = true
+
+	plan := Plan{Steps: []Step{blockStep()}}
+	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, exec.callCount())
+	assert.Equal(t, 0, prompt.shownCount())
+	assert.Contains(t, stdout.String(), "BLOCKED(")
+	require.Len(t, summary.Results, 1)
+	assert.Equal(t, OutcomeBlocked, summary.Results[0].Outcome)
+}
+
 // TestExecuteBlockNeverExecutesInAskMode is one half of the "Block NEVER
 // executes in ANY mode" security invariant.
 func TestExecuteBlockNeverExecutesInAskMode(t *testing.T) {

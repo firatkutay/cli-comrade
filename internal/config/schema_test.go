@@ -23,6 +23,7 @@ func TestDefaultMatchesPlanExactly(t *testing.T) {
 	assert.Equal(t, true, cfg.General.UpdateCheck)
 	assert.Equal(t, false, cfg.General.ShowUsage)
 	assert.Equal(t, "", cfg.General.Profile)
+	assert.Equal(t, "off", cfg.General.PlanReview)
 
 	assert.Equal(t, "anthropic", cfg.LLM.Provider)
 	assert.Equal(t, "", cfg.LLM.Model)

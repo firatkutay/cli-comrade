@@ -27,6 +27,28 @@ type executionFlags struct {
 	// this invocation, regardless of general.show_usage — see
 	// internal/cli/usage.go.
 	usage bool
+	// review/noReview are --review/--no-review: force the interactive
+	// plan-preview/edit screen (internal/tui.ReviewPlan, via
+	// internal/cli/planreview.go) on or off for this one invocation,
+	// regardless of general.plan_review. --no-review always wins when
+	// both are somehow set (see reviewFlagValue) — an explicit
+	// per-invocation "don't show it" must never be silently overridden by
+	// general.plan_review=="ask".
+	review   bool
+	noReview bool
+}
+
+// reviewFlagValue collapses --review/--no-review into the single
+// tri-state shouldShowPlanReview (planreview.go) actually needs:
+// forceOn/forceOff/unset. --no-review always wins over --review when a
+// caller somehow sets both (cobra itself never does this — they are two
+// independent bool flags, not a mutually-exclusive pair — but a direct
+// executionFlags literal, as tests may build, could).
+func (f *executionFlags) reviewFlagValue() (forceOn, forceOff bool) {
+	if f.noReview {
+		return false, true
+	}
+	return f.review, false
 }
 
 // addExecutionFlags registers executionFlags on cmd and returns the
@@ -45,6 +67,8 @@ func addExecutionFlags(cmd *cobra.Command) *executionFlags {
 	cmd.Flags().BoolVar(&f.info, "info", false, enUsageDefault(i18n.MsgFlagInfo))
 	cmd.Flags().BoolVar(&f.yolo, "yolo", false, enUsageDefault(i18n.MsgFlagYolo))
 	cmd.Flags().BoolVar(&f.usage, "usage", false, enUsageDefault(i18n.MsgFlagUsage))
+	cmd.Flags().BoolVar(&f.review, "review", false, enUsageDefault(i18n.MsgFlagReview))
+	cmd.Flags().BoolVar(&f.noReview, "no-review", false, enUsageDefault(i18n.MsgFlagNoReview))
 	return f
 }
 

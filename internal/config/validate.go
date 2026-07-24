@@ -66,6 +66,7 @@ var keyDefs = []KeyDef{
 	// instead caught (WARN, never fail) at load time by
 	// applyProfileOverlay.
 	{Key: "general.profile", Kind: KindString},
+	{Key: "general.plan_review", Kind: KindString, Enum: []string{"off", "ask"}},
 
 	{Key: "llm.provider", Kind: KindString, Enum: []string{"anthropic", "openai_compat", "google", "ollama"}},
 	{Key: "llm.model", Kind: KindString},

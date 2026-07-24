@@ -22,6 +22,7 @@ color = true
 update_check = true       # check GitHub Releases for a newer version at most once/week
 show_usage = false        # print a per-run token/cost summary line (also: --usage)
 profile = ""              # active config profile name (empty = none); see [profiles] below and "comrade config profile"
+plan_review = "off"       # off | ask — show the interactive plan preview/edit screen before running (ask mode only, unless --review)
 
 [llm]
 provider = "anthropic"    # anthropic | openai_compat | google | ollama
@@ -84,6 +85,16 @@ type GeneralConfig struct {
 	// ResolveMode's exact shape (internal/engine/mode.go). See
 	// docs/CONFIGURATION.md's "Config profiles" section.
 	Profile string `mapstructure:"profile"`
+	// PlanReview is general.plan_review ("off" | "ask"): whether `comrade
+	// do`/`comrade fix` show the interactive plan-preview/edit screen
+	// (internal/tui.ReviewPlan, via internal/cli/planreview.go) before
+	// running an ask-mode plan of 2+ steps — "off" (the default) never
+	// shows it regardless of mode; "ask" shows it in ask mode only (auto
+	// mode never shows it from this setting alone — only the
+	// per-invocation --review flag forces it there, per
+	// internal/cli/planreview.go's shouldShowPlanReview). See
+	// internal/config/validate.go's keyDefs entry for the enum.
+	PlanReview string `mapstructure:"plan_review"`
 }
 
 // OpenAICompatConfig holds the [llm.openai_compat] section.

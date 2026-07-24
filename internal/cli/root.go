@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
 	"github.com/firatkutay/cli-comrade/internal/i18n"
@@ -136,7 +137,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 			}
 			return cmd.Help()
 		}
-		return runDo(cmd, newLoader, strings.Join(args, " "), rootFlags)
+		return runDo(cmd, newLoader, strings.Join(args, " "), rootFlags, term.IsTerminal)
 	}
 
 	// The passive version-update notification (docs/history/UYGULAMA_PLANI.md FAZ 10

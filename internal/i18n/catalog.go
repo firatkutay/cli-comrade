@@ -1317,6 +1317,33 @@ const (
 	// <name>`'s heading line when name is NOT the currently-active
 	// profile. One arg: the profile name.
 	MsgConfigProfileShowInactive MessageID = "config_profile_show_inactive"
+
+	// --- plan review ---
+	//
+	// The interactive plan-preview/edit screen (internal/tui/planreview.go
+	// + internal/cli/planreview.go): its --review flag description, the
+	// screen's own heading/legend/per-row markers, and reuses
+	// MsgConfirmEditHeader/MsgAbortCanceled for its edit-mode header and
+	// whole-review-canceled abort text respectively, rather than
+	// duplicating either.
+
+	// MsgFlagReview is --review's --help description.
+	MsgFlagReview MessageID = "flag_review"
+	// MsgFlagNoReview is --no-review's --help description.
+	MsgFlagNoReview MessageID = "flag_no_review"
+
+	// MsgPlanReviewHeader is the one-line heading printed above the
+	// numbered step list.
+	MsgPlanReviewHeader MessageID = "plan_review_header"
+	// MsgPlanReviewLegend is the trailing line listing every available
+	// action's key, in the active language.
+	MsgPlanReviewLegend MessageID = "plan_review_legend"
+	// MsgPlanReviewSkippedMarker is appended after a row's command text
+	// once the user has toggled it to be skipped.
+	MsgPlanReviewSkippedMarker MessageID = "plan_review_skipped_marker"
+	// MsgPlanReviewBlockedMarker replaces a Blocked row's risk badge. One
+	// arg: the block reason.
+	MsgPlanReviewBlockedMarker MessageID = "plan_review_blocked_marker"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -1634,6 +1661,15 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 
 	MsgConfigProfileShowActive:   "profile %q (active)\n",
 	MsgConfigProfileShowInactive: "profile %q\n",
+
+	// --- plan review ---
+	MsgFlagReview:   "show the full plan for review/edit before running it (reorder, skip, edit, or delete steps)",
+	MsgFlagNoReview: "never show the plan review/edit screen for this run, even if general.plan_review is \"ask\"",
+
+	MsgPlanReviewHeader:        "Review the plan below, then approve:\n",
+	MsgPlanReviewLegend:        "[u]p [d]own [e]dit [r]emove [space] skip [a]pprove all [esc] cancel: ",
+	MsgPlanReviewSkippedMarker: "[skipped]",
+	MsgPlanReviewBlockedMarker: "BLOCKED(%s)",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -1951,4 +1987,13 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 
 	MsgConfigProfileShowActive:   "profil %q (aktif)\n",
 	MsgConfigProfileShowInactive: "profil %q\n",
+
+	// --- plan review ---
+	MsgFlagReview:   "çalıştırmadan önce tam planı gözden geçirme/düzenleme ekranını göster (adımları yeniden sırala, atla, düzenle veya sil)",
+	MsgFlagNoReview: "general.plan_review \"ask\" olsa bile bu çalıştırma için plan gözden geçirme/düzenleme ekranını asla gösterme",
+
+	MsgPlanReviewHeader:        "Aşağıdaki planı gözden geçirin, ardından onaylayın:\n",
+	MsgPlanReviewLegend:        "[y]ukarı [a]şağı [d]üzenle [s]il [boşluk] atla [t]ümünü onayla [esc] iptal: ",
+	MsgPlanReviewSkippedMarker: "[atlandı]",
+	MsgPlanReviewBlockedMarker: "ENGELLENDİ(%s)",
 }

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-24
+
+### Added
+
+- **`comrade doctor` — self-diagnostic command** (#13). Checks installed-version-vs-latest, PATH, shell-hook install, API-key presence, provider reachability, `base_url` sanity, and config/keychain — a ✓/⚠/✗ checklist with a copy-pasteable fix per item. Credential-safe: the default path sends no key (keyless reachability probe); an opt-in `--live` flag does an authenticated ping through the hardened client path. `--json` output; exit non-zero on a FAIL.
+- **`comrade undo`** (#18). Reverses the last reversible action, or shows manual steps. Records run/cwd/reversibility on audit entries (backward-compatible); derives the inverse via a pure heuristic table (mkdir/mv/pkg-install/systemctl/PowerShell) or an LLM fallback. Every derived step goes through the same `safety.Engine.Evaluate` + redaction and runs in **ask mode** — no `--auto`/`--yolo` bypass; old pre-undo entries are never auto-undone.
+- **Per-request token usage & estimated cost** (#12). Opt-in (`--usage` flag / `general.show_usage`, default off) line after `do`/`fix`/`explain` and per-turn/session in `chat`, printed to stderr. Cost is an `est.` from a small maintained price table, omitted when the model is unknown; `local` for ollama.
+- **Config profiles** (#20). Named `[profiles.<name>]` overlays inside config.toml with `comrade config profile {list,show,use,add,remove,set}` + a persistent `--profile` flag. Active profile = `--profile` > `COMRADE_PROFILE` > `general.profile`; resolution order keeps `COMRADE_*` env as the top precedence. Backward-compatible (inert until a profile exists); a profile overriding any `safety.*` key prints a warning.
+- **Interactive plan preview & edit** (#22). For multi-step `do`/`fix` plans, an opt-in TUI (`--review` / `general.plan_review`, default off) to reorder / skip / edit / delete steps before execution. Any edited command is re-run through `safety.Engine.Evaluate` (a newly-blocked edit can't execute); "approve all" never bypasses the per-step confirm for destructive/elevated steps.
+
+### Changed
+
+- **Intent/effect-based layer added to the destructive-command classifier** (#14). Alongside the existing signature denylist (kept as the `Block` floor), the safety engine now parses POSIX/bash commands into an AST (`mvdan.cc/sh`, offline, no execution) and classifies by the command's actual resolved effect — closing evasions the signature-only engine missed: shell-variable indirection (`R=rm; $R -rf /`), exotic fetchers in command-word position, and dynamic disk-device targets (`dd of=$(cat dev.txt)`). Safety-monotonic: the new layer only ever RAISES risk (to a confirmation), never lowers it and never produces a Block on its own. PowerShell keeps the signature path. Adds the `mvdan.cc/sh/v3` dependency.
+
 ## [0.3.1] - 2026-07-24
 
 ### Fixed
@@ -857,7 +871,8 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/firatkutay/cli-comrade/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/firatkutay/cli-comrade/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/firatkutay/cli-comrade/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/firatkutay/cli-comrade/compare/v0.1.4...v0.2.0

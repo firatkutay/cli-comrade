@@ -117,6 +117,29 @@ func TestFAZ11ClientDoesNotSuggestOllamaWhenAlreadyConfigured(t *testing.T) {
 	assert.NotContains(t, err.Error(), "add \"ollama\"")
 }
 
+// TestFAZ11ClientCompleteDoesNotDoublePrefixOfflineError is the doubled-
+// prefix bug's offline-path counterpart to
+// TestClientCompleteAuthErrorDoesNotTriggerFallback's StatusError
+// assertion (client_test.go): wrapReachabilityError already prefixes its
+// message with the provider name ("anthropic: could not reach ..." —
+// errors.go), so Client.Complete's own attempt-error wrap must not add it
+// a second time.
+func TestFAZ11ClientCompleteDoesNotDoublePrefixOfflineError(t *testing.T) {
+	url := unreachableURL(t)
+	client := &Client{
+		timeout: 5 * time.Second,
+		attempts: []clientAttempt{
+			{providerName: "anthropic", provider: func() Provider { c := newAnthropicConnector("k", "m", http.DefaultClient); c.baseURL = url; return c }()},
+		},
+	}
+
+	_, err := client.Complete(context.Background(), CompletionRequest{Messages: []Message{{Role: "user", Content: "hi"}}, MaxTokens: 8})
+
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "anthropic: anthropic:", "the provider name must not be doubled")
+	assert.Contains(t, err.Error(), "anthropic: could not reach", "the single remaining prefix must still be present")
+}
+
 // TestFAZ11ClientDoesNotSuggestOllamaForNonOfflineFailure proves the
 // suggestion is specific to network unreachability: a non-2xx HTTP
 // response (a real server rejecting the request, e.g. malformed body)

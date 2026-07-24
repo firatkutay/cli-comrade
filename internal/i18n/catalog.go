@@ -332,13 +332,25 @@ const (
 	// One arg: the provider name.
 	MsgAuthEnterKeyPrompt MessageID = "auth_enter_key_prompt"
 
+	// MsgAuthProviderActivated confirms `comrade auth login <provider>`
+	// persisted llm.provider = provider (via Loader.SetAndSave), printed
+	// ONLY when the active provider actually changed — logging back into
+	// an already-active provider stays silent. Without this activation,
+	// pingProviderWithKey's own `cfg.LLM.Provider != provider` guard
+	// (llmping.go) nulls out cfg.LLM.Model whenever the configured
+	// llm.provider (default: "anthropic", config/schema.go) doesn't match
+	// the provider being logged into — silently discarding a model just
+	// entered at MsgAuthOpenAICompatModelPrompt and pinging the wrong
+	// provider's default model. One arg: the provider name.
+	MsgAuthProviderActivated MessageID = "auth_provider_activated"
+
 	// MsgAuthStoredKeyPingFailed reports a stored key whose live test
 	// request failed for a reason OTHER than the provider rejecting the
 	// key itself (network/timeout/5xx/parse — see MsgAuthKeyRejected for
-	// the 401/403 case, which does NOT use this message) — the key is
-	// still stored, since this class of failure says nothing about
-	// whether the key itself is actually good (QA MAJOR-2). Two args:
-	// provider name, the ping error.
+	// the 401/403 case, and MsgAuthModelNotFound for the 404-model case,
+	// neither of which use this message) — the key is still stored, since
+	// this class of failure says nothing about whether the key itself is
+	// actually good (QA MAJOR-2). One arg: the ping error.
 	MsgAuthStoredKeyPingFailed MessageID = "auth_stored_key_ping_failed"
 
 	// MsgAuthKeyRejected reports `comrade auth login`'s live test request
@@ -401,6 +413,49 @@ const (
 
 	// MsgAuthStatusNotSet renders a provider with no key at all.
 	MsgAuthStatusNotSet MessageID = "auth_status_not_set"
+
+	// MsgAuthOpenAICompatBaseURLPrompt is `comrade auth login
+	// openai_compat`'s interactive prompt, shown only when
+	// llm.openai_compat.base_url's effective value still equals the
+	// shipped default (config.Default()) — openai_compat is a
+	// single connector shared by every OpenAI-compatible provider
+	// (Mistral, Groq, GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter, LM
+	// Studio; see CLAUDE.md's LLM Provider Mimarisi), so logging in with a
+	// non-OpenAI key while base_url still points at api.openai.com
+	// silently pinged the wrong provider and failed with a 401 from
+	// OpenAI itself, not the user's actual provider. Pressing Enter with
+	// no input keeps the current default untouched. One arg: the current
+	// default base_url value.
+	MsgAuthOpenAICompatBaseURLPrompt MessageID = "auth_openai_compat_base_url_prompt"
+
+	// MsgAuthOpenAICompatBaseURLSaved confirms
+	// MsgAuthOpenAICompatBaseURLPrompt's entered value was persisted to
+	// llm.openai_compat.base_url (via Loader.SetAndSave) before the live
+	// ping runs. One arg: the saved value.
+	MsgAuthOpenAICompatBaseURLSaved MessageID = "auth_openai_compat_base_url_saved"
+
+	// MsgAuthOpenAICompatModelPrompt is `comrade auth login
+	// openai_compat`'s interactive model prompt — shown right after
+	// MsgAuthOpenAICompatBaseURLPrompt, only when the base_url now in
+	// effect is no longer OpenAI's own default AND llm.model is still
+	// empty. Without this, buildProvider (internal/llm/client.go) falls
+	// back to defaultOpenAICompatModel (an OpenAI-specific model name,
+	// e.g. "gpt-5.4-mini") against a provider that has never heard of it,
+	// failing with a confusing 404. Pressing Enter with no input leaves
+	// llm.model empty, same as MsgAuthOpenAICompatBaseURLPrompt's own
+	// empty-line behavior. No args.
+	MsgAuthOpenAICompatModelPrompt MessageID = "auth_openai_compat_model_prompt"
+
+	// MsgAuthModelNotFound reports `comrade auth login`'s live test
+	// request coming back HTTP 404 for what looks like an unknown-model
+	// error (llm.StatusError with StatusCode 404 whose Message mentions
+	// "model") — a DEFINITIVE, known cause distinct from
+	// MsgAuthStoredKeyPingFailed's generic network/timeout/5xx framing.
+	// Non-fatal: the key is still stored (it was never the problem) and
+	// this prints as a notice, not a command error, pointing the user at
+	// `comrade config models` / `comrade config set llm.model`. One arg:
+	// the effective model name that was pinged.
+	MsgAuthModelNotFound MessageID = "auth_model_not_found"
 
 	// MsgSecretsFileFallbackWarning is printed once, the first time any
 	// stored-credential operation actually runs against the 0600 file
@@ -944,6 +999,386 @@ const (
 	// explain/chat's "/do" waits on a blocking LLM call) renders next to
 	// its animated frame. No args — this is the whole label, every time.
 	MsgSpinnerThinking MessageID = "spinner_thinking"
+
+	// --- token usage ---
+
+	// MsgFlagUsage is --usage's --help description (do/fix/chat's
+	// cobra-registered flag; `comrade explain --usage` handles the flag
+	// manually — DisableFlagParsing — so it never reaches cobra's own
+	// --help rendering at all, see explain.go).
+	MsgFlagUsage MessageID = "flag_usage"
+
+	// MsgUsageSummary is the base per-run/per-turn token-usage line
+	// internal/cli/usage.go's formatUsageLine renders (do/fix/explain
+	// after the run; chat per turn and at session-total time) — the cost
+	// segment (MsgUsageCostEstimate/MsgUsageCostLocal) is appended after
+	// it, never interpolated into it, so a translation can reorder/omit
+	// the cost segment independently of this line's own word order. Five
+	// args: formatted input-token count, formatted output-token count,
+	// request count, provider name, model name.
+	MsgUsageSummary MessageID = "usage_summary"
+
+	// MsgUsageCostEstimate is appended to MsgUsageSummary when
+	// llm.EstimateUSD found a priced table row for the run's most recent
+	// provider/model. One arg: the formatted dollar amount (e.g.
+	// "$0.0021").
+	MsgUsageCostEstimate MessageID = "usage_cost_estimate"
+
+	// MsgUsageCostLocal is appended to MsgUsageSummary instead of
+	// MsgUsageCostEstimate when the run's most recent provider is
+	// ollama — a local runtime has no real USD cost to estimate. No
+	// args.
+	MsgUsageCostLocal MessageID = "usage_cost_local"
+
+	// MsgChatUsageSessionTotal prefixes the cumulative session-total
+	// usage line `comrade chat` appends to its "/exit"/"/quit" reply
+	// (chatdispatch.go's appendSessionTotal) — as opposed to the
+	// unprefixed per-turn line appendTurnUsage appends after every
+	// ordinary turn. One arg: formatUsageLine's own rendered line (the
+	// same MsgUsageSummary + cost-segment shape used everywhere else),
+	// embedded here as an already-fully-translated fragment, not raw
+	// prose.
+	MsgChatUsageSessionTotal MessageID = "chat_usage_session_total"
+
+	// --- doctor ---
+	//
+	// `comrade doctor` (internal/doctor + internal/cli/doctor.go): every
+	// check's per-check title, its outcome-specific one-line summaries,
+	// and the two small rendering labels ("fix:"/"detail:") plus the
+	// command's own failed-check exit summary and its --live flag
+	// description. internal/doctor.Result never holds rendered text
+	// itself (see that package's own doc comment) — only a MessageID and
+	// args, resolved here.
+
+	// MsgDoctorVersionTitle is the "version" check's row title.
+	MsgDoctorVersionTitle MessageID = "doctor_version_title"
+	// MsgDoctorPathTitle is the "path" check's row title.
+	MsgDoctorPathTitle MessageID = "doctor_path_title"
+	// MsgDoctorShellHookTitle is the "shellhook" check's row title.
+	MsgDoctorShellHookTitle MessageID = "doctor_shellhook_title"
+	// MsgDoctorKeyTitle is the "key" check's row title.
+	MsgDoctorKeyTitle MessageID = "doctor_key_title"
+	// MsgDoctorReachTitle is the "reach" check's row title.
+	MsgDoctorReachTitle MessageID = "doctor_reach_title"
+	// MsgDoctorBaseURLTitle is the "baseurl" check's row title.
+	MsgDoctorBaseURLTitle MessageID = "doctor_baseurl_title"
+	// MsgDoctorConfigTitle is the "config" check's row title.
+	MsgDoctorConfigTitle MessageID = "doctor_config_title"
+
+	// MsgDoctorVersionDevSkip fires for a dev build (update.IsDevBuild),
+	// which has no comparable release tag — the version check is
+	// skipped. No args.
+	MsgDoctorVersionDevSkip MessageID = "doctor_version_dev_skip"
+	// MsgDoctorVersionFetchError reports that update.Updater.Check itself
+	// failed (network/GitHub reachability) — a Warn, not a Fail, since
+	// this says nothing about whether the installed version is actually
+	// fine. No args (the raw fetch error goes in Result.Detail instead —
+	// see doctor.Result's own doc comment on why Detail is never
+	// interpolated into a translated Summary).
+	MsgDoctorVersionFetchError MessageID = "doctor_version_fetch_error"
+	// MsgDoctorVersionBehind reports that a newer release is published.
+	// Two args: the latest version, the current (running) version.
+	MsgDoctorVersionBehind MessageID = "doctor_version_behind"
+	// MsgDoctorVersionUpToDate reports that the running version is
+	// already the latest published release. One arg: the current
+	// version.
+	MsgDoctorVersionUpToDate MessageID = "doctor_version_up_to_date"
+
+	// MsgDoctorPathNotFound reports that the comrade binary is not on
+	// PATH at all. One arg: the binary name looked up ("comrade" or
+	// "comrade.exe").
+	MsgDoctorPathNotFound MessageID = "doctor_path_not_found"
+	// MsgDoctorPathStale reports that PATH resolves to a comrade binary
+	// other than the one currently running this diagnostic. One arg: the
+	// resolved path.
+	MsgDoctorPathStale MessageID = "doctor_path_stale"
+	// MsgDoctorPathOK reports that PATH resolves to the running binary
+	// itself. One arg: the resolved path.
+	MsgDoctorPathOK MessageID = "doctor_path_ok"
+
+	// MsgDoctorShellHookUndetected reports that the current shell could
+	// not be detected from the environment at all. No args.
+	MsgDoctorShellHookUndetected MessageID = "doctor_shellhook_undetected"
+	// MsgDoctorShellHookUnsupported reports that the detected shell is
+	// not one `comrade init` integrates with (e.g. cmd.exe). One arg: the
+	// detected shell's name.
+	MsgDoctorShellHookUnsupported MessageID = "doctor_shellhook_unsupported"
+	// MsgDoctorShellHookUnresolved reports that the shell IS one comrade
+	// supports, but its rc/profile file path could not be resolved (e.g.
+	// HOME unset, or no PowerShell binary on PATH). One arg: the shell
+	// name.
+	MsgDoctorShellHookUnresolved MessageID = "doctor_shellhook_unresolved"
+	// MsgDoctorShellHookMissing reports that the rc/profile file was
+	// resolved, but comrade's block is absent or outdated in it. One arg:
+	// the shell name.
+	MsgDoctorShellHookMissing MessageID = "doctor_shellhook_missing"
+	// MsgDoctorShellHookOK reports that comrade's current block is
+	// already installed. One arg: the shell name.
+	MsgDoctorShellHookOK MessageID = "doctor_shellhook_ok"
+
+	// MsgDoctorKeySkipOllama fires when the active provider is ollama,
+	// which needs no API key. No args.
+	MsgDoctorKeySkipOllama MessageID = "doctor_key_skip_ollama"
+	// MsgDoctorKeyFound reports that a credential was found for the
+	// active provider. Two args: the provider name, the source it came
+	// from ("keychain"/"file"/an env var name — left untranslated,
+	// matching MsgAuthStatusSet/MsgAuthStatusSetEnv's own established
+	// precedent).
+	MsgDoctorKeyFound MessageID = "doctor_key_found"
+	// MsgDoctorKeyMissing reports that no credential was found anywhere
+	// for the active provider. One arg: the provider name.
+	MsgDoctorKeyMissing MessageID = "doctor_key_missing"
+
+	// MsgDoctorReachSkip fires when the active provider name is not one
+	// this package recognizes (llm.HealthEndpoint returned ok=false) —
+	// e.g. ConfigErr left Cfg.LLM.Provider empty. One arg: the provider
+	// name (may be empty).
+	MsgDoctorReachSkip MessageID = "doctor_reach_skip"
+	// MsgDoctorReachFail reports a transport-level failure
+	// (dial/TLS/timeout) — the provider's host could not be reached at
+	// all. One arg: the provider name.
+	MsgDoctorReachFail MessageID = "doctor_reach_fail"
+	// MsgDoctorReachOllamaNoModels reports that ollama answered but
+	// /api/tags lists zero locally-pulled models. No args.
+	MsgDoctorReachOllamaNoModels MessageID = "doctor_reach_ollama_no_models"
+	// MsgDoctorReachOK reports that the provider's host responded to the
+	// keyless probe (any HTTP status — see llm.HealthEndpoint's own doc
+	// comment on this package's "any status = reachable" rule). One arg:
+	// the provider name.
+	MsgDoctorReachOK MessageID = "doctor_reach_ok"
+	// MsgDoctorReachLiveOK reports that --live's authenticated ping
+	// succeeded. Two args: the provider name, the round-trip latency.
+	MsgDoctorReachLiveOK MessageID = "doctor_reach_live_ok"
+	// MsgDoctorReachLiveRejected reports that --live's authenticated ping
+	// got a 401/403 (llm.ErrAuthRejected) — the configured key is wrong.
+	// One arg: the provider name.
+	MsgDoctorReachLiveRejected MessageID = "doctor_reach_live_rejected"
+	// MsgDoctorReachLiveFailed reports that --live's authenticated ping
+	// failed for any OTHER reason (network/timeout/5xx/parse) — the key
+	// might still be fine. One arg: the provider name.
+	MsgDoctorReachLiveFailed MessageID = "doctor_reach_live_failed"
+
+	// MsgDoctorBaseURLSkip fires when the active provider is not
+	// openai_compat, so this check does not apply. No args.
+	MsgDoctorBaseURLSkip MessageID = "doctor_baseurl_skip"
+	// MsgDoctorBaseURLOK fires when either llm.openai_compat.base_url was
+	// already customized away from the shipped default, or the
+	// stored/env key's prefix doesn't match any known non-OpenAI vendor.
+	// No args.
+	MsgDoctorBaseURLOK MessageID = "doctor_baseurl_ok"
+	// MsgDoctorBaseURLSuspectedVendor reports that base_url is still the
+	// shipped OpenAI default, but the resolved key's prefix looks like a
+	// different vendor's key format. One arg: the suspected vendor name
+	// (e.g. "Groq") — see internal/doctor's own key-prefix sniff table.
+	MsgDoctorBaseURLSuspectedVendor MessageID = "doctor_baseurl_suspected_vendor"
+
+	// MsgDoctorConfigLoadError reports that internal/cli/doctor.go's own
+	// config load failed before any check ran. No args (the raw error
+	// goes in Result.Detail).
+	MsgDoctorConfigLoadError MessageID = "doctor_config_load_error"
+	// MsgDoctorConfigFileFallback reports that config loaded fine, but no
+	// OS keychain is reachable on this machine — credentials use the
+	// 0600 file fallback instead. No args.
+	MsgDoctorConfigFileFallback MessageID = "doctor_config_file_fallback"
+	// MsgDoctorConfigOK reports that config loaded fine and an OS
+	// keychain is reachable. No args.
+	MsgDoctorConfigOK MessageID = "doctor_config_ok"
+
+	// MsgDoctorFixLabel is the small "fix:"-style label printed before
+	// every non-OK/non-Skip result's Result.Fix line. One arg: the fix
+	// text itself (a plain string — see doctor.Result.Fix's own doc
+	// comment on why it is never a MessageID).
+	MsgDoctorFixLabel MessageID = "doctor_fix_label"
+	// MsgDoctorDetailLabel is the small "detail:"-style label printed
+	// before a result's Result.Detail line (COMRADE_DEBUG-gated in table
+	// output; unconditional in --json — see newDoctorCmd's own doc
+	// comment). One arg: the detail text itself.
+	MsgDoctorDetailLabel MessageID = "doctor_detail_label"
+	// MsgDoctorFailedSummary is `comrade doctor`'s own final error when
+	// at least one check is SeverityFail (P-1's exit-code rule — see
+	// doctorFailedError, internal/cli/doctor.go). One arg: how many
+	// checks failed.
+	MsgDoctorFailedSummary MessageID = "doctor_failed_summary"
+
+	// MsgFlagLive is --live's --help description.
+	MsgFlagLive MessageID = "flag_live"
+
+	// --- undo ---
+	//
+	// `comrade undo` (internal/undo + internal/engine.Undoer +
+	// internal/cli/undo.go): its two flag descriptions, its own usage
+	// errors (no target run found, --run named an unrecognized id,
+	// nothing in the target run was reversible at all), --list's table
+	// header/empty-log message, and the notes buildUndoPlan attaches to a
+	// step it skipped or downgraded to the LLM/manual tier — every one of
+	// these in a single, clearly-marked block per the task's own request.
+
+	// MsgFlagUndoRun is --run's --help description.
+	MsgFlagUndoRun MessageID = "flag_undo_run"
+	// MsgFlagUndoList is --list's --help description.
+	MsgFlagUndoList MessageID = "flag_undo_list"
+
+	// MsgUndoRunNotFoundError is `comrade undo --run <id>`'s error when no
+	// recorded run matches the given id. One arg: the given id.
+	MsgUndoRunNotFoundError MessageID = "undo_run_not_found_error"
+	// MsgUndoNoTargetError is `comrade undo`'s error when no eligible
+	// (non-legacy, not already undone) run exists in the audit log at
+	// all.
+	MsgUndoNoTargetError MessageID = "undo_no_target_error"
+	// MsgUndoNothingReversibleError is `comrade undo`'s error when the
+	// selected run's every step either failed (never took effect) or
+	// otherwise has nothing left to reverse.
+	MsgUndoNothingReversibleError MessageID = "undo_nothing_reversible_error"
+
+	// MsgUndoListHeader is `comrade undo --list`'s table header row.
+	MsgUndoListHeader MessageID = "undo_list_header"
+	// MsgUndoListEmpty is printed instead of an empty table when the
+	// audit log has no recorded runs at all.
+	MsgUndoListEmpty MessageID = "undo_list_empty"
+
+	// MsgUndoStepSkippedNote reports one step buildUndoPlan skipped
+	// because its recorded exit code was nonzero (it never took effect).
+	// Two args: the 1-based step number (within the run, oldest-first),
+	// the original command text.
+	MsgUndoStepSkippedNote MessageID = "undo_step_skipped_note"
+	// MsgUndoStepDowngradedNote reports one step whose heuristic-derived
+	// undo command was NOT trusted, because it uses a relative path and
+	// the step's own recorded working directory differs from the
+	// directory `comrade undo` is running in now — see internal/undo.
+	// Derived.UsesRelativePath's own doc comment for why this is never
+	// silently rewritten. Three args: the original command text, the
+	// step's recorded working directory, the current working directory.
+	MsgUndoStepDowngradedNote MessageID = "undo_step_downgraded_note"
+	// MsgUndoLLMFallbackNote reports that at least one step in the target
+	// run could not be resolved by the local heuristic table at all (or
+	// was downgraded — see MsgUndoStepDowngradedNote), so the WHOLE
+	// undo plan is being asked of the LLM tier instead of the
+	// deterministic one, per internal/cli's own documented
+	// all-or-nothing-per-run design (see runUndo/buildUndoPlan's doc
+	// comment for why a partial heuristic/LLM merge was deliberately not
+	// attempted).
+	MsgUndoLLMFallbackNote MessageID = "undo_llm_fallback_note"
+
+	// MsgUndoHeuristicRationale is the rationale text attached to a
+	// heuristic-derived undo step (internal/undo.Derive found a
+	// deterministic reversal, with no LLM call at all). One arg: the
+	// original command text it reverses.
+	MsgUndoHeuristicRationale MessageID = "undo_heuristic_rationale"
+	// MsgUndoPlanSummary is the Summary text for a purely heuristic-
+	// derived undo Plan (every eligible step in the run was resolved by
+	// internal/undo.Derive — no LLM tier needed at all). Two args: how
+	// many steps the derived plan has, the target run's own RunID.
+	MsgUndoPlanSummary MessageID = "undo_plan_summary"
+
+	// --- config profiles ---
+
+	// MsgFlagProfile is the persistent root --profile flag's --help
+	// description (root.go) — selects the active config profile for this
+	// one invocation, taking precedence over COMRADE_PROFILE and the
+	// file's own general.profile (see config.ResolveActiveProfile).
+	MsgFlagProfile MessageID = "flag_profile"
+
+	// MsgFlagProfileFromCurrent is `comrade config profile add`'s
+	// --from-current flag's --help description.
+	MsgFlagProfileFromCurrent MessageID = "flag_profile_from_current"
+
+	// MsgConfigProfileListHeader is `comrade config profile list`'s table
+	// header row.
+	MsgConfigProfileListHeader MessageID = "config_profile_list_header"
+
+	// MsgConfigProfileUsageError is the shared wrong-arity usage error for
+	// every `comrade config profile <subcommand>` that takes a fixed
+	// positional-argument shape (use/add/remove/set/show) — mirrors
+	// MsgUsageNoArgsError/MsgUnknownSubcommandError's own "one shared,
+	// parameterized message" pattern (argvalidation.go) instead of one
+	// dedicated MessageID per subcommand. Two args: the resolved
+	// cmd.CommandPath() (e.g. "comrade config profile use"), then a
+	// literal argument-hint string built in Go (e.g. "<name>") — never a
+	// raw fmt.Print literal itself, so this needs no catalogCoverageAllowlist
+	// entry.
+	MsgConfigProfileUsageError MessageID = "config_profile_usage_error"
+
+	// MsgConfigProfileNotFound is config.ProfileNotFoundError's translated
+	// rendering — `show`/`use`/`remove`/`set` all reject a name that
+	// isn't a defined profile with this. One arg: the profile name.
+	MsgConfigProfileNotFound MessageID = "config_profile_not_found"
+
+	// MsgConfigProfileAlreadyExists is config.ProfileExistsError's
+	// translated rendering — `add` never silently overwrites an existing
+	// profile. One arg: the profile name.
+	MsgConfigProfileAlreadyExists MessageID = "config_profile_already_exists"
+
+	// MsgConfigProfileInvalidName is config.InvalidProfileNameError's
+	// translated rendering — `add`/`use` reject a name that doesn't match
+	// the required lowercase-letters/digits/-/_ shape. One arg: the
+	// rejected name.
+	MsgConfigProfileInvalidName MessageID = "config_profile_invalid_name"
+
+	// MsgConfigProfileKeyNotAllowed is config.ProfileKeyNotAllowedError's
+	// translated rendering — `set <name> general.profile ...` is rejected
+	// (a profile activating another profile would be unbounded
+	// recursion). One arg: the rejected key ("general.profile").
+	MsgConfigProfileKeyNotAllowed MessageID = "config_profile_key_not_allowed"
+
+	// MsgConfigProfileSafetyOverrideWarning is P-5's mandatory HIGHLIGHTED
+	// warning: `profile use`/`profile show` print this whenever the
+	// target profile overrides any safety.* key (config.ProfileSafetyOverrides).
+	// This is a visibility warning only — the runtime destructive/elevated
+	// confirmation gate itself is untouched by a profile switch; only
+	// config's safety.confirm_destructive/confirm_elevated=false PLUS
+	// --yolo together ever bypass it (CLAUDE.md's security exception).
+	// Two args: the profile name, then the comma-joined list of
+	// overridden safety.* keys.
+	MsgConfigProfileSafetyOverrideWarning MessageID = "config_profile_safety_override_warning"
+
+	// MsgConfigProfileActivated confirms `comrade config profile use
+	// <name>` succeeded. One arg: the now-active profile name.
+	MsgConfigProfileActivated MessageID = "config_profile_activated"
+
+	// MsgConfigProfileAdded confirms `comrade config profile add <name>`
+	// succeeded. One arg: the new profile name.
+	MsgConfigProfileAdded MessageID = "config_profile_added"
+
+	// MsgConfigProfileRemoved confirms `comrade config profile remove
+	// <name>` succeeded. One arg: the removed profile name.
+	MsgConfigProfileRemoved MessageID = "config_profile_removed"
+
+	// MsgConfigProfileShowActive is `comrade config profile show
+	// <name>`'s heading line when name is the currently-active profile.
+	// One arg: the profile name.
+	MsgConfigProfileShowActive MessageID = "config_profile_show_active"
+
+	// MsgConfigProfileShowInactive is `comrade config profile show
+	// <name>`'s heading line when name is NOT the currently-active
+	// profile. One arg: the profile name.
+	MsgConfigProfileShowInactive MessageID = "config_profile_show_inactive"
+
+	// --- plan review ---
+	//
+	// The interactive plan-preview/edit screen (internal/tui/planreview.go
+	// + internal/cli/planreview.go): its --review flag description, the
+	// screen's own heading/legend/per-row markers, and reuses
+	// MsgConfirmEditHeader/MsgAbortCanceled for its edit-mode header and
+	// whole-review-canceled abort text respectively, rather than
+	// duplicating either.
+
+	// MsgFlagReview is --review's --help description.
+	MsgFlagReview MessageID = "flag_review"
+	// MsgFlagNoReview is --no-review's --help description.
+	MsgFlagNoReview MessageID = "flag_no_review"
+
+	// MsgPlanReviewHeader is the one-line heading printed above the
+	// numbered step list.
+	MsgPlanReviewHeader MessageID = "plan_review_header"
+	// MsgPlanReviewLegend is the trailing line listing every available
+	// action's key, in the active language.
+	MsgPlanReviewLegend MessageID = "plan_review_legend"
+	// MsgPlanReviewSkippedMarker is appended after a row's command text
+	// once the user has toggled it to be skipped.
+	MsgPlanReviewSkippedMarker MessageID = "plan_review_skipped_marker"
+	// MsgPlanReviewBlockedMarker replaces a Blocked row's risk badge. One
+	// arg: the block reason.
+	MsgPlanReviewBlockedMarker MessageID = "plan_review_blocked_marker"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -1031,7 +1466,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgVerificationStillFails:   "verification: %s still fails (exit %d)",
 
 	MsgAuthEnterKeyPrompt:         "Enter API key for %s: ",
-	MsgAuthStoredKeyPingFailed:    "Stored key for %s. Could not verify it right now (%v) — this looks like a network or connectivity issue, not necessarily a bad key. The key was saved.\n",
+	MsgAuthProviderActivated:      "Active provider set to %s.\n",
+	MsgAuthStoredKeyPingFailed:    "Key saved ✓  Couldn't verify it right now (%v) — likely a network issue, not a bad key.\n",
 	MsgAuthKeyRejected:            "The provider rejected this key for %s (%v) — it was not saved. Double-check the key and try \"comrade auth login %s\" again.\n",
 	MsgAuthStoredKeyPingSucceeded: "Stored key for %s. Test request succeeded (model=%s, latency=%s).\n",
 	MsgAuthStoredKeyBaseURLUnsafe: "Stored key for %s. Skipped the live test — %s (currently %q) is not a safe endpoint, so your key was never sent there; fix it with: comrade config set %s <valid-url>\n",
@@ -1042,6 +1478,11 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStatusSet:              "set (%s)",
 	MsgAuthStatusSetEnv:           "set (env: %s)",
 	MsgAuthStatusNotSet:           "not set",
+
+	MsgAuthOpenAICompatBaseURLPrompt: "Provider address (base_url) [current: %s]\n› Enter another provider's URL (e.g. Qwen → https://dashscope-intl.aliyuncs.com/compatible-mode/v1), or press Enter to keep it: ",
+	MsgAuthOpenAICompatBaseURLSaved:  "Saved llm.openai_compat.base_url = %s\n",
+	MsgAuthOpenAICompatModelPrompt:   "Model — enter this provider's model name (e.g. qwen-plus); leave empty to set it later with 'comrade config set llm.model': ",
+	MsgAuthModelNotFound:             "Key saved ✓  But model '%s' doesn't exist on this provider.\n› Pick a model:  comrade config models   then:  comrade config set llm.model <model>\n",
 
 	MsgSecretsFileFallbackWarning: "cli-comrade: no system keychain found, so API keys are being saved to a local file instead (base64-encoded, not encrypted — see the file's own header for details).\n",
 
@@ -1164,6 +1605,109 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgConfirmLegend:     "[y]es [n]o [e]dit [x]plain [a]ll: ",
 	MsgConfirmEditHeader: "Edit command (enter to confirm, esc to cancel):\n",
 	MsgSpinnerThinking:   "thinking…",
+
+	// --- token usage ---
+	MsgFlagUsage:             "show a per-request token usage and estimated cost summary",
+	MsgUsageSummary:          "tokens: %s in / %s out across %d requests (%s/%s)",
+	MsgUsageCostEstimate:     " · est. %s",
+	MsgUsageCostLocal:        " · local",
+	MsgChatUsageSessionTotal: "session total — %s",
+
+	MsgDoctorVersionTitle:   "version",
+	MsgDoctorPathTitle:      "PATH",
+	MsgDoctorShellHookTitle: "shell integration",
+	MsgDoctorKeyTitle:       "API key",
+	MsgDoctorReachTitle:     "provider reachability",
+	MsgDoctorBaseURLTitle:   "base_url sanity",
+	MsgDoctorConfigTitle:    "config & keychain",
+
+	MsgDoctorVersionDevSkip:    "dev build; version check skipped",
+	MsgDoctorVersionFetchError: "could not check for a newer version",
+	MsgDoctorVersionBehind:     "a newer version is available: %s (you have %s)",
+	MsgDoctorVersionUpToDate:   "up to date (%s)",
+
+	MsgDoctorPathNotFound: "%q was not found on PATH",
+	MsgDoctorPathStale:    "PATH resolves to a different comrade binary than the one currently running (%s)",
+	MsgDoctorPathOK:       "found on PATH (%s)",
+
+	MsgDoctorShellHookUndetected:  "could not detect the current shell",
+	MsgDoctorShellHookUnsupported: "shell %q is not one comrade integrates with",
+	MsgDoctorShellHookUnresolved:  "could not resolve a profile/rc file for %s",
+	MsgDoctorShellHookMissing:     "shell integration is not installed (or is outdated) for %s",
+	MsgDoctorShellHookOK:          "shell integration installed for %s",
+
+	MsgDoctorKeySkipOllama: "ollama needs no API key",
+	MsgDoctorKeyFound:      "API key found for %s (%s)",
+	MsgDoctorKeyMissing:    "no API key configured for %s",
+
+	MsgDoctorReachSkip:           "%s: unknown provider; skipping reachability check",
+	MsgDoctorReachFail:           "could not reach %s",
+	MsgDoctorReachOllamaNoModels: "ollama is reachable but has no models pulled",
+	MsgDoctorReachOK:             "%s is reachable",
+	MsgDoctorReachLiveOK:         "%s is reachable; live ping succeeded (%s)",
+	MsgDoctorReachLiveRejected:   "%s rejected the configured API key",
+	MsgDoctorReachLiveFailed:     "live ping to %s failed (the key may still be valid)",
+
+	MsgDoctorBaseURLSkip:            "active provider is not openai_compat; skipping",
+	MsgDoctorBaseURLOK:              "base_url looks fine",
+	MsgDoctorBaseURLSuspectedVendor: "llm.openai_compat.base_url is still OpenAI's default, but the configured key looks like a %s key",
+
+	MsgDoctorConfigLoadError:    "config failed to load",
+	MsgDoctorConfigFileFallback: "no OS keychain available; credentials are stored in a 0600 file instead",
+	MsgDoctorConfigOK:           "config loaded and an OS keychain is available",
+
+	MsgDoctorFixLabel:      "    fix: %s\n",
+	MsgDoctorDetailLabel:   "    detail: %s\n",
+	MsgDoctorFailedSummary: "comrade doctor: %d check(s) failed",
+
+	MsgFlagLive: "send a real, minimal authenticated request to the active provider (spends a token; never on by default)",
+
+	MsgFlagUndoRun:  "undo a specific recorded run by id, instead of the newest eligible one",
+	MsgFlagUndoList: "list recent recorded runs instead of undoing one",
+
+	MsgUndoRunNotFoundError:       "No recorded run matches --run %q.",
+	MsgUndoNoTargetError:          "No reversible run was found in the audit log yet (or every recorded run has already been undone).",
+	MsgUndoNothingReversibleError: "Every step in that run either failed or never took effect; there is nothing to undo.",
+
+	MsgUndoListHeader: "RUN ID\tTIME\tSTEPS\tREQUEST",
+	MsgUndoListEmpty:  "No recorded runs yet.",
+
+	MsgUndoStepSkippedNote:    "step %d (%s): skipped — it exited with a nonzero status and never took effect",
+	MsgUndoStepDowngradedNote: "step (%s): its automatic undo command uses a relative path, but it was recorded in %s while this undo is running in %s — asking the model instead of guessing",
+	MsgUndoLLMFallbackNote:    "one or more steps could not be reversed with a built-in rule; asking the model for the whole undo plan instead",
+
+	MsgUndoHeuristicRationale: "Reverses: %s",
+	MsgUndoPlanSummary:        "Reverses %d step(s) from run %s, newest first.",
+
+	// --- config profiles ---
+	MsgFlagProfile:            "use this named config profile for this invocation (overrides COMRADE_PROFILE and general.profile)",
+	MsgFlagProfileFromCurrent: "seed the new profile with the current file-level [llm] section's values",
+
+	MsgConfigProfileListHeader: "PROFILE\tACTIVE\tKEYS",
+	MsgConfigProfileUsageError: "usage: %s %s",
+
+	MsgConfigProfileNotFound:      "profile %q is not defined; run \"comrade config profile list\" to see defined profiles",
+	MsgConfigProfileAlreadyExists: "profile %q already exists",
+	MsgConfigProfileInvalidName:   "invalid profile name %q: must start with a lowercase letter or digit and contain only lowercase letters, digits, - or _ (max 32 characters)",
+	MsgConfigProfileKeyNotAllowed: "config key %q cannot be set inside a profile (it selects the active profile itself)",
+
+	MsgConfigProfileSafetyOverrideWarning: "⚠ profile %q overrides safety setting(s): %s — these apply automatically whenever this profile is active",
+
+	MsgConfigProfileActivated: "activated profile %q\n",
+	MsgConfigProfileAdded:     "created profile %q\n",
+	MsgConfigProfileRemoved:   "removed profile %q\n",
+
+	MsgConfigProfileShowActive:   "profile %q (active)\n",
+	MsgConfigProfileShowInactive: "profile %q\n",
+
+	// --- plan review ---
+	MsgFlagReview:   "show the full plan for review/edit before running it (reorder, skip, edit, or delete steps)",
+	MsgFlagNoReview: "never show the plan review/edit screen for this run, even if general.plan_review is \"ask\"",
+
+	MsgPlanReviewHeader:        "Review the plan below, then approve:\n",
+	MsgPlanReviewLegend:        "[u]p [d]own [e]dit [r]emove [space] skip [a]pprove all [esc] cancel: ",
+	MsgPlanReviewSkippedMarker: "[skipped]",
+	MsgPlanReviewBlockedMarker: "BLOCKED(%s)",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -1251,7 +1795,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgVerificationStillFails:   "doğrulama: %s hâlâ başarısız (çıkış %d)",
 
 	MsgAuthEnterKeyPrompt:         "%s için API anahtarını girin: ",
-	MsgAuthStoredKeyPingFailed:    "%s için anahtar kaydedildi. Şu anda doğrulanamadı (%v) — bu, ağ veya bağlantı sorunundan kaynaklanıyor olabilir, anahtarın hatalı olduğu anlamına gelmez. Anahtar kaydedildi.\n",
+	MsgAuthProviderActivated:      "Etkin sağlayıcı %s olarak ayarlandı.\n",
+	MsgAuthStoredKeyPingFailed:    "Anahtar kaydedildi ✓  Şimdi doğrulanamadı (%v) — ağ/bağlantı olabilir, anahtarın yanlış olduğu anlamına gelmez.\n",
 	MsgAuthKeyRejected:            "%s için bu anahtar sağlayıcı tarafından reddedildi (%v) — kaydedilmedi. Anahtarı kontrol edip \"comrade auth login %s\" komutunu tekrar deneyin.\n",
 	MsgAuthStoredKeyPingSucceeded: "%s için anahtar kaydedildi. Test isteği başarılı oldu (model=%s, gecikme=%s).\n",
 	MsgAuthStoredKeyBaseURLUnsafe: "%s için anahtar kaydedildi. Canlı test atlandı — %s (şu an %q) güvenli bir uç nokta değil, bu yüzden anahtarınız oraya hiç gönderilmedi; düzeltmek için: comrade config set %s <geçerli-url>\n",
@@ -1262,6 +1807,11 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStatusSet:              "kayıtlı (%s)",
 	MsgAuthStatusSetEnv:           "kayıtlı (ortam değişkeni: %s)",
 	MsgAuthStatusNotSet:           "kayıtlı değil",
+
+	MsgAuthOpenAICompatBaseURLPrompt: "Sağlayıcı adresi (base_url) [şu an: %s]\n› Farklı sağlayıcı için adresini gir (ör. Qwen → https://dashscope-intl.aliyuncs.com/compatible-mode/v1), yoksa Enter: ",
+	MsgAuthOpenAICompatBaseURLSaved:  "llm.openai_compat.base_url = %s olarak kaydedildi\n",
+	MsgAuthOpenAICompatModelPrompt:   "Model — bu sağlayıcının model adını gir (ör. qwen-plus); boş bırakırsan sonra 'comrade config set llm.model' ile ayarla: ",
+	MsgAuthModelNotFound:             "Anahtar kaydedildi ✓  Ama '%s' modeli bu sağlayıcıda yok.\n› Modeli seç:  comrade config models   sonra:  comrade config set llm.model <model>\n",
 
 	MsgSecretsFileFallbackWarning: "cli-comrade: sistem anahtarlığı bulunamadı, bu yüzden API anahtarları yerel bir dosyaya kaydediliyor (base64 ile kodlanmış, şifrelenmemiş — ayrıntılar için dosyanın kendi başlığına bakın).\n",
 
@@ -1384,4 +1934,107 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgConfirmLegend:     "[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: ",
 	MsgConfirmEditHeader: "Komutu düzenle (onaylamak için enter, iptal için esc):\n",
 	MsgSpinnerThinking:   "düşünüyorum…",
+
+	// --- token usage ---
+	MsgFlagUsage:             "bu çalıştırma için token kullanımı ve tahmini maliyeti göster",
+	MsgUsageSummary:          "token: %s giriş / %s çıkış, %d istekte (%s/%s)",
+	MsgUsageCostEstimate:     " · tah. %s",
+	MsgUsageCostLocal:        " · yerel",
+	MsgChatUsageSessionTotal: "oturum toplamı — %s",
+
+	MsgDoctorVersionTitle:   "sürüm",
+	MsgDoctorPathTitle:      "PATH",
+	MsgDoctorShellHookTitle: "kabuk entegrasyonu",
+	MsgDoctorKeyTitle:       "API anahtarı",
+	MsgDoctorReachTitle:     "sağlayıcıya erişilebilirlik",
+	MsgDoctorBaseURLTitle:   "base_url tutarlılığı",
+	MsgDoctorConfigTitle:    "yapılandırma ve anahtarlık",
+
+	MsgDoctorVersionDevSkip:    "geliştirme sürümü; sürüm kontrolü atlandı",
+	MsgDoctorVersionFetchError: "daha yeni bir sürüm olup olmadığı kontrol edilemedi",
+	MsgDoctorVersionBehind:     "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s)",
+	MsgDoctorVersionUpToDate:   "güncel (%s)",
+
+	MsgDoctorPathNotFound: "%q, PATH üzerinde bulunamadı",
+	MsgDoctorPathStale:    "PATH, şu anda çalışan comrade ikili dosyasından farklı bir kopyaya işaret ediyor (%s)",
+	MsgDoctorPathOK:       "PATH üzerinde bulundu (%s)",
+
+	MsgDoctorShellHookUndetected:  "mevcut kabuk tespit edilemedi",
+	MsgDoctorShellHookUnsupported: "%q kabuğu comrade'ın entegre olduğu kabuklardan biri değil",
+	MsgDoctorShellHookUnresolved:  "%s için bir profil/rc dosyası çözümlenemedi",
+	MsgDoctorShellHookMissing:     "%s için kabuk entegrasyonu kurulu değil (ya da güncel değil)",
+	MsgDoctorShellHookOK:          "%s için kabuk entegrasyonu kurulu",
+
+	MsgDoctorKeySkipOllama: "ollama için API anahtarı gerekmez",
+	MsgDoctorKeyFound:      "%s için API anahtarı bulundu (%s)",
+	MsgDoctorKeyMissing:    "%s için API anahtarı yapılandırılmamış",
+
+	MsgDoctorReachSkip:           "%s: bilinmeyen sağlayıcı; erişilebilirlik kontrolü atlanıyor",
+	MsgDoctorReachFail:           "%s adresine erişilemedi",
+	MsgDoctorReachOllamaNoModels: "ollama'ya erişilebiliyor ama hiç model indirilmemiş",
+	MsgDoctorReachOK:             "%s adresine erişilebiliyor",
+	MsgDoctorReachLiveOK:         "%s adresine erişilebiliyor; canlı ping başarılı (%s)",
+	MsgDoctorReachLiveRejected:   "%s, yapılandırılan API anahtarını reddetti",
+	MsgDoctorReachLiveFailed:     "%s adresine canlı ping başarısız oldu (anahtar yine de geçerli olabilir)",
+
+	MsgDoctorBaseURLSkip:            "aktif sağlayıcı openai_compat değil; atlanıyor",
+	MsgDoctorBaseURLOK:              "base_url sorunsuz görünüyor",
+	MsgDoctorBaseURLSuspectedVendor: "llm.openai_compat.base_url hâlâ OpenAI'nin varsayılanı, ama yapılandırılan anahtar bir %s anahtarına benziyor",
+
+	MsgDoctorConfigLoadError:    "yapılandırma yüklenemedi",
+	MsgDoctorConfigFileFallback: "kullanılabilir bir işletim sistemi anahtarlığı yok; kimlik bilgileri bunun yerine 0600 izinli bir dosyada saklanıyor",
+	MsgDoctorConfigOK:           "yapılandırma yüklendi ve bir işletim sistemi anahtarlığı kullanılabilir",
+
+	MsgDoctorFixLabel:      "    çözüm: %s\n",
+	MsgDoctorDetailLabel:   "    ayrıntı: %s\n",
+	MsgDoctorFailedSummary: "comrade doctor: %d kontrol başarısız oldu",
+
+	MsgFlagLive: "aktif sağlayıcıya gerçek, minimal bir kimlik doğrulamalı istek gönder (bir token harcar; asla varsayılan olarak açık değildir)",
+
+	MsgFlagUndoRun:  "en yeni uygun çalıştırma yerine, belirli bir kayıtlı çalıştırmayı kimliğine göre geri al",
+	MsgFlagUndoList: "bir çalıştırmayı geri almak yerine son kayıtlı çalıştırmaları listele",
+
+	MsgUndoRunNotFoundError:       "--run %q ile eşleşen kayıtlı bir çalıştırma yok.",
+	MsgUndoNoTargetError:          "Denetim kaydında henüz geri alınabilir bir çalıştırma bulunamadı (ya da tüm kayıtlı çalıştırmalar zaten geri alındı).",
+	MsgUndoNothingReversibleError: "Bu çalıştırmadaki her adım ya başarısız oldu ya da hiçbir etki yaratmadı; geri alınacak bir şey yok.",
+
+	MsgUndoListHeader: "ÇALIŞTIRMA ID\tZAMAN\tADIM\tİSTEK",
+	MsgUndoListEmpty:  "Henüz kayıtlı bir çalıştırma yok.",
+
+	MsgUndoStepSkippedNote:    "adım %d (%s): atlandı — sıfırdan farklı bir durumla sonuçlandı ve hiçbir etki yaratmadı",
+	MsgUndoStepDowngradedNote: "adım (%s): otomatik geri alma komutu göreli bir yol kullanıyor, ancak %s dizininde kaydedildi ve bu geri alma %s dizininde çalışıyor — tahmin etmek yerine modele soruluyor",
+	MsgUndoLLMFallbackNote:    "bir veya daha fazla adım yerleşik bir kuralla geri alınamadı; bunun yerine tüm geri alma planı modele soruluyor",
+
+	MsgUndoHeuristicRationale: "Geri alınan: %s",
+	MsgUndoPlanSummary:        "%d adımı, %s çalıştırmasından en yeniden en eskiye doğru geri alır.",
+
+	// --- config profiles ---
+	MsgFlagProfile:            "bu çalıştırma için bu adlandırılmış config profilini kullan (COMRADE_PROFILE ve general.profile'ı geçersiz kılar)",
+	MsgFlagProfileFromCurrent: "yeni profili mevcut dosya seviyesindeki [llm] bölümünün değerleriyle doldur",
+
+	MsgConfigProfileListHeader: "PROFİL\tAKTİF\tANAHTAR",
+	MsgConfigProfileUsageError: "kullanım: %s %s",
+
+	MsgConfigProfileNotFound:      "%q profili tanımlı değil; tanımlı profilleri görmek için \"comrade config profile list\" çalıştırın",
+	MsgConfigProfileAlreadyExists: "%q profili zaten var",
+	MsgConfigProfileInvalidName:   "%q geçersiz profil adı: küçük harf veya rakamla başlamalı ve yalnızca küçük harf, rakam, - veya _ içermeli (en fazla 32 karakter)",
+	MsgConfigProfileKeyNotAllowed: "%q config anahtarı bir profil içinde ayarlanamaz (aktif profili seçen anahtarın kendisi budur)",
+
+	MsgConfigProfileSafetyOverrideWarning: "⚠ %q profili şu safety ayarlarının üzerine yazıyor: %s — bu profil aktifken bunlar otomatik olarak uygulanır",
+
+	MsgConfigProfileActivated: "%q profili etkinleştirildi\n",
+	MsgConfigProfileAdded:     "%q profili oluşturuldu\n",
+	MsgConfigProfileRemoved:   "%q profili kaldırıldı\n",
+
+	MsgConfigProfileShowActive:   "profil %q (aktif)\n",
+	MsgConfigProfileShowInactive: "profil %q\n",
+
+	// --- plan review ---
+	MsgFlagReview:   "çalıştırmadan önce tam planı gözden geçirme/düzenleme ekranını göster (adımları yeniden sırala, atla, düzenle veya sil)",
+	MsgFlagNoReview: "general.plan_review \"ask\" olsa bile bu çalıştırma için plan gözden geçirme/düzenleme ekranını asla gösterme",
+
+	MsgPlanReviewHeader:        "Aşağıdaki planı gözden geçirin, ardından onaylayın:\n",
+	MsgPlanReviewLegend:        "[y]ukarı [a]şağı [d]üzenle [s]il [boşluk] atla [t]ümünü onayla [esc] iptal: ",
+	MsgPlanReviewSkippedMarker: "[atlandı]",
+	MsgPlanReviewBlockedMarker: "ENGELLENDİ(%s)",
 }

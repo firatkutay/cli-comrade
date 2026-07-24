@@ -55,6 +55,18 @@ var keyDefs = []KeyDef{
 	{Key: "general.language", Kind: KindString, Enum: []string{"auto", "tr", "en"}},
 	{Key: "general.color", Kind: KindBool},
 	{Key: "general.update_check", Kind: KindBool},
+	{Key: "general.show_usage", Kind: KindBool},
+	// general.profile: no Enum — the set of legal values is dynamic (any
+	// currently-defined [profiles.<name>] table name, or "" for none),
+	// which keyDefs' static Enum mechanism cannot express. `comrade
+	// config profile use <name>` is the fully-validated path (name-format
+	// regex + existence check — see ValidateProfileName/profile.go); a
+	// raw `comrade config set general.profile <name>` accepts any string
+	// syntactically, same as llm.model, and an undefined/bogus value is
+	// instead caught (WARN, never fail) at load time by
+	// applyProfileOverlay.
+	{Key: "general.profile", Kind: KindString},
+	{Key: "general.plan_review", Kind: KindString, Enum: []string{"off", "ask"}},
 
 	{Key: "llm.provider", Kind: KindString, Enum: []string{"anthropic", "openai_compat", "google", "ollama"}},
 	{Key: "llm.model", Kind: KindString},
@@ -373,6 +385,20 @@ func emitBaseURLWarning(warning string) {
 	fmt.Fprintln(baseURLWarningWriter, warning) //nolint:errcheck // best-effort stderr warning; a write failure here has no recovery action
 }
 
+// EmitBaseURLWarning is emitBaseURLWarning exported for internal/cli's
+// `comrade auth login openai_compat` base_url prompt (auth.go's
+// promptOpenAICompatBaseURL): the SAME warned-but-allowed cleartext-http
+// notice `comrade config set` prints via CheckBaseURL's own warning
+// return value must also surface when a user types a warn-class (http://
+// to a non-loopback host) endpoint into that interactive prompt — a
+// credential-entry point, exactly the case this warning exists for.
+// Calling this instead of writing a second, near-duplicate message keeps
+// the wording and destination (baseURLWarningWriter) identical between
+// both entry points.
+func EmitBaseURLWarning(warning string) {
+	emitBaseURLWarning(warning)
+}
+
 // validateLoadedConfig re-runs checkBaseURL against the ACTIVE provider's
 // (cfg.LLM.Provider) base_url only, from the fully-resolved config
 // (built-in defaults merged with the on-disk file merged with COMRADE_
@@ -451,4 +477,33 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// ProfileKeyNotAllowedError is ValidateProfileKey's structured error for
+// the one keyDefs key explicitly disallowed inside a [profiles.<name>]
+// table: general.profile itself. Allowing it would let one profile
+// activate another (unbounded recursion, and a confusing "which profile
+// is actually active" question with no good answer) — every OTHER known
+// key is allowed verbatim inside a profile, with Validate's usual enum/
+// int/base_url rules still applying identically.
+type ProfileKeyNotAllowedError struct {
+	Key string
+}
+
+func (e *ProfileKeyNotAllowedError) Error() string {
+	return fmt.Sprintf("config key %q cannot be set inside a profile (it selects the active profile itself)", e.Key)
+}
+
+// ValidateProfileKey validates key/raw for use inside a [profiles.<name>]
+// table: general.profile is rejected outright (see
+// ProfileKeyNotAllowedError); every other keyDefs key is validated by
+// calling Validate wholesale, so the exact same enum/bool/int/base_url
+// rules a top-level `comrade config set` enforces apply identically to
+// the same key set inside a profile — no separate, potentially-drifting
+// validation logic for the profile case.
+func ValidateProfileKey(key, raw string) (any, error) {
+	if key == "general.profile" {
+		return nil, &ProfileKeyNotAllowedError{Key: key}
+	}
+	return Validate(key, raw)
 }

@@ -30,6 +30,37 @@ type Entry struct {
 	Mode       string    `json:"mode"`
 	ExitCode   int       `json:"exit_code"`
 	DurationMs int64     `json:"duration_ms"`
+
+	// RunID groups every step appended by a single comrade do/fix/chat
+	// "/do" invocation together — internal/cli generates one 8-byte
+	// crypto/rand hex identifier per invocation (see internal/cli's
+	// newRunID) and threads it through internal/engine.RunDeps.RunID into
+	// every audit.Entry that invocation's run appends. Empty for every
+	// entry recorded before `comrade undo` existed (a "pre-undo-support"
+	// entry, in this field's own vocabulary) — `omitempty` keeps those
+	// old on-disk lines byte-identical in shape, and a zero-value RunID
+	// decodes cleanly from them, per this field's own backward-
+	// compatibility contract (see the package's round-trip test).
+	RunID string `json:"run_id,omitempty"`
+	// Cwd is the working directory internal/context collected for the
+	// invocation that ran this step (contextpkg.Context.WorkingDir) —
+	// `comrade undo`'s own cwd-mismatch safety check (never silently
+	// rewriting a relative path derived from a different directory) reads
+	// this. Empty for a pre-undo-support entry.
+	Cwd string `json:"cwd,omitempty"`
+	// Reversible mirrors this step's engine.Step.Reversible — the LLM's
+	// own declared reversibility for the plan step that produced this
+	// entry. A *bool (not a plain bool) so a pre-undo-support entry
+	// decodes as nil ("unknown/pre-upgrade"), distinguishable from an
+	// entry that positively recorded false.
+	Reversible *bool `json:"reversible,omitempty"`
+	// UndoOf is set ONLY on a step actually executed BY `comrade undo`
+	// itself, to the RunID of the run it was undoing — never set on an
+	// ordinary do/fix/chat run's own steps. `comrade undo`'s own target
+	// selection treats any RunID that appears as some entry's UndoOf
+	// anywhere in the log as already undone, and excludes it from being
+	// picked as a default target again.
+	UndoOf string `json:"undo_of,omitempty"`
 }
 
 // Logger appends Entry records to a single JSONL file and supports

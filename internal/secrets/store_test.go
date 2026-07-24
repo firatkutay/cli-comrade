@@ -285,3 +285,17 @@ func TestDetectKeychainAvailableTrueWhenProbeAccountHappensToExist(t *testing.T)
 	require.NoError(t, keyring.Set(serviceName, keychainProbeAccount, "unexpected"))
 	assert.True(t, detectKeychainAvailable())
 }
+
+// TestKeychainAvailableMatchesDetectKeychainAvailable pins
+// KeychainAvailable (the exported form `comrade doctor` calls) as an exact
+// passthrough to detectKeychainAvailable, in both the available and
+// unavailable cases — a future edit that let the two diverge would be
+// caught here.
+func TestKeychainAvailableMatchesDetectKeychainAvailable(t *testing.T) {
+	withMockKeychain(t)
+	assert.Equal(t, detectKeychainAvailable(), KeychainAvailable())
+
+	withUnavailableKeychain(t)
+	assert.Equal(t, detectKeychainAvailable(), KeychainAvailable())
+	assert.False(t, KeychainAvailable())
+}

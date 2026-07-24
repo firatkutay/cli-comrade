@@ -187,12 +187,22 @@ func requireInteractiveTTY(tr i18n.Translator, isTerminal isTerminalFunc, msgID 
 // to translate a reject-class base_url error llm.New returns (see
 // translateBaseURLRejectedError); every caller already has tr in scope
 // from its own loadConfigWithNotice call.
-func buildLLMClient(cmd *cobra.Command, cfg config.Config, tr i18n.Translator) (*llm.Client, error) {
+//
+// observer, when non-nil, is attached via llm.WithUsageObserver — every
+// current caller (do/fix via setupCLIRuntime, explain, chat) passes a
+// real tally.record; auth's pingProvider calls llm.New directly instead
+// of this function at all, so it stays observer-free without needing a
+// separate code path or a nil-observer call site here.
+func buildLLMClient(cmd *cobra.Command, cfg config.Config, tr i18n.Translator, observer func(llm.UsageEvent)) (*llm.Client, error) {
 	store, err := newSecretsStore(cmd.ErrOrStderr(), tr)
 	if err != nil {
 		return nil, err
 	}
-	client, err := llm.New(cfg, llm.WithKeyResolver(secretsKeyResolver(store)))
+	opts := []llm.Option{llm.WithKeyResolver(secretsKeyResolver(store))}
+	if observer != nil {
+		opts = append(opts, llm.WithUsageObserver(observer))
+	}
+	client, err := llm.New(cfg, opts...)
 	if err != nil {
 		return nil, translateBaseURLRejectedError(tr, err)
 	}
@@ -249,7 +259,14 @@ func translateBaseURLRejectedError(tr i18n.Translator, err error) error {
 // pieces but not the --yolo warning (it has no --yolo flag of its own),
 // so it calls loadConfigWithNotice/buildLLMClient directly instead of
 // this wrapper.
-func setupCLIRuntime(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags) (config.Config, *llm.Client, error) {
+//
+// observer, when non-nil, is attached to the built Client via
+// llm.WithUsageObserver (buildLLMClient) — do/fix pass
+// tally.record here so the SAME Client instance deps.LLM later hands to
+// engine.Execute (planner/self-correction calls included) reports every
+// one of its Complete calls through it, not just the initial plan
+// generation this function itself triggers.
+func setupCLIRuntime(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, observer func(llm.UsageEvent)) (config.Config, *llm.Client, error) {
 	cfg, tr, err := loadConfigWithNotice(cmd, newLoader)
 	if err != nil {
 		return config.Config{}, nil, err
@@ -265,7 +282,7 @@ func setupCLIRuntime(cmd *cobra.Command, newLoader loaderFactory, flags *executi
 		}
 	}
 
-	client, err := buildLLMClient(cmd, cfg, tr)
+	client, err := buildLLMClient(cmd, cfg, tr, observer)
 	if err != nil {
 		return config.Config{}, nil, err
 	}

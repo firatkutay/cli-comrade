@@ -487,6 +487,84 @@ func TestExecuteAskAllSkipsPromptForLowRiskButNotForDestructive(t *testing.T) {
 	assert.False(t, summary.Aborted)
 }
 
+// TestExecuteAskPreApprovedRunsLowRiskStepsWithoutPrompting proves
+// RunDeps.PreApproved seeds executeAsk's autoApproveRemaining exactly
+// like the user had already picked [t]ümü/[a]ll before step 1 — every
+// read/write/network step below runs unprompted, with NO scripted
+// fakePrompt responses at all (Confirm must never even be called for
+// them).
+func TestExecuteAskPreApprovedRunsLowRiskStepsWithoutPrompting(t *testing.T) {
+	exec := &fakeExecutor{}
+	prompt := &fakePrompt{} // no responses scripted: Confirm must never be called
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.PreApproved = true
+
+	plan := Plan{Steps: []Step{
+		allowStep("ls -la", safety.RiskRead),
+		allowStep("mkdir foo", safety.RiskWrite),
+		allowStep("curl example.com", safety.RiskNetwork),
+	}}
+	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, exec.callCount(), "every read/write/network step must run unprompted")
+	assert.Equal(t, 0, prompt.shownCount(), "PreApproved must skip the confirm prompt entirely for these steps")
+	assert.False(t, summary.Aborted)
+}
+
+// TestExecuteAskPreApprovedStillPromptsElevatedAndDestructive is this
+// task's own load-bearing proof: RunDeps.PreApproved never touches the
+// executeAsk loop's `EffectiveRisk >= safety.RiskElevated` re-prompt
+// condition — an elevated step and a destructive step both still confirm
+// individually even though PreApproved is set (mirroring
+// TestExecuteAskAllSkipsPromptForLowRiskButNotForDestructive's identical
+// proof for the in-loop [t]ümü/[a]ll case, just seeded from the start
+// instead of picked mid-run).
+func TestExecuteAskPreApprovedStillPromptsElevatedAndDestructive(t *testing.T) {
+	exec := &fakeExecutor{}
+	prompt := &fakePrompt{
+		responses: []promptResponse{
+			{choice: ChoiceYes}, // step 2 (elevated) — still prompted
+			{choice: ChoiceYes}, // step 3 (destructive) — still prompted
+		},
+	}
+	deps, _ := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.PreApproved = true
+
+	plan := Plan{Steps: []Step{
+		allowStep("mkdir foo", safety.RiskWrite),
+		confirmStep("sudo apt-get install -y docker.io", safety.RiskElevated),
+		confirmStep("rm -rf ./build", safety.RiskDestructive),
+	}}
+	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
+
+	require.NoError(t, err)
+	require.Equal(t, 3, exec.callCount(), "all three steps must run")
+	assert.Equal(t, 2, prompt.shownCount(), "step 1 (write, low-risk) must skip the prompt; the elevated and destructive steps must both still be prompted individually")
+	assert.False(t, summary.Aborted)
+}
+
+// TestExecuteAskPreApprovedNeverRunsBlockedStep proves PreApproved
+// carries no exception to the "Blocked NEVER executes in ANY mode"
+// invariant: a Blocked step is refused exactly as it would be without
+// PreApproved at all.
+func TestExecuteAskPreApprovedNeverRunsBlockedStep(t *testing.T) {
+	exec := &fakeExecutor{}
+	prompt := &fakePrompt{} // must never even be consulted
+	deps, stdout := baseDeps(t, exec, prompt, &fakeCorrectionCompleter{}, &fakeAudit{})
+	deps.PreApproved = true
+
+	plan := Plan{Steps: []Step{blockStep()}}
+	summary, err := Execute(context.Background(), plan, ModeAsk, deps)
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, exec.callCount())
+	assert.Equal(t, 0, prompt.shownCount())
+	assert.Contains(t, stdout.String(), "BLOCKED(")
+	require.Len(t, summary.Results, 1)
+	assert.Equal(t, OutcomeBlocked, summary.Results[0].Outcome)
+}
+
 // TestExecuteBlockNeverExecutesInAskMode is one half of the "Block NEVER
 // executes in ANY mode" security invariant.
 func TestExecuteBlockNeverExecutesInAskMode(t *testing.T) {
@@ -942,4 +1020,60 @@ func TestExecuteReEvaluatesUnpopulatedDecisionElevatedGatesBehindConfirm(t *test
 	assert.Equal(t, 1, prompt.shownCount(), "an unevaluated elevated command must be re-derived and gated behind a confirm, not run unprompted")
 	require.Equal(t, 1, exec.callCount())
 	assert.False(t, summary.Aborted)
+}
+
+// TestExecuteAppendsRunIDWorkingDirAndReversibleOntoEveryAuditEntry is
+// comrade-undo's schema-plumbing proof: RunDeps.RunID/WorkingDir/UndoOf
+// (all new, empty-by-default fields) and each Step's own Reversible must
+// all reach appendAudit's resulting audit.Entry unchanged, for every step
+// actually executed — not just the ones a hand-written fakeAudit
+// assertion happened to already cover.
+func TestExecuteAppendsRunIDWorkingDirAndReversibleOntoEveryAuditEntry(t *testing.T) {
+	exec := &fakeExecutor{}
+	aud := &fakeAudit{}
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, aud)
+	deps.RunID = "run-abc123"
+	deps.WorkingDir = "/home/user/project"
+
+	step := allowStep("echo hi", safety.RiskRead)
+	step.Reversible = true
+	plan := Plan{Steps: []Step{step}}
+
+	_, err := Execute(context.Background(), plan, ModeAuto, deps)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, aud.entryCount())
+	entry := aud.entries[0]
+	assert.Equal(t, "run-abc123", entry.RunID)
+	assert.Equal(t, "/home/user/project", entry.Cwd)
+	assert.Empty(t, entry.UndoOf, "an ordinary (non-undo) run must never stamp UndoOf")
+	require.NotNil(t, entry.Reversible)
+	assert.True(t, *entry.Reversible)
+}
+
+// TestExecuteStampsUndoOfWhenRunDepsSetsIt proves the OTHER half of the
+// same wiring: when RunDeps.UndoOf is set (comrade undo's own case —
+// internal/cli sets it to the target run's RunID before calling
+// Execute), every entry this run appends carries that same UndoOf value,
+// so a later `comrade undo` invocation can recognize the target run as
+// already undone (see audit.Entry.UndoOf's own doc comment).
+func TestExecuteStampsUndoOfWhenRunDepsSetsIt(t *testing.T) {
+	exec := &fakeExecutor{}
+	aud := &fakeAudit{}
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, aud)
+	deps.RunID = "undo-run-xyz"
+	deps.UndoOf = "original-run-id"
+
+	step := allowStep("rmdir /tmp/example", safety.RiskWrite)
+	step.Reversible = false
+	plan := Plan{Steps: []Step{step}}
+
+	_, err := Execute(context.Background(), plan, ModeAuto, deps)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, aud.entryCount())
+	entry := aud.entries[0]
+	assert.Equal(t, "original-run-id", entry.UndoOf)
+	require.NotNil(t, entry.Reversible)
+	assert.False(t, *entry.Reversible)
 }

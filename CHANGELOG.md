@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-24
+
+### Fixed
+
+- **`comrade auth login openai_compat` left non-OpenAI providers unusable after login** (#23). The active provider defaulted to `anthropic` and login never changed it, while `llm.model` defaulted to the OpenAI-only `gpt-5.4-mini` — so after pointing `base_url` at Qwen/DashScope (or Groq/Mistral/GLM/Kimi/OpenRouter/LM Studio), the first real request 404'd with "The model 'gpt-5.4-mini' does not exist", and the login test-ping itself pinged the wrong model. `auth login <provider>` now **activates** the provider it logs into (persists `llm.provider`, with a notice only when it actually changes); `auth login openai_compat` additionally **prompts for the model** when `base_url` is non-OpenAI and `llm.model` is empty (e.g. `qwen-plus`), and **classifies a 404 "model does not exist"** distinctly — directing you to `comrade config models` → `comrade config set llm.model <model>` instead of a misleading "network issue" message. The base_url/model prompt copy is tidied to two concise lines. A hard-rejected (401/403) login is now fully atomic: `llm.provider`/`llm.model`/`llm.openai_compat.base_url` roll back to their prior values and no "activated"/"saved" notice is printed — a failed login changes nothing.
+
+### Added
+
+- **`docs/GUIDE.md` — a comprehensive, beginner-friendly bilingual (TR + EN) user guide** (#24): from install through daily use — cloud and local (Ollama) provider setup, the three behavior modes, `fix`/`do`/`explain`/`chat`, the everyday helpers (`undo`/`history`/`config`/profiles/plan preview/`--usage`/`doctor`/`upgrade`), safety in plain words, shell integration, and file locations — linked from the README. Adds **Local LLM (Ollama)** and **OpenAI-compatible provider (Qwen, Groq, …)** setup sections to README / CONFIGURATION / TROUBLESHOOTING (EN + TR).
+
+## [0.4.0] - 2026-07-24
+
+### Added
+
+- **`comrade doctor` — self-diagnostic command** (#13). Checks installed-version-vs-latest, PATH, shell-hook install, API-key presence, provider reachability, `base_url` sanity, and config/keychain — a ✓/⚠/✗ checklist with a copy-pasteable fix per item. Credential-safe: the default path sends no key (keyless reachability probe); an opt-in `--live` flag does an authenticated ping through the hardened client path. `--json` output; exit non-zero on a FAIL.
+- **`comrade undo`** (#18). Reverses the last reversible action, or shows manual steps. Records run/cwd/reversibility on audit entries (backward-compatible); derives the inverse via a pure heuristic table (mkdir/mv/pkg-install/systemctl/PowerShell) or an LLM fallback. Every derived step goes through the same `safety.Engine.Evaluate` + redaction and runs in **ask mode** — no `--auto`/`--yolo` bypass; old pre-undo entries are never auto-undone.
+- **Per-request token usage & estimated cost** (#12). Opt-in (`--usage` flag / `general.show_usage`, default off) line after `do`/`fix`/`explain` and per-turn/session in `chat`, printed to stderr. Cost is an `est.` from a small maintained price table, omitted when the model is unknown; `local` for ollama.
+- **Config profiles** (#20). Named `[profiles.<name>]` overlays inside config.toml with `comrade config profile {list,show,use,add,remove,set}` + a persistent `--profile` flag. Active profile = `--profile` > `COMRADE_PROFILE` > `general.profile`; resolution order keeps `COMRADE_*` env as the top precedence. Backward-compatible (inert until a profile exists); a profile overriding any `safety.*` key prints a warning.
+- **Interactive plan preview & edit** (#22). For multi-step `do`/`fix` plans, an opt-in TUI (`--review` / `general.plan_review`, default off) to reorder / skip / edit / delete steps before execution. Any edited command is re-run through `safety.Engine.Evaluate` (a newly-blocked edit can't execute); "approve all" never bypasses the per-step confirm for destructive/elevated steps.
+
+### Changed
+
+- **Intent/effect-based layer added to the destructive-command classifier** (#14). Alongside the existing signature denylist (kept as the `Block` floor), the safety engine now parses POSIX/bash commands into an AST (`mvdan.cc/sh`, offline, no execution) and classifies by the command's actual resolved effect — closing evasions the signature-only engine missed: shell-variable indirection (`R=rm; $R -rf /`), exotic fetchers in command-word position, and dynamic disk-device targets (`dd of=$(cat dev.txt)`). Safety-monotonic: the new layer only ever RAISES risk (to a confirmation), never lowers it and never produces a Block on its own. PowerShell keeps the signature path. Adds the `mvdan.cc/sh/v3` dependency.
+
+## [0.3.1] - 2026-07-24
+
+### Fixed
+
+- **`comrade auth login openai_compat` silently sent a non-OpenAI key to `api.openai.com`** whenever `llm.openai_compat.base_url` was still at its shipped default — Mistral/Groq/GLM/Qwen/Kimi/OpenRouter/LM Studio keys all pinged OpenAI's own endpoint and got back a confusing 401 from OpenAI instead of the user's real provider. `auth login openai_compat` now detects the still-default `base_url` and interactively prompts for the real endpoint before ever pinging or storing anything (a bare Enter keeps OpenAI's own URL, so genuine OpenAI users see no behavior change); an entered value is validated with the same `config.CheckBaseURL` reject/warn checks `comrade config set` already applies — including the cleartext-`http` warning — and is persisted via `SetAndSave` *before* the login ping, so the ping and the saved config always agree. Also de-duplicates the doubled `openai_compat: openai_compat: ...` error prefix that showed up in chain-failure messages, across every connector, not just `openai_compat`. (#10)
+
+### Changed
+
+- Documentation refreshed for the v0.3.0 feature set — self-update cosign signing, `install.sh`'s automatic PATH setup and `COMRADE_NO_MODIFY_PATH` opt-out, `base_url` validation's reject/warn split, expanded redaction pattern coverage, and the hardened destructive-command classifier — across README, CLAUDE.md, KNOWN_LIMITATIONS, and `docs/CONFIGURATION.md`/`INSTALL.md`/`PACKAGING.md`/`SECURITY.md`/`TECHNICAL.md`(`.tr.md`)/`TROUBLESHOOTING.md`/`UPDATE_SIGNING.md` (#8).
+- Documented that the inline space-triggered ghost hint is zsh/PowerShell-only: bash's readline has no ghost-text mechanism (Tab/double-Tab still work there), and fish already covers this via its own built-in autosuggestions (#11).
+
+## [0.3.0] - 2026-07-24
+
+### Added
+
+- **Self-update signature verification (cosign).** `comrade upgrade` now verifies a cosign key-based signature of the release's `checksums.txt` against a public key embedded in the binary — pure-Go and fully offline (no network or transparency-log lookup) — before trusting the checksum or replacing the binary, closing the "compromised or spoofed release" gap in the update path. Releases are signed in CI via cosign (a `checksums.txt.sig` asset). See [`docs/UPDATE_SIGNING.md`](docs/UPDATE_SIGNING.md).
+
+### Security
+
+- **The destructive-command classifier no longer trusts the model's declared risk label.** The safety engine now independently detects many destructive commands its signature set previously missed — `find … -delete`; the disk-destroying family (`wipefs`/`blkdiscard`/`sgdisk`/`mke2fs`/`mkswap`/…); `chmod -R` on a root target; `mv … /dev/null`; Windows storage cmdlets (`Format-Volume`/`Clear-Disk`/…); and fetch-and-execute (`curl … | sh`, `bash <(curl …)`, `bash -c "$(curl …)"`) — so they are blocked or require confirmation instead of running unprompted in `auto` mode. Also adds case-insensitive command matching (`rm -Rf /`), `$(…)` unwrapping, and a fail-closed default for an unevaluated safety decision.
+- **Redaction now covers many more secret shapes** before any context leaves the machine: Google `AIza`, GitHub `github_pat_`/`ghs_`, GitLab, Stripe, Google OAuth, SendGrid, npm, Slack webhooks, Azure `AccountKey`, `Authorization: Basic`, and `scheme://user:pass@` connection strings — plus compound key names such as `DB_PASSWORD=` / `AWS_SECRET_ACCESS_KEY=`.
+- **`base_url` is validated** so the provider API key can no longer be sent to an arbitrary or cleartext host: `comrade config set` rejects non-`http(s)`, host-less, and cloud-metadata/link-local values, and the active provider's client refuses to start on a reject-class URL (config-repair commands remain usable).
+- **Update/IO hardening:** HTTP client timeouts and bounded response reads on the update path, symlink-resolved binary replacement, atomic writes to shell rc files, and bounded reads of the state/history/last-command files.
+
 ## [0.2.0] - 2026-07-11
 
 ### Added
@@ -833,7 +881,10 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/firatkutay/cli-comrade/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/firatkutay/cli-comrade/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/firatkutay/cli-comrade/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/firatkutay/cli-comrade/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/firatkutay/cli-comrade/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/firatkutay/cli-comrade/compare/v0.1.2...v0.1.3

@@ -768,6 +768,26 @@ Anahtar anahtar tam referans: [CONFIGURATION.md](CONFIGURATION.md).
 ortam değişkeni (`COMRADE_...`) > dosyadaki değer > yerleşik varsayılan;
 `comrade config list` her anahtarın çözümlenmiş kaynağını gösterir.
 
+**`base_url` doğrulaması** (`internal/config/validate.go`'nun
+`checkBaseURL`'i, SAST bulgu #3'ü kapatır: doğrulanmamış bir `base_url`,
+provider API key'ini, bir `Authorization: Bearer` header'ı olarak, adlandırdığı
+herhangi bir host'a gönderir), `llm.openai_compat.base_url`/
+`llm.ollama.base_url`'e bu tek fonksiyonu paylaşan üç bağımsız noktada
+uygulanır, bu yüzden birbirinden kopamazlar: `comrade config set`
+(sert-red), yalnızca aktif provider'ın kendi `base_url`'inin
+config-yükleme-zamanı yeniden doğrulaması (yalnızca-uyarı — burada sert
+bir başarısızlık, repair komutları dahil her komutu tuğlaya çevirirdi),
+ve `internal/llm/client.go`'nun `buildProvider`'ı (fallback zincirindeki
+bir deneme için bir client gerçekten kurulduğu noktada sert-red, çünkü
+bu yol repair için erişilebilir kalmak zorunda değildir). Bir `http(s)`
+URL'i olarak host'lu ayrıştırılamayan, veya host'u bir
+cloud-metadata/link-local adresi olan (`169.254.0.0/16`, IPv6
+`fe80::/10`) bir değer, bir `*config.InvalidValueError` ile kesin olarak
+reddedilir; loopback-olmayan bir host'a düz-metin `http://` URL'i izin
+verilir ama key'in şifrelenmemiş gideceğine dair bir uyarı basar —
+private aralıklar (`10/8`, `192.168/16`, `172.16/12`) ve kendi-barındırılan
+LAN Ollama/LM-Studio kurulumları bilinçli olarak engellenmez.
+
 ## 8. Güvenlik modeli
 
 Tam tehdit-modeli yazısı: [SECURITY.md](SECURITY.md).
@@ -783,11 +803,13 @@ güvenmez.
 ### Denylist — koşulsuz `Block`, hangi mod olursa olsun
 
 Yerleşik kural kategorileri (`internal/safety/denylist.go`), bir
-tırnaklama numarasının eşleşmeyi kaçırmasını önlemek için komutun
-normalize edilmiş/token'lanmış haline karşı eşleştirilir:
+tırnaklama numarasının (ve bir `$(...)` komut-ikamesi sarmalayıcısının)
+eşleşmeyi kaçırmasını önlemek için komutun normalize edilmiş/
+token'lanmış haline karşı eşleştirilir:
 
 - `rm -rf /` (ve `~`/`$HOME`-root eşdeğerleri)
-- `mkfs` (dosya sistemi formatlama)
+- `mkfs` ve daha geniş disk-formatlama ailesi (`mke2fs`, `mkswap`,
+  `mkdosfs`, `mkntfs`, `newfs`)
 - `dd of=/dev/<disk>` (ham disk üzerine yazma)
 - `diskpart clean` (bir diskin partition tablosunu siler)
 - PowerShell `Remove-Item`/`ri`/`rd`/`rmdir`/`del`/`erase`/`rm`,
@@ -795,33 +817,74 @@ normalize edilmiş/token'lanmış haline karşı eşleştirilir:
 - `format <sürücü>:` (Windows format)
 - fork bomb (`:(){:|:&};:`)
 - `> /dev/<disk>` (gerçek bir disk aygıtına shell redirect'i)
+- bilinen bir destructive disk aracının (`wipefs`/`blkdiscard`/`sgdisk`/
+  `tee`/`shred`) gerçek bir `/dev/<disk>` aygıtına yöneltilmesi
+  (`isDestructiveDiskTool`)
 
-Kullanıcı `safety.denylist_extra` (regex) ile daha fazlasını
-ekleyebilir, aynı koşulsuz-`Block` etkisiyle; bozuk bir kullanıcı
-regex'i, motoru çökertmek yerine bir stderr uyarısıyla atlanır.
+Normalizasyon (`internal/safety/tokenize.go`'nun `normalizeCommand`'i),
+herhangi bir kural çalışmadan önce tırnak karakterlerini kaldırır ve
+`$(...)` komut ikamesini açar, ve regex-tabanlı her kural
+case-insensitive'tir — bu yüzden `rm -Rf /` ve `$(rm -rf /)`, çıplak
+formla birebir aynı şekilde tanınır. Kullanıcı `safety.denylist_extra`
+(regex) ile daha fazlasını ekleyebilir, aynı koşulsuz-`Block` etkisiyle;
+bozuk bir kullanıcı regex'i, motoru çökertmek yerine bir stderr
+uyarısıyla atlanır.
 
 ### Escalation kuralları — effective risk'i yalnızca yükseltir, asla düşürmez
 
 `internal/safety/escalation.go`'nun sabit kural seti: recursive/force
-silme flag'leri (`rm -r`/`-f`, PowerShell `-Recurse`/`-Force`), `chmod
--R 777`, disk aygıtı yazmaları, registry silme (`HKLM:`/`HKCU:`),
-`killall`/`taskkill /F`, güvenlik duvarı sıfırlamaları (`iptables -F`,
-`netsh advfirewall reset`), `git push --force`/`-f`, `sudo`/`runas`/
-yükseltme, paket yöneticisi kurulumları, ve bir network-erişim fiili
-içeren herhangi bir komut.
+silme flag'leri (`rm -r`/`-f`, PowerShell `-Recurse`/`-Force`),
+root-benzeri bir hedefte `chmod`/`chown -R`, disk aygıtı yazmaları,
+registry silme (`HKLM:`/`HKCU:`), `killall`/`taskkill /F`, güvenlik
+duvarı sıfırlamaları (`iptables -F`, `netsh advfirewall reset`), `git
+push --force`/`-f`, `sudo`/`runas`/yükseltme, paket yöneticisi
+kurulumları, ve bir network-erişim fiili içeren herhangi bir komut —
+artı v0.3.0'ın sertleştirme eklemeleri, ki bunlar modelin kendi beyan
+ettiği risk etiketinin önceden hiç kapsamadığı signature-allowlist
+boşluklarını kapatır: `find ... -delete` (kitlesel, `rm`-olmayan
+silme), `shred -u`/`--remove` ve `truncate -s 0` (`rm`-olmayan
+güvenli-silme/sıfırlama), `mv ... /dev/null` (move ile atma), Windows
+storage cmdlet'leri (`Format-Volume`/`Clear-Disk`/`Initialize-Disk`/
+`Remove-Partition`), koşulsuz `reg delete ... /f`, `diskpart /s
+<script>` (opak script dosyası), çıplak `eval`, ve üç bağımsız şekilde
+tanınan fetch-and-execute — bir pipe (`curl|wget|... | sh/bash/zsh/
+python/pwsh`), bir process substitution (`bash <(curl ...)`), ve bir
+komut ikamesi (`bash -c "$(curl ...)"`, yalnızca `normalizeCommand`
+`$(...)`'i açtığı için yakalanır) — artı bir `base64 -d | sh`
+decode-and-execute pipeline'ı.
+
+**Değerlendirilmemiş bir karar için fail-closed varsayılan**
+(`internal/safety/decision.go`'nun `Decision.Evaluated`'i): sıfır-değerli
+bir `Decision` (`Action: Allow`, `EffectiveRisk: RiskRead`, ikisi de enum
+sıfır değeri), aksi halde meşru bir read-`Allow` verdiktinden ayırt
+edilemez. `Evaluated`, `Engine.Evaluate`'ten çıkan her gerçek yolda
+(`Block`, `Confirm`, ve `Allow` aynı şekilde) `true`'dur, bu yüzden
+`internal/engine/runner.go`'nun `normalizeStepDecisions`'ı, doldurulmamış
+bir `Decision` ile ulaşan bir `Step`'i tespit edip onu sormadan
+çalıştırmak yerine yeniden türetebilir.
 
 ### Redaction (`internal/redact/redact.go`)
 
 Her giden LLM payload'ına uygulanır (`internal/llm.Client`, opsiyonel
-değil). Pattern seti:
+değil). Pattern seti, önceden yakalanan hiçbir şeyi daraltmadan
+SAST-denetimi boşluklarını kapatmak için v0.3.0'da genişletildi:
 
 - PEM private-key blokları
-- `password=`/`token=`/`secret=`/`api_key=` tarzı key-value çiftleri (ve
-  `:` ile ayrılmış formları)
-- `Authorization: Bearer <token>` header'ları, ve tek başına `Bearer
-  <token>` görülümleri
-- Bilinen API-key formatları: `sk-...` (OpenAI tarzı), `ghp_`/`gho_`
-  (GitHub), `AKIA...` (AWS), `xox[baprs]-...` (Slack)
+- `password=`/`token=`/`secret=`/`api_key=`/`access_key=`/
+  `client_secret=` tarzı key-value çiftleri (ve `:` ile ayrılmış
+  formları), bileşik bir key adı ön/son eki dahil — ör. `DB_PASSWORD=`,
+  `AWS_SECRET_ACCESS_KEY=`
+- `Authorization: Bearer <token>` ve `Authorization: Basic <token>`
+  header'ları, ve tek başına `Bearer <token>` görülümleri
+- `scheme://user:pass@host` bağlantı-dizesi kimlik bilgileri (yalnızca
+  password segmenti)
+- Azure `AccountKey=<...>` değerleri
+- Bilinen API-key formatları: `sk-...` (OpenAI tarzı), `ghp_`/`gho_`/
+  `github_pat_`/`ghs_` (GitHub), `AKIA...` (AWS), `xox[baprs]-...`
+  (Slack), `AIza...` (Google API/Gemini), `glpat-...` (GitLab),
+  `sk_live_`/`sk_test_` (Stripe), `GOCSPX-...`/`ya29....` (Google
+  OAuth), `SG....` (SendGrid), `npm_...` (npm), ve Slack incoming
+  webhook URL'leri (`https://hooks.slack.com/services/...`)
 - JWT'ler (üç segmentli base64url)
 - E-posta adresleri ve IPv4/IPv6 adresleri — **opsiyonel**,
   `privacy.redact_emails`/`privacy.redact_ips` ile kapılanır
@@ -1349,7 +1412,15 @@ anahtarları yerel bir dosyaya kaydediliyor").
   Homebrew Cask anlamına geliyor)
 - Bir **Scoop** bucket manifest'i
 - Bir **winget** manifest'i, staging bir `winget-pkgs` fork'una PR
-  olarak gönderilir
+  olarak gönderilir, goreleaser'ın varsayılan bot yazarı yerine
+  bakımcının kendi CLA-imzalı kimliğiyle commit'lenir
+  (`winget.commit_author`) — winget-pkgs'in CLA kontrolü commit
+  yazarına göre çalışır, bu yüzden bir bot yazar her release PR'ında
+  `Needs-CLA` kapısına takılırdı
+- cosign-imzalı bir `checksums.txt.sig` (`signs:`, key-tabanlı, offline
+  — `--tlog-upload=false`, yalnızca doğrulama zamanında değil, imzalama
+  zamanında da Rekor transparency log'unu atlar) — bununla `comrade
+  upgrade`'in ne yaptığı için yukarıdaki paragraflara bakın
 
 `scripts/install.sh`/`install.ps1` kurulum betikleri, host OS/mimarisine
 uyan release arşivini indirir, release'in yayınladığı `checksums.txt`'e
@@ -1358,10 +1429,59 @@ gerekmez.
 
 **`comrade upgrade`** (`internal/update`), çalışma zamanında eşdeğerini
 yapar: GitHub Releases'i sorgular, çalışan binary'nin build-time
-versiyonuyla karşılaştırır, eşleşen arşivi indirir ve checksum'ını
-doğrular, ve o an çalışan executable'ı atomik olarak değiştirir
-(Windows'un çalışan-bir-exe'nin-üstüne-yazamama durumunu bir rename
-manevrasıyla ele alarak).
+versiyonuyla karşılaştırır, eşleşen arşivi artı `checksums.txt` ve
+`checksums.txt.sig`'i indirir, checksum'a güvenmeden **önce**
+`checksums.txt`'in cosign imzasını binary'ye gömülü public key'e karşı
+**doğrular**, arşivi ona karşı checksum-doğrular, ve o an çalışan
+executable'ı atomik olarak değiştirir (Windows'un
+çalışan-bir-exe'nin-üstüne-yazamama durumunu bir rename manevrasıyla ele
+alarak).
+
+**Kendi kendini güncelleme imza doğrulaması**
+(`internal/update/signature.go`, `Updater.Apply`), `checksums.txt`'i —
+ve dolaylı olarak `VerifyChecksum`'ın onun sayesinde güvendiği her şeyi
+— build zamanında binary'ye gömülü bir cosign public key'ine
+(`internal/update/cosign.pub`, `//go:embed` ile gömülü) sabitler.
+Doğrulama saf Go'dur ve tamamen offline'dır (ECDSA P-256, stdlib'in
+`crypto/ecdsa`/`crypto/x509`/SHA-256'sı — kullanıcının makinesinde ne
+bir `cosign` binary'si ne de ağ/transparency-log sorgusu gerekir):
+`verifyChecksumsSignatureWith`, gömülü key'i PEM-decode eder, bir ECDSA
+public key olarak ayrıştırır, ve `checksums.txt`'in SHA-256 digest'ine
+ve base64-decode edilmiş `checksums.txt.sig` içeriğine karşı
+`ecdsa.VerifyASN1`'i çağırır. Sonuç, üç değerli `SignatureStatus`
+enum'uyla (`internal/update/updater.go`) raporlanır, bu paket tarafından
+doğrudan yazdırılmak yerine (bir `i18n.Translator`'ı yoktur) çağırana
+döndürülür:
+
+- `SignatureStatusNotConfigured` — gömülü key hâlâ `cosign.pub`'ın
+  build-time placeholder'ıdır (çözülebilir bir `PUBLIC KEY` PEM bloğu
+  değil). Bilinçli, rollout-güvenli bir fallback: `Apply`, imzalama hiç
+  bağlanmadan önce olduğu gibi mevcut checksum-yalnızca doğrulamasına
+  devam eder, bu yüzden gerçek bir key gömülmeden önce derlenen bir
+  release çalışmaya devam eder. `internal/cli/upgrade.go` bunu
+  bilgilendirici bir uyarı olarak render eder
+  (`MsgUpgradeSignatureNotConfigured`).
+- `SignatureStatusVerified` — gerçek bir key yapılandırılmış ve imza,
+  başka bir şeye güvenilmeden önce doğrulanmış.
+- `SignatureStatusUnset` (enum'un sıfır değeri) artı nil olmayan bir
+  hata — bir `ChecksumsSigFileName` (`checksums.txt.sig`) asset'i
+  olmadan yayınlanmış bir release (`ErrMissingSignatureAsset`) veya
+  doğrulanmayan biriyle (`ErrSignatureInvalid`) — `Apply`'ı,
+  `VerifyChecksum`/`ExtractBinary` hiç çalışmadan önce durdurur. Gerçek
+  bir key yapılandırıldığında, bu pazarlık edilemez: `Apply`,
+  `SignatureStatusNotConfigured` için yaptığı gibi asla
+  checksum-yalnızca doğrulamaya geri dönmez.
+
+`Updater.CosignPub`, gömülü key'in test-yalnızca bir override'ıdır
+(her production çağıranda nil — `internal/cli`'nin
+`defaultUpgradeDeps`'i bunu asla ayarlamaz), testlerin her dalı
+(placeholder key, eşleşmeyen key, kurcalanmış checksum, bozuk imza)
+binary'ye gerçekten gömülü tek gerçek key yerine geçici,
+in-test-üretilmiş bir key çiftine karşı egzersiz etmesine izin verir.
+Bakımcıya yönelik key-rotasyonu ve CI-secret kurulumu için
+[docs/UPDATE_SIGNING.md](UPDATE_SIGNING.md)'a, `checksums.txt.sig`'in
+ilk etapta nasıl yayınlandığı için `.goreleaser.yaml`'daki
+release-signing bloğuna (aşağıdaki §11) bakın.
 
 **Drift koruması**: release arşivi isimlendirme şeması kaçınılmaz olarak
 dört yerde tekrarlanır — `.goreleaser.yaml`'ın `archives[].name_template`'i,

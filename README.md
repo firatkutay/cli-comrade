@@ -75,7 +75,7 @@ Plus setup/utility commands: `comrade auth` (login/logout/status),
 | Mode | Behavior |
 |---|---|
 | `auto` | comrade runs each step itself, printing a one-line status per step. |
-| `ask` | Before every command: a short rationale + the command itself, then `[y]es / [n]o / [e]dit / [x]plain / [a]ll`. **Default mode.** |
+| `ask` | Before every command: a short rationale + the command itself, then `[y]es [n]o [e]dit [x]plain [a]ll`. **Default mode.** |
 | `info` | Runs nothing — explains the cause and the fix as copy-pasteable commands. |
 
 > The prompt and its accepted keys follow the interface language — a
@@ -92,8 +92,8 @@ together — and doing so prints a loud warning on every use.
   `read` / `write` / `network` / `elevated` / `destructive`.
 - **Local rule engine + denylist** (`internal/safety`) — a regex/AST-based
   second check that never trusts the LLM's own label; hard-blocks known
-  catastrophic patterns (`rm -rf /`, `mkfs`, `dd of=/dev/...`, `diskpart
-  clean`, fork bombs, etc.) regardless of mode.
+  catastrophic patterns (`rm -rf /`, `mkfs`, `dd of=/dev/...`,
+  `diskpart clean`, fork bombs, etc.) regardless of mode.
 - **Redaction** (`internal/redact`) — every payload sent to the LLM is
   scrubbed of API-key-shaped strings, `password=`/`token=`, bearer headers,
   etc. before it leaves the machine.
@@ -102,6 +102,15 @@ together — and doing so prints a loud warning on every use.
 - **Keychain-backed secrets** — API keys go through the OS keychain
   (macOS Keychain, Windows Credential Manager, Linux Secret Service) with
   an explicit, opt-in 0600 file fallback; never plaintext in config.
+- **Self-update signature verification** — `comrade upgrade` verifies a
+  cosign signature of the release's `checksums.txt` against a public key
+  embedded in the binary, fully offline, before trusting the checksum or
+  replacing the running executable.
+- **v0.3.0 hardening** — `base_url` validation (an LLM API key can no
+  longer be sent to a cloud-metadata / link-local address, and a
+  plaintext-`http` destination is flagged with a warning that the key
+  would travel unencrypted), broader redaction coverage, and a hardened
+  destructive-command classifier.
 
 Full model: [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -116,6 +125,22 @@ Full model: [docs/SECURITY.md](docs/SECURITY.md).
 
 A config-driven fallback chain tries providers in order if one errors or
 times out.
+
+### Local LLM (Ollama)
+
+Run comrade fully offline against a locally-served model — no API key
+required:
+
+```sh
+ollama pull llama3.1                     # pull a model with Ollama first
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    # optional — leave unset to auto-pick a pulled model
+comrade "install docker"
+```
+
+Full setup (remote Ollama hosts, fallback-chain syntax) and the
+`openai_compat` model-selection gotcha (Qwen, Groq, Mistral, ...):
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ### Install
 
@@ -132,9 +157,13 @@ times out.
 The install scripts download the matching release archive via GitHub's
 no-API `releases/latest/download` redirect (or a tag-scoped URL when
 pinned), verify it against that release's `checksums.txt` (`sha256sum -c` /
-`Get-FileHash`) **before** installing anything, and print a `comrade init
-<shell>` hint when done. Set `COMRADE_VERSION` (env var, or `-Version` on
-Windows) to pin an exact release instead of installing the latest one.
+`Get-FileHash`) **before** installing anything, and print a
+`comrade init <shell>` hint when done. Set `COMRADE_VERSION` (env var,
+or `-Version` on Windows) to pin an exact release instead of installing
+the latest one.
+If the install directory isn't already on `PATH`, the script also adds it
+to your shell rc file automatically (opt out with `COMRADE_NO_MODIFY_PATH`)
+— see [docs/INSTALL.md](docs/INSTALL.md) for the exact mechanism.
 
 Full details, env-var reference, and per-channel maintainer notes:
 [docs/INSTALL.md](docs/INSTALL.md) and [docs/PACKAGING.md](docs/PACKAGING.md).
@@ -165,6 +194,10 @@ comrade fix                   # after a failed command
 comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
+
+New to the terminal? [docs/GUIDE.md](docs/GUIDE.md) walks through all of
+the above — install, provider setup, the 3 modes, and daily use — in
+plain language, bilingual (TR/EN).
 
 ### Shell completion
 
@@ -200,9 +233,11 @@ alongside it). Details:
 
 ### Docs
 
+- [docs/GUIDE.md](docs/GUIDE.md) — the full "install to daily use" user guide (bilingual).
 - [docs/INSTALL.md](docs/INSTALL.md) — every install channel, in detail.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — every config key.
 - [docs/SECURITY.md](docs/SECURITY.md) — the full safety/security model.
+- [docs/UPDATE_SIGNING.md](docs/UPDATE_SIGNING.md) — self-update signature verification.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common issues.
 - [docs/TECHNICAL.md](docs/TECHNICAL.md) — technical documentation (EN).
 - [docs/TECHNICAL.tr.md](docs/TECHNICAL.tr.md) — teknik dokümantasyon (TR).
@@ -286,7 +321,7 @@ Ayrıca kurulum/yardımcı komutlar: `comrade auth` (login/logout/status),
 | Mod | Davranış |
 |---|---|
 | `auto` | comrade her adımı kendisi çalıştırır, her adımda tek satırlık durum yazar. |
-| `ask` | Her komuttan önce kısa gerekçe + komutun kendisi gösterilir, ardından `[e]vet / [h]ayır / [d]üzenle / [a]çıkla / [t]ümü` sorulur. **Varsayılan mod budur.** |
+| `ask` | Her komuttan önce kısa gerekçe + komutun kendisi gösterilir, ardından `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` sorulur. **Varsayılan mod budur.** |
 | `info` | Hiçbir şey çalıştırmaz — nedeni ve çözüm adımlarını kopyalanabilir komutlarla açıklar. |
 
 > Prompt ve kabul edilen tuşlar arayüz diline göre değişir — İngilizce
@@ -315,6 +350,15 @@ basılır.
   keychain'inden (macOS Keychain, Windows Credential Manager, Linux Secret
   Service) geçer; açık, opt-in bir 0600 dosya fallback'i vardır, config
   dosyasına asla düz metin yazılmaz.
+- **Kendi kendini güncelleme imza doğrulaması** — `comrade upgrade`,
+  binary'ye gömülü bir public key'e karşı release'in `checksums.txt`'inin
+  cosign imzasını, tamamen offline olarak, checksum'a güvenmeden veya
+  çalışan executable'ı değiştirmeden önce doğrular.
+- **v0.3.0 sertleştirmesi** — `base_url` doğrulaması (bir LLM API
+  anahtarı artık bir cloud-metadata / link-local adresine gönderilemez;
+  düz-metin bir `http` hedefi, anahtarın şifresiz gideceğine dair bir
+  uyarıyla işaretlenir), daha geniş redaction kapsamı, ve sertleştirilmiş
+  bir destructive-komut sınıflandırıcısı.
 
 Tam model: [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -329,6 +373,22 @@ Tam model: [docs/SECURITY.md](docs/SECURITY.md).
 
 Config'te tanımlı sıralı bir fallback zinciri, bir sağlayıcı hata verir
 veya zaman aşımına uğrarsa sıradakine geçer.
+
+### Yerel LLM (Ollama)
+
+comrade'i, API anahtarı gerektirmeden, tamamen çevrimdışı olarak yerel
+bir modele karşı çalıştırın:
+
+```sh
+ollama pull llama3.1                     # önce modeli Ollama ile indirin
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    # opsiyonel — boş bırakılırsa kurulu bir model otomatik seçilir
+comrade "docker kur"
+```
+
+Tam kurulum (uzak Ollama sunucuları, fallback-zinciri sözdizimi) ve
+`openai_compat` model-seçim tuzağı (Qwen, Groq, Mistral, ...):
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ### Kurulum
 
@@ -349,6 +409,9 @@ bir URL) üzerinden indirir, herhangi bir şey kurmadan **önce** o release'in
 bitince bir `comrade init <shell>` ipucu basar. Belirli bir sürümü
 sabitlemek için `COMRADE_VERSION` ortam değişkenini (Windows'ta `-Version`
 parametresini) kullanın.
+Kurulum dizini `PATH`'te değilse, script bunu shell rc dosyanıza otomatik
+olarak ekler (`COMRADE_NO_MODIFY_PATH` ile devre dışı bırakılabilir) —
+tam mekanizma için [docs/INSTALL.md](docs/INSTALL.md)'a bakın.
 
 Tüm ayrıntılar, ortam değişkeni referansı ve kanal başına bakım notları:
 [docs/INSTALL.md](docs/INSTALL.md) ve [docs/PACKAGING.md](docs/PACKAGING.md).
@@ -381,6 +444,10 @@ comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
 
+Terminalle arası pek iyi değil misiniz? [docs/GUIDE.md](docs/GUIDE.md),
+yukarıdakilerin hepsini — kurulum, sağlayıcı ayarı, 3 mod, günlük
+kullanım — sade dille, çift dilli (TR/EN) olarak anlatır.
+
 ### Kabuk (shell) tamamlama
 
 `comrade init <shell>`, shell kancasıyla birlikte Tab-tamamlamayı da
@@ -407,17 +474,19 @@ sağlayıcıları listeler; `comrade config get <Tab>` her gerçek config
 anahtarını listeler; `comrade init <Tab>` desteklenen shell'leri listeler.
 
 **`comrade init` zaten kurulu mu?** Tamamlamalar ve boşluk ipucu, mevcut
-hook'un üzerine eklenen yeni içeriktir — bunları almak için `comrade
-init <shell>`'i bir kez yeniden çalıştırın (idempotenttir: mevcut
-hook'unuza dokunulmaz, yeni içerik yalnızca onun yanına eklenir).
+hook'un üzerine eklenen yeni içeriktir — bunları almak için
+`comrade init <shell>`'i bir kez yeniden çalıştırın (idempotenttir:
+mevcut hook'unuza dokunulmaz, yeni içerik yalnızca onun yanına eklenir).
 Ayrıntılar:
 [docs/TECHNICAL.tr.md §9](docs/TECHNICAL.tr.md#9-shell-entegrasyonu).
 
 ### Dokümanlar
 
+- [docs/GUIDE.md](docs/GUIDE.md) — "kurulumdan günlük kullanıma" tam kullanım kılavuzu (çift dilli).
 - [docs/INSTALL.md](docs/INSTALL.md) — tüm kurulum kanalları, ayrıntılı.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — her config anahtarı.
 - [docs/SECURITY.md](docs/SECURITY.md) — tam güvenlik modeli.
+- [docs/UPDATE_SIGNING.md](docs/UPDATE_SIGNING.md) — kendi kendini güncelleme imza doğrulaması.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — yaygın sorunlar.
 - [docs/TECHNICAL.md](docs/TECHNICAL.md) — technical documentation (EN).
 - [docs/TECHNICAL.tr.md](docs/TECHNICAL.tr.md) — teknik dokümantasyon (TR).

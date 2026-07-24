@@ -58,6 +58,25 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		// --usage: DisableFlagParsing (above) means cobra never registers
+		// or parses any flag for this command at all — the "command being
+		// explained" argument routinely starts with a dash itself, which
+		// is exactly what DisableFlagParsing exists to let through
+		// untouched (see the field's own comment). So --usage is handled
+		// by hand here, exactly like the "--" escape hatch and -h/--help
+		// immediately below: only a LEADING literal "--usage" token is
+		// ever treated as the flag, never one that reaches here after the
+		// "--" escape (checked next) — "comrade explain -- --usage" must
+		// still explain the literal string "--usage". This also means
+		// --usage never appears in `comrade explain --help`'s own Flags
+		// section (there is no cobra flag to render) — a small,
+		// deliberate discoverability gap, not an oversight.
+		usageFlag := false
+		for len(args) > 0 && args[0] == "--usage" {
+			usageFlag = true
+			args = args[1:]
+		}
+
 		// Escape hatch (documented in MsgExplainUsageError/--help itself):
 		// "comrade explain -- <command>" always explains <command>
 		// literally, even if it's exactly "-h"/"--help" — DisableFlagParsing
@@ -69,7 +88,7 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 			if len(args) == 0 {
 				return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgExplainUsageError))
 			}
-			return runExplain(cmd, newLoader, strings.Join(args, " "))
+			return runExplain(cmd, newLoader, strings.Join(args, " "), usageFlag)
 		}
 
 		if len(args) == 0 {
@@ -79,7 +98,7 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 			return cmd.Help()
 		}
 
-		return runExplain(cmd, newLoader, strings.Join(args, " "))
+		return runExplain(cmd, newLoader, strings.Join(args, " "), usageFlag)
 	}
 	return cmd
 }
@@ -90,14 +109,27 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 // first when it warrants a warning, then asks engine.Explainer for its
 // breakdown and renders it. mode/dry-run/audit/executor — everything
 // runDo/runFix need to actually run a plan — do not exist here at all.
-func runExplain(cmd *cobra.Command, newLoader loaderFactory, command string) error {
+//
+// usageFlag is newExplainCmd's hand-parsed --usage (see its own doc
+// comment for why it can't be a real cobra flag here); combined with
+// cfg.General.ShowUsage exactly like do/fix's flags.usage.
+func runExplain(cmd *cobra.Command, newLoader loaderFactory, command string, usageFlag bool) error {
 	cfg, tr, err := loadConfigWithNotice(cmd, newLoader)
 	if err != nil {
 		return fmt.Errorf("comrade explain: %w", err)
 	}
-	client, err := buildLLMClient(cmd, cfg, tr)
+
+	tally := newUsageTally()
+	client, err := buildLLMClient(cmd, cfg, tr, tally.record)
 	if err != nil {
 		return fmt.Errorf("comrade explain: %w", err)
+	}
+	if cfg.General.ShowUsage || usageFlag {
+		defer func() {
+			// Best-effort: a stderr write failure here must never mask
+			// runExplain's own real result.
+			_ = printUsageSummary(cmd.ErrOrStderr(), tr, tally, resolveColorEnabled(cfg, os.Environ(), cmd.ErrOrStderr()))
+		}()
 	}
 
 	safetyEngine := safety.NewEngine(cfg)

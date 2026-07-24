@@ -64,3 +64,8 @@ func TestKnownGoogleModelsIncludesTheConfiguredDefault(t *testing.T) {
 	assert.Equal(t, []string{"gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-pro"}, KnownGoogleModels())
 	assert.Contains(t, KnownGoogleModels(), defaultGoogleModel)
 }
+
+func TestDefaultOpenAICompatModelMatchesTheInternalConstant(t *testing.T) {
+	assert.Equal(t, defaultOpenAICompatModel, DefaultOpenAICompatModel())
+	assert.Equal(t, "gpt-5.4-mini", DefaultOpenAICompatModel())
+}

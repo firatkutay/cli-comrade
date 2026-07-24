@@ -1,10 +1,10 @@
 # Bilinen Kısıtlar / Known Limitations
 
-Bu dosya, mevcut sürüm hattının (şu anda `v0.1.4`) dürüst "bilinen
+Bu dosya, mevcut sürüm hattının (şu anda `v0.3.0`) dürüst "bilinen
 sorunlar" listesidir ve her sürümle güncel tutulur. Hiçbir madde
 gizlenmedi ya da hafifletilmedi.
 
-This file is the current release line's (currently `v0.1.4`) honest
+This file is the current release line's (currently `v0.3.0`) honest
 known-issues list, kept up to date with every release. Nothing here is
 hidden or downplayed.
 
@@ -65,7 +65,7 @@ hidden or downplayed.
 
 ### Yayın (release) kanalları — üçüncü taraf incelemesi bekleyenler
 
-v0.1.0'dan v0.1.4'e beş sürüm gerçek GitHub Releases olarak yayınlandı;
+v0.1.0'dan mevcut v0.3.0'a kadar her sürüm gerçek GitHub Releases olarak yayınlandı;
 Homebrew (`firatkutay/tap`) ve Scoop (`firatkutay/scoop-bucket`) kanalları
 v0.1.2/v0.1.3'ten bu yana canlı ve her release'de otomatik güncelleniyor.
 Kalan açık maddeler:
@@ -74,9 +74,38 @@ Kalan açık maddeler:
   gönderildi, moderatör incelemesi bekliyor (bkz. `docs/INSTALL.md`).
 - **Snap**: paket hazır (`snap/snapcraft.yaml` + classic confinement)
   ama Snap Store kaydı ve classic onayı bekliyor (bkz. `docs/INSTALL.md`).
-- **cosign imzalama** hâlâ etkin değil — `.goreleaser.yaml`'de yorum
-  satırı halinde belgelendi (~232-241. satırlar), bir anahtar-sağlama
-  kararı (keypair+secret vs. keyless OIDC) gerektiriyor.
+
+### Güvenlik sertleştirmesi — bilinen kalan boşluklar (v0.3.0)
+
+v0.3.0, kendi-kendini-güncelleme imza doğrulamasını, `base_url`
+doğrulamasını, redaction kapsamını ve yıkıcı-komut sınıflandırıcısını
+sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
+
+- **Yıkıcı komut sınıflandırıcısı imza tabanlıdır**, niyet tabanlı değil —
+  bu yüzden tanınmayan bir getir aracı (httpie'nin `http` komutu, BSD
+  `fetch`) `internal/safety/escalation.go`'daki fetch kalıplarından
+  kasıtlı olarak hariç tutulur (her ikisi de sıradan kelimelerle/URL
+  şema alt dizgileriyle çakışıp yanlış pozitif üretir), ve kabuk
+  değişkeni dolaylaması (`R=rm; $R -rf /`) hiç yakalanmaz —
+  `internal/safety/tokenize.go`'nun `normalizeCommand`'ı kasıtlı olarak
+  değişken genişletmesi yapmaz. Uzun vadeli düzeltme imza listesini
+  genişletmek değil, **niyet tabanlı** (komutun ne yapacağını
+  yorumlayan) bir sınıflandırmaya geçmektir.
+- **`base_url` alternatif kodlama (decimal/hex IP) reddetmez, yalnızca
+  uyarır** — `internal/config/validate.go`'nun metadata/link-local
+  kontrolü yalnızca `net.ParseIP`'nin ayrıştırdığı gerçek IP
+  literallerini tanır; `169.254.169.254`'ün decimal/hex kodlanmış bir
+  biçimi bu kontrolü es geçip yalnızca http+non-loopback uyarısını
+  tetikler. Go'nun standart kütüphane çözümleyicisi böyle bir host
+  adını zaten reddettiğinden bu pratikte istismar edilemez, ama kural
+  kendi başına "reddet" değil "uyar" sınıfındadır.
+- **Redaction, kaçış karakteri içermeyen `/` veya `@` taşıyan bozuk bir
+  bağlantı dizesi parolasını kaçırabilir** — `internal/redact/redact.go`
+  içindeki `connStringPattern`, parola sınıfını `[^@\s/]+` olarak
+  tanımlar; kasıtlı olarak URL-kodlanmamış bir `/` ya da `@` içeren
+  (yani zaten hatalı biçimlendirilmiş) bir DSN parolası, `@`'ye kadar
+  eşleşmediği için maskelenmeden kalabilir. Standart biçimli DSN'ler
+  etkilenmez.
 
 ### Tasarım gereği sınırlar (bilinçli seçimler, hata değil)
 
@@ -161,7 +190,7 @@ Kalan açık maddeler:
 
 ### Release channels — awaiting third-party review
 
-Five releases (v0.1.0 through v0.1.4) have shipped as real GitHub
+Every release from v0.1.0 through the current v0.3.0 has shipped as real GitHub
 Releases. The Homebrew (`firatkutay/tap`) and Scoop
 (`firatkutay/scoop-bucket`) channels have been live and auto-updated on
 every release since v0.1.2/v0.1.3. Remaining open items:
@@ -171,9 +200,38 @@ every release since v0.1.2/v0.1.3. Remaining open items:
 - **Snap**: the package is prepared (`snap/snapcraft.yaml`, classic
   confinement) but awaiting Snap Store registration and classic-
   confinement approval (see `docs/INSTALL.md`).
-- **cosign signing** is still not enabled — documented (commented out)
-  in `.goreleaser.yaml` (~lines 232-241); it needs a key-provisioning
-  decision (a committed keypair + secret vs. keyless OIDC).
+
+### Security hardening — known residual gaps (v0.3.0)
+
+v0.3.0 hardened self-update signature verification, `base_url`
+validation, redaction coverage, and the destructive-command classifier
+(see `docs/SECURITY.md`). The honest gaps that remain:
+
+- **The destructive-command classifier is signature-based, not
+  intent-based** — an unrecognized fetch tool (httpie's `http` command,
+  BSD `fetch`) is deliberately excluded from
+  `internal/safety/escalation.go`'s fetch patterns (both collide with
+  ordinary English words / the `http(s)://` URL-scheme substring and
+  would false-positive too broadly), and shell-variable indirection
+  (`R=rm; $R -rf /`) is never caught at all — `internal/safety/
+  tokenize.go`'s `normalizeCommand` deliberately does no variable
+  expansion. The long-term fix is not a bigger signature allowlist but
+  moving to **intent-based** classification (interpreting what the
+  command will actually do).
+- **`base_url` alt-encoding (decimal/hex IP) warns, it does not reject**
+  — `internal/config/validate.go`'s metadata/link-local check only
+  recognizes a literal IP address parsed by `net.ParseIP`; a
+  decimal/hex-encoded form of `169.254.169.254` slips past that check
+  and only trips the http+non-loopback warning. Go's standard-library
+  resolver already refuses to treat such a hostname as a literal IP, so
+  this is not exploitable in practice — but the rule itself is a "warn,"
+  not a "reject."
+- **Redaction can miss a malformed connection-string password containing
+  an unencoded `/` or `@`** — `internal/redact/redact.go`'s
+  `connStringPattern` defines the password class as `[^@\s/]+`; a DSN
+  password that itself contains an unescaped `/` or `@` (already a
+  malformed DSN) won't match through to the terminating `@` and can be
+  left unmasked. Standard-shaped DSNs are unaffected.
 
 ### Limits by design (deliberate choices, not bugs)
 

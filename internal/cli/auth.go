@@ -140,6 +140,24 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 				return err
 			}
 
+			// Captured BEFORE anything below mutates config, so the
+			// ErrAuthRejected branch (the ping-classification switch
+			// further down) can restore all three to exactly what they
+			// were if the key turns out to be definitively bad. Rejection
+			// is the ONE ping outcome that stores no key at all (see the
+			// ping-classification comment below) — a hard-rejected login
+			// must leave config exactly as it found it, not half-switched
+			// to a provider (and, if the openai_compat prompts ran,
+			// base_url/model) with no credential behind them. Every OTHER
+			// outcome (success, 404-model, base_url-unsafe, generic
+			// ping-failed) DOES store the key, so keeping the
+			// provider/model/base_url activation there is correct —
+			// restoration below is deliberately scoped to ErrAuthRejected
+			// only.
+			priorProvider := cfg.LLM.Provider
+			priorModel := cfg.LLM.Model
+			priorOpenAICompatBaseURL := cfg.LLM.OpenAICompat.BaseURL
+
 			// Activate the provider being logged into. Without this,
 			// pingProviderWithKey's own `cfg.LLM.Provider != provider`
 			// guard (llmping.go) — there to null out a STALE model name
@@ -246,17 +264,33 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			//     (nonzero exit) WITHOUT ever writing to the keychain/
 			//     file store — no write, no delete, no window where a
 			//     known-bad key sits stored, no delete-failure mode to
-			//     handle at all.
+			//     handle at all. Config is rolled back to its priorXxx
+			//     snapshot (captured above, before any of this RunE's
+			//     writes) for the SAME reason: this is the one outcome
+			//     that stores no key, so a provider/model/base_url switch
+			//     that already landed would otherwise survive a rejected
+			//     login and silently break whatever WAS working.
 			//   - anything else (network/timeout/5xx/parse — the key
 			//     might be fine, the PING failed): store it anyway,
 			//     reported but not a command error — an offline user (or
 			//     one hitting a transient provider-side error) must not
 			//     be blocked from saving a key they believe is correct,
 			//     see docs/history/phases/FAZ-08.md's "login stores even if ping
-			//     fails" rationale.
+			//     fails" rationale. Every one of these paths DOES store
+			//     the key, so no rollback — keeping the provider/model/
+			//     base_url activation active is correct here.
 			resp, latency, pingErr := pingProvider(cmd, newLoader, provider, key)
 			if pingErr != nil {
 				if errors.Is(pingErr, llm.ErrAuthRejected) {
+					if err := loader.SetAndSave("llm.provider", priorProvider); err != nil {
+						return err
+					}
+					if err := loader.SetAndSave("llm.model", priorModel); err != nil {
+						return err
+					}
+					if err := loader.SetAndSave("llm.openai_compat.base_url", priorOpenAICompatBaseURL); err != nil {
+						return err
+					}
 					return fmt.Errorf("%s", tr.T(i18n.MsgAuthKeyRejected, provider, pingErr, provider))
 				}
 				// pingProvider's own llm.New call refuses to build a

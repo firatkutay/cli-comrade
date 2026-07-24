@@ -684,6 +684,56 @@ func TestAuthLoginOpenAICompatReportsModelNotFoundOn404WithModelMessage(t *testi
 	assert.Equal(t, "sk-still-stored", key, "the key must be stored — the model, not the key, is the problem")
 }
 
+// TestAuthLoginModelNotFoundDoesNotRollBackProviderOrModel is the
+// over-rollback guard: unlike the 401 hard-rejection path (which DOES
+// restore config — see TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL
+// above), a 404-unknown-model failure DOES store the key. This test
+// starts from the SAME fresh-default-provider precondition (llm.provider
+// still "anthropic") and enters base_url + model at the prompts, exactly
+// like the rollback test, but the ping fails 404 instead of 401. The
+// provider/model activation that happened pre-ping must survive —
+// rollback is scoped to ErrAuthRejected ONLY, never to any path that
+// stores the key.
+func TestAuthLoginModelNotFoundDoesNotRollBackProviderOrModel(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"The model '` + body.Model + `' does not exist"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\nqwen-plus\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute(), "a 404-unknown-model failure must not turn auth login into a command error")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", gotProvider, "a 404-model failure DOES store the key, so the provider activation must NOT be rolled back")
+
+	gotModel, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "qwen-plus", gotModel, "the entered model must NOT be rolled back on a 404-model failure")
+
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, gotBaseURL, "the entered base_url must NOT be rolled back on a 404-model failure")
+}
+
 // TestAuthLoginOpenAICompatReportsPingFailedOn404WithoutModelWording
 // proves the 404 classification is scoped to messages that actually
 // mention "model" — a 404 for an unrelated reason (route not found,
@@ -908,6 +958,99 @@ func TestAuthLoginNeverWritesKeyWhenProviderRejectsItInTurkish(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "openai_compat için bu anahtar sağlayıcı tarafından reddedildi")
 	assert.Contains(t, err.Error(), `comrade auth login openai_compat`)
+}
+
+// TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL is the
+// second independent-review-reported regression's own full-rollback
+// proof. Fresh install: llm.provider is still the default "anthropic".
+// The user enters base_url=<fake Qwen server> and model=qwen-plus at the
+// interactive prompts — both persisted via loader.SetAndSave BEFORE the
+// ping, exactly like llm.provider's own pre-ping activation — but the
+// ping comes back 401 (ErrAuthRejected), the ONE outcome that stores no
+// key at all. A hard-rejected login must leave config EXACTLY as it
+// found it: llm.provider back to "anthropic", llm.model back to "" (NOT
+// left at "qwen-plus", which would silently poison the still-active
+// anthropic provider with an unrelated model name on the very next
+// `comrade "..."` run), and llm.openai_compat.base_url back to the
+// shipped OpenAI default.
+func TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\nqwen-plus\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr, "a definitively rejected key must be a nonzero-exit command error")
+	assert.Contains(t, cmdErr.Error(), "The provider rejected this key for openai_compat")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "anthropic", gotProvider, "a rejected login must roll llm.provider back to what it was")
+
+	gotModel, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "", gotModel, "a rejected login must roll llm.model back to empty — NOT leave the entered model active against the (rolled-back) anthropic provider")
+
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, config.Default().LLM.OpenAICompat.BaseURL, gotBaseURL, "a rejected login must roll llm.openai_compat.base_url back to the shipped default")
+}
+
+// TestAuthLoginRejectedKeyRestoresProviderWhenNoOpenAICompatPromptsFire is
+// the coordinator's "simple" repro, isolated from the base_url/model
+// rollback covered above: llm.openai_compat.base_url and llm.model are
+// BOTH pre-set via `config set` so NEITHER interactive prompt fires —
+// only llm.provider is ever switched pre-ping, by the activation step
+// alone. llm.provider is left at its default ("anthropic"); the key is
+// rejected (401). Proves the provider-only rollback path works even when
+// the base_url/model prompts are never involved.
+func TestAuthLoginRejectedKeyRestoresProviderWhenNoOpenAICompatPromptsFire(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr)
+	assert.NotContains(t, stdout.String(), "Provider address (base_url)", "precondition: no base_url prompt should fire")
+	assert.NotContains(t, stdout.String(), "Model —", "precondition: no model prompt should fire")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "anthropic", gotProvider, "a rejected login must roll llm.provider back even when no openai_compat prompts fired")
 }
 
 // TestAuthLoginNonInteractiveStdinReportsFriendlyError is QA MINOR-5's

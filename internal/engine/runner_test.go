@@ -943,3 +943,59 @@ func TestExecuteReEvaluatesUnpopulatedDecisionElevatedGatesBehindConfirm(t *test
 	require.Equal(t, 1, exec.callCount())
 	assert.False(t, summary.Aborted)
 }
+
+// TestExecuteAppendsRunIDWorkingDirAndReversibleOntoEveryAuditEntry is
+// comrade-undo's schema-plumbing proof: RunDeps.RunID/WorkingDir/UndoOf
+// (all new, empty-by-default fields) and each Step's own Reversible must
+// all reach appendAudit's resulting audit.Entry unchanged, for every step
+// actually executed — not just the ones a hand-written fakeAudit
+// assertion happened to already cover.
+func TestExecuteAppendsRunIDWorkingDirAndReversibleOntoEveryAuditEntry(t *testing.T) {
+	exec := &fakeExecutor{}
+	aud := &fakeAudit{}
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, aud)
+	deps.RunID = "run-abc123"
+	deps.WorkingDir = "/home/user/project"
+
+	step := allowStep("echo hi", safety.RiskRead)
+	step.Reversible = true
+	plan := Plan{Steps: []Step{step}}
+
+	_, err := Execute(context.Background(), plan, ModeAuto, deps)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, aud.entryCount())
+	entry := aud.entries[0]
+	assert.Equal(t, "run-abc123", entry.RunID)
+	assert.Equal(t, "/home/user/project", entry.Cwd)
+	assert.Empty(t, entry.UndoOf, "an ordinary (non-undo) run must never stamp UndoOf")
+	require.NotNil(t, entry.Reversible)
+	assert.True(t, *entry.Reversible)
+}
+
+// TestExecuteStampsUndoOfWhenRunDepsSetsIt proves the OTHER half of the
+// same wiring: when RunDeps.UndoOf is set (comrade undo's own case —
+// internal/cli sets it to the target run's RunID before calling
+// Execute), every entry this run appends carries that same UndoOf value,
+// so a later `comrade undo` invocation can recognize the target run as
+// already undone (see audit.Entry.UndoOf's own doc comment).
+func TestExecuteStampsUndoOfWhenRunDepsSetsIt(t *testing.T) {
+	exec := &fakeExecutor{}
+	aud := &fakeAudit{}
+	deps, _ := baseDeps(t, exec, &fakePrompt{}, &fakeCorrectionCompleter{}, aud)
+	deps.RunID = "undo-run-xyz"
+	deps.UndoOf = "original-run-id"
+
+	step := allowStep("rmdir /tmp/example", safety.RiskWrite)
+	step.Reversible = false
+	plan := Plan{Steps: []Step{step}}
+
+	_, err := Execute(context.Background(), plan, ModeAuto, deps)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, aud.entryCount())
+	entry := aud.entries[0]
+	assert.Equal(t, "original-run-id", entry.UndoOf)
+	require.NotNil(t, entry.Reversible)
+	assert.False(t, *entry.Reversible)
+}

@@ -154,6 +154,32 @@ type RunDeps struct {
 	// every audit.Entry.
 	Request string
 
+	// RunID groups every audit.Entry this Execute call appends under one
+	// identifier — internal/cli generates one 8-byte crypto/rand hex
+	// value per do/fix/chat-"/do" invocation (see internal/cli's
+	// newRunID) and sets it here; appendAudit copies it onto every
+	// entry.RunID verbatim. Empty is a valid, backward-compatible value:
+	// every RunDeps this package's own pre-undo tests construct as a
+	// plain struct literal leaves this unset, and audit.Entry.RunID's own
+	// `omitempty`/zero-value contract treats that identically to a
+	// pre-undo-support entry.
+	RunID string
+
+	// WorkingDir is the invocation's collected working directory
+	// (contextpkg.Context.WorkingDir) — appendAudit copies it onto every
+	// entry.Cwd verbatim. `comrade undo`'s own cwd-mismatch safety check
+	// reads this back from the audit log later. Empty is valid/
+	// backward-compatible, exactly like RunID above.
+	WorkingDir string
+
+	// UndoOf is set ONLY when this Execute call is itself `comrade undo`
+	// running a derived undo Plan: the RunID of the run being undone.
+	// appendAudit copies it onto every entry.UndoOf verbatim, so a later
+	// `comrade undo` invocation can recognize that RunID as already
+	// undone (see audit.Entry.UndoOf's own doc comment). Left empty by
+	// every ordinary do/fix/chat run.
+	UndoOf string
+
 	// Now is an injectable clock for audit timestamps; nil defaults to
 	// time.Now.
 	Now func() time.Time
@@ -620,13 +646,15 @@ func executeStepWithSelfCorrection(ctx context.Context, deps RunDeps, mode Mode,
 
 	command := step.Command
 	risk := step.Decision.EffectiveRisk
+	reversible := step.Reversible
 
 	for {
 		res, runErr := deps.Executor.Run(ctx, command, executor.Options{Timeout: deps.StepTimeout})
 		if runErr != nil {
 			return res, command, corrected, fmt.Errorf("engine: run step: %w", runErr)
 		}
-		appendAudit(deps, mode, command, risk, res)
+		rev := reversible
+		appendAudit(deps, mode, command, risk, &rev, res)
 
 		failed := res.ExitCode != 0 && !res.Canceled
 		if !failed || res.Canceled || ctx.Err() != nil {
@@ -651,6 +679,7 @@ func executeStepWithSelfCorrection(ctx context.Context, deps RunDeps, mode Mode,
 
 		command = revised.Command
 		risk = decision.EffectiveRisk
+		reversible = revised.Reversible
 		corrected = true
 	}
 }
@@ -701,8 +730,16 @@ func requestCorrection(ctx context.Context, deps RunDeps, step Step, failedComma
 // appendAudit writes one audit.Entry for a single executor.Run attempt.
 // A nil deps.Audit disables logging entirely; a write failure is reported
 // to deps.Stderr but never aborts the run — a local audit-log write
-// failure must never block the user's actual task.
-func appendAudit(deps RunDeps, mode Mode, command string, risk safety.RiskClass, result executor.Result) {
+// failure must never block the user's actual task. reversible is copied
+// verbatim into entry.Reversible: a non-nil pointer for a step whose
+// reversibility the LLM actually declared (executeStepWithSelfCorrection
+// passes a fresh, per-iteration copy — never step's own field's address
+// directly, since it is reused/mutated across loop iterations), or nil
+// for a re-run with no backing plan step at all (runVerification's
+// re-verification re-run, which never had an LLM-declared Reversible to
+// begin with) — matching audit.Entry.Reversible's own "nil = unknown"
+// contract rather than guessing false.
+func appendAudit(deps RunDeps, mode Mode, command string, risk safety.RiskClass, reversible *bool, result executor.Result) {
 	if deps.Audit == nil {
 		return
 	}
@@ -714,6 +751,10 @@ func appendAudit(deps RunDeps, mode Mode, command string, risk safety.RiskClass,
 		Mode:       mode.String(),
 		ExitCode:   result.ExitCode,
 		DurationMs: result.Duration.Milliseconds(),
+		RunID:      deps.RunID,
+		Cwd:        deps.WorkingDir,
+		Reversible: reversible,
+		UndoOf:     deps.UndoOf,
 	}
 	if err := deps.Audit.Append(entry); err != nil {
 		fmt.Fprintf(deps.Stderr, "audit: failed to record step: %v\n", err) //nolint:errcheck

@@ -62,7 +62,7 @@ func TestCompleteRootSuggestsTopLevelCommandsExcludingHidden(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"auth", "chat", "config", "do", "doctor", "explain", "fix",
-		"help", "history", "init", "upgrade",
+		"help", "history", "init", "undo", "upgrade",
 	}, candidates)
 	assert.NotContains(t, candidates, "hook")
 	assert.NotContains(t, candidates, "completion")

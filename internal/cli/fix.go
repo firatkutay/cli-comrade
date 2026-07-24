@@ -159,6 +159,8 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		Yolo:               flags.yolo,
 		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
 		Request:            "fix: " + errCtx.Command,
+		RunID:              newRunID(),
+		WorkingDir:         sysCtx.WorkingDir,
 		Translator:         tr,
 	}
 

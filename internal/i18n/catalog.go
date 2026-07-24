@@ -402,6 +402,26 @@ const (
 	// MsgAuthStatusNotSet renders a provider with no key at all.
 	MsgAuthStatusNotSet MessageID = "auth_status_not_set"
 
+	// MsgAuthOpenAICompatBaseURLPrompt is `comrade auth login
+	// openai_compat`'s interactive prompt, shown only when
+	// llm.openai_compat.base_url's effective value still equals the
+	// shipped default (config.Default()) — openai_compat is a
+	// single connector shared by every OpenAI-compatible provider
+	// (Mistral, Groq, GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter, LM
+	// Studio; see CLAUDE.md's LLM Provider Mimarisi), so logging in with a
+	// non-OpenAI key while base_url still points at api.openai.com
+	// silently pinged the wrong provider and failed with a 401 from
+	// OpenAI itself, not the user's actual provider. Pressing Enter with
+	// no input keeps the current default untouched. One arg: the current
+	// default base_url value.
+	MsgAuthOpenAICompatBaseURLPrompt MessageID = "auth_openai_compat_base_url_prompt"
+
+	// MsgAuthOpenAICompatBaseURLSaved confirms
+	// MsgAuthOpenAICompatBaseURLPrompt's entered value was persisted to
+	// llm.openai_compat.base_url (via Loader.SetAndSave) before the live
+	// ping runs. One arg: the saved value.
+	MsgAuthOpenAICompatBaseURLSaved MessageID = "auth_openai_compat_base_url_saved"
+
 	// MsgSecretsFileFallbackWarning is printed once, the first time any
 	// stored-credential operation actually runs against the 0600 file
 	// fallback (no OS keychain reachable on this machine) — QA MINOR-4's
@@ -1043,6 +1063,9 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStatusSetEnv:           "set (env: %s)",
 	MsgAuthStatusNotSet:           "not set",
 
+	MsgAuthOpenAICompatBaseURLPrompt: "llm.openai_compat.base_url is still the default OpenAI endpoint (%s). If you're using a different OpenAI-compatible provider (e.g. Qwen: https://dashscope.aliyuncs.com/compatible-mode/v1), enter its base URL now. Press Enter to keep using OpenAI's endpoint: ",
+	MsgAuthOpenAICompatBaseURLSaved:  "Saved llm.openai_compat.base_url = %s\n",
+
 	MsgSecretsFileFallbackWarning: "cli-comrade: no system keychain found, so API keys are being saved to a local file instead (base64-encoded, not encrypted — see the file's own header for details).\n",
 
 	MsgHistoryTableHeader: "TIME\tMODE\tRISK\tEXIT\tCOMMAND",
@@ -1262,6 +1285,9 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStatusSet:              "kayıtlı (%s)",
 	MsgAuthStatusSetEnv:           "kayıtlı (ortam değişkeni: %s)",
 	MsgAuthStatusNotSet:           "kayıtlı değil",
+
+	MsgAuthOpenAICompatBaseURLPrompt: "llm.openai_compat.base_url hâlâ varsayılan OpenAI uç noktası (%s). Farklı bir OpenAI uyumlu sağlayıcı kullanıyorsanız (ör. Qwen: https://dashscope.aliyuncs.com/compatible-mode/v1), şimdi onun taban URL'sini girin. OpenAI'nin uç noktasını kullanmaya devam etmek için Enter'a basın: ",
+	MsgAuthOpenAICompatBaseURLSaved:  "llm.openai_compat.base_url = %s olarak kaydedildi\n",
 
 	MsgSecretsFileFallbackWarning: "cli-comrade: sistem anahtarlığı bulunamadı, bu yüzden API anahtarları yerel bir dosyaya kaydediliyor (base64 ile kodlanmış, şifrelenmemiş — ayrıntılar için dosyanın kendi başlığına bakın).\n",
 

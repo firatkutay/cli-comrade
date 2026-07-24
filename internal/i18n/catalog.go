@@ -1004,6 +1004,169 @@ const (
 	// embedded here as an already-fully-translated fragment, not raw
 	// prose.
 	MsgChatUsageSessionTotal MessageID = "chat_usage_session_total"
+
+	// --- doctor ---
+	//
+	// `comrade doctor` (internal/doctor + internal/cli/doctor.go): every
+	// check's per-check title, its outcome-specific one-line summaries,
+	// and the two small rendering labels ("fix:"/"detail:") plus the
+	// command's own failed-check exit summary and its --live flag
+	// description. internal/doctor.Result never holds rendered text
+	// itself (see that package's own doc comment) — only a MessageID and
+	// args, resolved here.
+
+	// MsgDoctorVersionTitle is the "version" check's row title.
+	MsgDoctorVersionTitle MessageID = "doctor_version_title"
+	// MsgDoctorPathTitle is the "path" check's row title.
+	MsgDoctorPathTitle MessageID = "doctor_path_title"
+	// MsgDoctorShellHookTitle is the "shellhook" check's row title.
+	MsgDoctorShellHookTitle MessageID = "doctor_shellhook_title"
+	// MsgDoctorKeyTitle is the "key" check's row title.
+	MsgDoctorKeyTitle MessageID = "doctor_key_title"
+	// MsgDoctorReachTitle is the "reach" check's row title.
+	MsgDoctorReachTitle MessageID = "doctor_reach_title"
+	// MsgDoctorBaseURLTitle is the "baseurl" check's row title.
+	MsgDoctorBaseURLTitle MessageID = "doctor_baseurl_title"
+	// MsgDoctorConfigTitle is the "config" check's row title.
+	MsgDoctorConfigTitle MessageID = "doctor_config_title"
+
+	// MsgDoctorVersionDevSkip fires for a dev build (update.IsDevBuild),
+	// which has no comparable release tag — the version check is
+	// skipped. No args.
+	MsgDoctorVersionDevSkip MessageID = "doctor_version_dev_skip"
+	// MsgDoctorVersionFetchError reports that update.Updater.Check itself
+	// failed (network/GitHub reachability) — a Warn, not a Fail, since
+	// this says nothing about whether the installed version is actually
+	// fine. No args (the raw fetch error goes in Result.Detail instead —
+	// see doctor.Result's own doc comment on why Detail is never
+	// interpolated into a translated Summary).
+	MsgDoctorVersionFetchError MessageID = "doctor_version_fetch_error"
+	// MsgDoctorVersionBehind reports that a newer release is published.
+	// Two args: the latest version, the current (running) version.
+	MsgDoctorVersionBehind MessageID = "doctor_version_behind"
+	// MsgDoctorVersionUpToDate reports that the running version is
+	// already the latest published release. One arg: the current
+	// version.
+	MsgDoctorVersionUpToDate MessageID = "doctor_version_up_to_date"
+
+	// MsgDoctorPathNotFound reports that the comrade binary is not on
+	// PATH at all. One arg: the binary name looked up ("comrade" or
+	// "comrade.exe").
+	MsgDoctorPathNotFound MessageID = "doctor_path_not_found"
+	// MsgDoctorPathStale reports that PATH resolves to a comrade binary
+	// other than the one currently running this diagnostic. One arg: the
+	// resolved path.
+	MsgDoctorPathStale MessageID = "doctor_path_stale"
+	// MsgDoctorPathOK reports that PATH resolves to the running binary
+	// itself. One arg: the resolved path.
+	MsgDoctorPathOK MessageID = "doctor_path_ok"
+
+	// MsgDoctorShellHookUndetected reports that the current shell could
+	// not be detected from the environment at all. No args.
+	MsgDoctorShellHookUndetected MessageID = "doctor_shellhook_undetected"
+	// MsgDoctorShellHookUnsupported reports that the detected shell is
+	// not one `comrade init` integrates with (e.g. cmd.exe). One arg: the
+	// detected shell's name.
+	MsgDoctorShellHookUnsupported MessageID = "doctor_shellhook_unsupported"
+	// MsgDoctorShellHookUnresolved reports that the shell IS one comrade
+	// supports, but its rc/profile file path could not be resolved (e.g.
+	// HOME unset, or no PowerShell binary on PATH). One arg: the shell
+	// name.
+	MsgDoctorShellHookUnresolved MessageID = "doctor_shellhook_unresolved"
+	// MsgDoctorShellHookMissing reports that the rc/profile file was
+	// resolved, but comrade's block is absent or outdated in it. One arg:
+	// the shell name.
+	MsgDoctorShellHookMissing MessageID = "doctor_shellhook_missing"
+	// MsgDoctorShellHookOK reports that comrade's current block is
+	// already installed. One arg: the shell name.
+	MsgDoctorShellHookOK MessageID = "doctor_shellhook_ok"
+
+	// MsgDoctorKeySkipOllama fires when the active provider is ollama,
+	// which needs no API key. No args.
+	MsgDoctorKeySkipOllama MessageID = "doctor_key_skip_ollama"
+	// MsgDoctorKeyFound reports that a credential was found for the
+	// active provider. Two args: the provider name, the source it came
+	// from ("keychain"/"file"/an env var name — left untranslated,
+	// matching MsgAuthStatusSet/MsgAuthStatusSetEnv's own established
+	// precedent).
+	MsgDoctorKeyFound MessageID = "doctor_key_found"
+	// MsgDoctorKeyMissing reports that no credential was found anywhere
+	// for the active provider. One arg: the provider name.
+	MsgDoctorKeyMissing MessageID = "doctor_key_missing"
+
+	// MsgDoctorReachSkip fires when the active provider name is not one
+	// this package recognizes (llm.HealthEndpoint returned ok=false) —
+	// e.g. ConfigErr left Cfg.LLM.Provider empty. One arg: the provider
+	// name (may be empty).
+	MsgDoctorReachSkip MessageID = "doctor_reach_skip"
+	// MsgDoctorReachFail reports a transport-level failure
+	// (dial/TLS/timeout) — the provider's host could not be reached at
+	// all. One arg: the provider name.
+	MsgDoctorReachFail MessageID = "doctor_reach_fail"
+	// MsgDoctorReachOllamaNoModels reports that ollama answered but
+	// /api/tags lists zero locally-pulled models. No args.
+	MsgDoctorReachOllamaNoModels MessageID = "doctor_reach_ollama_no_models"
+	// MsgDoctorReachOK reports that the provider's host responded to the
+	// keyless probe (any HTTP status — see llm.HealthEndpoint's own doc
+	// comment on this package's "any status = reachable" rule). One arg:
+	// the provider name.
+	MsgDoctorReachOK MessageID = "doctor_reach_ok"
+	// MsgDoctorReachLiveOK reports that --live's authenticated ping
+	// succeeded. Two args: the provider name, the round-trip latency.
+	MsgDoctorReachLiveOK MessageID = "doctor_reach_live_ok"
+	// MsgDoctorReachLiveRejected reports that --live's authenticated ping
+	// got a 401/403 (llm.ErrAuthRejected) — the configured key is wrong.
+	// One arg: the provider name.
+	MsgDoctorReachLiveRejected MessageID = "doctor_reach_live_rejected"
+	// MsgDoctorReachLiveFailed reports that --live's authenticated ping
+	// failed for any OTHER reason (network/timeout/5xx/parse) — the key
+	// might still be fine. One arg: the provider name.
+	MsgDoctorReachLiveFailed MessageID = "doctor_reach_live_failed"
+
+	// MsgDoctorBaseURLSkip fires when the active provider is not
+	// openai_compat, so this check does not apply. No args.
+	MsgDoctorBaseURLSkip MessageID = "doctor_baseurl_skip"
+	// MsgDoctorBaseURLOK fires when either llm.openai_compat.base_url was
+	// already customized away from the shipped default, or the
+	// stored/env key's prefix doesn't match any known non-OpenAI vendor.
+	// No args.
+	MsgDoctorBaseURLOK MessageID = "doctor_baseurl_ok"
+	// MsgDoctorBaseURLSuspectedVendor reports that base_url is still the
+	// shipped OpenAI default, but the resolved key's prefix looks like a
+	// different vendor's key format. One arg: the suspected vendor name
+	// (e.g. "Groq") — see internal/doctor's own key-prefix sniff table.
+	MsgDoctorBaseURLSuspectedVendor MessageID = "doctor_baseurl_suspected_vendor"
+
+	// MsgDoctorConfigLoadError reports that internal/cli/doctor.go's own
+	// config load failed before any check ran. No args (the raw error
+	// goes in Result.Detail).
+	MsgDoctorConfigLoadError MessageID = "doctor_config_load_error"
+	// MsgDoctorConfigFileFallback reports that config loaded fine, but no
+	// OS keychain is reachable on this machine — credentials use the
+	// 0600 file fallback instead. No args.
+	MsgDoctorConfigFileFallback MessageID = "doctor_config_file_fallback"
+	// MsgDoctorConfigOK reports that config loaded fine and an OS
+	// keychain is reachable. No args.
+	MsgDoctorConfigOK MessageID = "doctor_config_ok"
+
+	// MsgDoctorFixLabel is the small "fix:"-style label printed before
+	// every non-OK/non-Skip result's Result.Fix line. One arg: the fix
+	// text itself (a plain string — see doctor.Result.Fix's own doc
+	// comment on why it is never a MessageID).
+	MsgDoctorFixLabel MessageID = "doctor_fix_label"
+	// MsgDoctorDetailLabel is the small "detail:"-style label printed
+	// before a result's Result.Detail line (COMRADE_DEBUG-gated in table
+	// output; unconditional in --json — see newDoctorCmd's own doc
+	// comment). One arg: the detail text itself.
+	MsgDoctorDetailLabel MessageID = "doctor_detail_label"
+	// MsgDoctorFailedSummary is `comrade doctor`'s own final error when
+	// at least one check is SeverityFail (P-1's exit-code rule — see
+	// doctorFailedError, internal/cli/doctor.go). One arg: how many
+	// checks failed.
+	MsgDoctorFailedSummary MessageID = "doctor_failed_summary"
+
+	// MsgFlagLive is --live's --help description.
+	MsgFlagLive MessageID = "flag_live"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -1234,6 +1397,55 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUsageCostEstimate:     " · est. %s",
 	MsgUsageCostLocal:        " · local",
 	MsgChatUsageSessionTotal: "session total — %s",
+
+	MsgDoctorVersionTitle:   "version",
+	MsgDoctorPathTitle:      "PATH",
+	MsgDoctorShellHookTitle: "shell integration",
+	MsgDoctorKeyTitle:       "API key",
+	MsgDoctorReachTitle:     "provider reachability",
+	MsgDoctorBaseURLTitle:   "base_url sanity",
+	MsgDoctorConfigTitle:    "config & keychain",
+
+	MsgDoctorVersionDevSkip:    "dev build; version check skipped",
+	MsgDoctorVersionFetchError: "could not check for a newer version",
+	MsgDoctorVersionBehind:     "a newer version is available: %s (you have %s)",
+	MsgDoctorVersionUpToDate:   "up to date (%s)",
+
+	MsgDoctorPathNotFound: "%q was not found on PATH",
+	MsgDoctorPathStale:    "PATH resolves to a different comrade binary than the one currently running (%s)",
+	MsgDoctorPathOK:       "found on PATH (%s)",
+
+	MsgDoctorShellHookUndetected:  "could not detect the current shell",
+	MsgDoctorShellHookUnsupported: "shell %q is not one comrade integrates with",
+	MsgDoctorShellHookUnresolved:  "could not resolve a profile/rc file for %s",
+	MsgDoctorShellHookMissing:     "shell integration is not installed (or is outdated) for %s",
+	MsgDoctorShellHookOK:          "shell integration installed for %s",
+
+	MsgDoctorKeySkipOllama: "ollama needs no API key",
+	MsgDoctorKeyFound:      "API key found for %s (%s)",
+	MsgDoctorKeyMissing:    "no API key configured for %s",
+
+	MsgDoctorReachSkip:           "%s: unknown provider; skipping reachability check",
+	MsgDoctorReachFail:           "could not reach %s",
+	MsgDoctorReachOllamaNoModels: "ollama is reachable but has no models pulled",
+	MsgDoctorReachOK:             "%s is reachable",
+	MsgDoctorReachLiveOK:         "%s is reachable; live ping succeeded (%s)",
+	MsgDoctorReachLiveRejected:   "%s rejected the configured API key",
+	MsgDoctorReachLiveFailed:     "live ping to %s failed (the key may still be valid)",
+
+	MsgDoctorBaseURLSkip:            "active provider is not openai_compat; skipping",
+	MsgDoctorBaseURLOK:              "base_url looks fine",
+	MsgDoctorBaseURLSuspectedVendor: "llm.openai_compat.base_url is still OpenAI's default, but the configured key looks like a %s key",
+
+	MsgDoctorConfigLoadError:    "config failed to load",
+	MsgDoctorConfigFileFallback: "no OS keychain available; credentials are stored in a 0600 file instead",
+	MsgDoctorConfigOK:           "config loaded and an OS keychain is available",
+
+	MsgDoctorFixLabel:      "    fix: %s\n",
+	MsgDoctorDetailLabel:   "    detail: %s\n",
+	MsgDoctorFailedSummary: "comrade doctor: %d check(s) failed",
+
+	MsgFlagLive: "send a real, minimal authenticated request to the active provider (spends a token; never on by default)",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -1464,4 +1676,53 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUsageCostEstimate:     " · tah. %s",
 	MsgUsageCostLocal:        " · yerel",
 	MsgChatUsageSessionTotal: "oturum toplamı — %s",
+
+	MsgDoctorVersionTitle:   "sürüm",
+	MsgDoctorPathTitle:      "PATH",
+	MsgDoctorShellHookTitle: "kabuk entegrasyonu",
+	MsgDoctorKeyTitle:       "API anahtarı",
+	MsgDoctorReachTitle:     "sağlayıcıya erişilebilirlik",
+	MsgDoctorBaseURLTitle:   "base_url tutarlılığı",
+	MsgDoctorConfigTitle:    "yapılandırma ve anahtarlık",
+
+	MsgDoctorVersionDevSkip:    "geliştirme sürümü; sürüm kontrolü atlandı",
+	MsgDoctorVersionFetchError: "daha yeni bir sürüm olup olmadığı kontrol edilemedi",
+	MsgDoctorVersionBehind:     "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s)",
+	MsgDoctorVersionUpToDate:   "güncel (%s)",
+
+	MsgDoctorPathNotFound: "%q, PATH üzerinde bulunamadı",
+	MsgDoctorPathStale:    "PATH, şu anda çalışan comrade ikili dosyasından farklı bir kopyaya işaret ediyor (%s)",
+	MsgDoctorPathOK:       "PATH üzerinde bulundu (%s)",
+
+	MsgDoctorShellHookUndetected:  "mevcut kabuk tespit edilemedi",
+	MsgDoctorShellHookUnsupported: "%q kabuğu comrade'ın entegre olduğu kabuklardan biri değil",
+	MsgDoctorShellHookUnresolved:  "%s için bir profil/rc dosyası çözümlenemedi",
+	MsgDoctorShellHookMissing:     "%s için kabuk entegrasyonu kurulu değil (ya da güncel değil)",
+	MsgDoctorShellHookOK:          "%s için kabuk entegrasyonu kurulu",
+
+	MsgDoctorKeySkipOllama: "ollama için API anahtarı gerekmez",
+	MsgDoctorKeyFound:      "%s için API anahtarı bulundu (%s)",
+	MsgDoctorKeyMissing:    "%s için API anahtarı yapılandırılmamış",
+
+	MsgDoctorReachSkip:           "%s: bilinmeyen sağlayıcı; erişilebilirlik kontrolü atlanıyor",
+	MsgDoctorReachFail:           "%s adresine erişilemedi",
+	MsgDoctorReachOllamaNoModels: "ollama'ya erişilebiliyor ama hiç model indirilmemiş",
+	MsgDoctorReachOK:             "%s adresine erişilebiliyor",
+	MsgDoctorReachLiveOK:         "%s adresine erişilebiliyor; canlı ping başarılı (%s)",
+	MsgDoctorReachLiveRejected:   "%s, yapılandırılan API anahtarını reddetti",
+	MsgDoctorReachLiveFailed:     "%s adresine canlı ping başarısız oldu (anahtar yine de geçerli olabilir)",
+
+	MsgDoctorBaseURLSkip:            "aktif sağlayıcı openai_compat değil; atlanıyor",
+	MsgDoctorBaseURLOK:              "base_url sorunsuz görünüyor",
+	MsgDoctorBaseURLSuspectedVendor: "llm.openai_compat.base_url hâlâ OpenAI'nin varsayılanı, ama yapılandırılan anahtar bir %s anahtarına benziyor",
+
+	MsgDoctorConfigLoadError:    "yapılandırma yüklenemedi",
+	MsgDoctorConfigFileFallback: "kullanılabilir bir işletim sistemi anahtarlığı yok; kimlik bilgileri bunun yerine 0600 izinli bir dosyada saklanıyor",
+	MsgDoctorConfigOK:           "yapılandırma yüklendi ve bir işletim sistemi anahtarlığı kullanılabilir",
+
+	MsgDoctorFixLabel:      "    çözüm: %s\n",
+	MsgDoctorDetailLabel:   "    ayrıntı: %s\n",
+	MsgDoctorFailedSummary: "comrade doctor: %d kontrol başarısız oldu",
+
+	MsgFlagLive: "aktif sağlayıcıya gerçek, minimal bir kimlik doğrulamalı istek gönder (bir token harcar; asla varsayılan olarak açık değildir)",
 }

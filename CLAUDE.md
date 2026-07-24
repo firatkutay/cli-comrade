@@ -20,7 +20,7 @@ Global ayar + komut bazında override flag'leri:
 | Mod | Davranış |
 |---|---|
 | `auto` | Aracı devralır, komutları kendisi çalıştırır. Her adımda tek satırlık ne yaptığını yazar. |
-| `ask` | Her komuttan önce kısa gerekçe + komutun kendisini gösterir, `[e]vet / [h]ayır / [d]üzenle / [a]çıkla / [t]ümünü onayla` sorar. **Varsayılan mod budur.** |
+| `ask` | Her komuttan önce kısa gerekçe + komutun kendisini gösterir, `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` sorar. **Varsayılan mod budur.** |
 | `info` | Hiçbir şey çalıştırmaz. Sorunun nedenini ve çözüm adımlarını kopyalanabilir komutlarla açıklar. |
 
 **Güvenlik istisnası (pazarlık edilemez):** `auto` modda bile risk sınıfı `destructive` olan komutlar HER ZAMAN onay ister. Bu davranış ancak config'de `safety.confirm_destructive=false` + `--yolo` flag'i birlikte varsa kapanır ve kapatıldığında uyarı basılır.

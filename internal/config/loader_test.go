@@ -337,6 +337,282 @@ func TestLoaderSourceRejectsUnknownKey(t *testing.T) {
 	assert.ErrorContains(t, err, "unknown config key")
 }
 
+// --- config profiles ---
+
+func writeConfigFile(t *testing.T, path, toml string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0o644))
+}
+
+func TestLoaderProfileOverlayAppliesOverTopLevelValue(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"work\"\n\n[llm]\nprovider = \"anthropic\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\nllm.model = \"gpt-4o\"\n")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "the active profile's value must win over the file's own top-level value")
+	assert.Equal(t, "gpt-4o", cfg.LLM.Model)
+	assert.Equal(t, 60, cfg.LLM.TimeoutSeconds, "a key the profile doesn't touch must still fall through to its own default/file value")
+}
+
+func TestLoaderProfileOverlayLeavesConfigUntouchedWhenNoProfileActive(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[llm]\nprovider = \"anthropic\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "anthropic", cfg.LLM.Provider, "a defined-but-inactive profile must have zero effect")
+}
+
+func TestLoaderProfileFlagOverridesEnvAndFile(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"personal\"\n\n[profiles.personal]\nllm.provider = \"google\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_PROFILE", "personal")
+
+	loader, err := NewLoaderWithProfile(path, "work")
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "--profile flag must win over both COMRADE_PROFILE and the file's general.profile")
+}
+
+func TestLoaderProfileEnvOverridesFileValue(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"personal\"\n\n[profiles.personal]\nllm.provider = \"google\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_PROFILE", "work")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "COMRADE_PROFILE must win over the file's own general.profile")
+}
+
+// TestLoaderEnvStaysKingOverActiveProfile is the whole reason applyProfileOverlay
+// merges via MergeConfigMap instead of viper.Set: a COMRADE_ environment
+// variable for a key the active profile ALSO overrides must still win —
+// env is the outermost, highest-precedence layer regardless of profiles.
+func TestLoaderEnvStaysKingOverActiveProfile(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"work\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_PROVIDER", "ollama")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "ollama", cfg.LLM.Provider, "COMRADE_PROVIDER must win over the active profile's own override")
+}
+
+func TestLoaderWarnsOnUndefinedActiveProfileButNeverFails(t *testing.T) {
+	buf := captureProfileWarnings(t)
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"ghost\"\n")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err, "an undefined active profile must never fail Load()")
+	assert.Equal(t, "ask", cfg.General.Mode, "config must otherwise load normally")
+	assert.Contains(t, buf.String(), `"ghost"`)
+	assert.Contains(t, buf.String(), "is not defined")
+}
+
+func TestLoaderWarnsOnUnknownKeyInsideProfileButNeverFails(t *testing.T) {
+	buf := captureProfileWarnings(t)
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"work\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\nllm.probider = \"typo\"\n")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err, "an unknown key inside a defined profile must never fail Load()")
+	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "the recognized key must still apply")
+	assert.Contains(t, buf.String(), `"work"`)
+	assert.Contains(t, buf.String(), `"llm.probider"`)
+	assert.Contains(t, buf.String(), "unknown key")
+}
+
+func TestLoaderSourceReportsProfileForKeyTheActiveProfileOverrides(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"work\"\n\n[llm]\nprovider = \"anthropic\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	src, err := loader.Source("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, SourceProfile, src)
+
+	// A key the profile does NOT touch still reports its own normal source.
+	src, err = loader.Source("llm.timeout_seconds")
+	require.NoError(t, err)
+	assert.Equal(t, SourceDefault, src)
+}
+
+func TestLoaderSourceReportsEnvOverProfile(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"work\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_PROVIDER", "ollama")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	src, err := loader.Source("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, SourceEnv, src)
+}
+
+// TestSetAndSavePreservesProfileTables is the spec-mandated regression
+// proof: SetAndSave's full-map rewrite (its own WriteConfigAs call) must
+// carry every existing [profiles.*] table through untouched when it sets
+// an unrelated top-level key.
+func TestSetAndSavePreservesProfileTables(t *testing.T) {
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	require.NoError(t, loader.CreateProfile("work", map[string]any{"llm.provider": "openai_compat"}))
+
+	value, err := Validate("general.mode", "auto")
+	require.NoError(t, err)
+	require.NoError(t, loader.SetAndSave("general.mode", value))
+
+	reloaded, err := NewLoader(path)
+	require.NoError(t, err)
+	cfg, _, err := reloaded.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "auto", cfg.General.Mode)
+	require.Contains(t, cfg.Profiles, "work", "the profile table must survive SetAndSave's unrelated top-level write")
+	llmSection, ok := cfg.Profiles["work"]["llm"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "openai_compat", llmSection["provider"])
+}
+
+func TestLoaderCreateProfileEmptyIsListedWithZeroKeysAndSurvivesReload(t *testing.T) {
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	require.NoError(t, loader.CreateProfile("empty", nil))
+
+	reloaded, err := NewLoader(path)
+	require.NoError(t, err)
+	cfg, _, err := reloaded.Load()
+	require.NoError(t, err)
+	require.Contains(t, cfg.Profiles, "empty")
+	assert.Empty(t, ProfileKeys(cfg.Profiles["empty"]), "an empty profile must show zero real keys")
+}
+
+func TestLoaderCreateProfileRejectsDuplicateName(t *testing.T) {
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	require.NoError(t, loader.CreateProfile("work", nil))
+	err = loader.CreateProfile("work", nil)
+	require.Error(t, err)
+	var existsErr *ProfileExistsError
+	assert.ErrorAs(t, err, &existsErr)
+}
+
+func TestLoaderCreateProfileRejectsInvalidName(t *testing.T) {
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	err = loader.CreateProfile("Bad Name", nil)
+	require.Error(t, err)
+	var invalidName *InvalidProfileNameError
+	assert.ErrorAs(t, err, &invalidName)
+}
+
+func TestLoaderSetProfileKeyPersistsAndRejectsUnknownProfile(t *testing.T) {
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	require.NoError(t, loader.CreateProfile("work", nil))
+
+	parsed, err := ValidateProfileKey("llm.provider", "openai_compat")
+	require.NoError(t, err)
+	require.NoError(t, loader.SetProfileKey("work", "llm.provider", parsed))
+
+	reloaded, err := NewLoader(path)
+	require.NoError(t, err)
+	cfg, _, err := reloaded.Load()
+	require.NoError(t, err)
+	llmSection, ok := cfg.Profiles["work"]["llm"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "openai_compat", llmSection["provider"])
+
+	err = loader.SetProfileKey("ghost", "llm.provider", "x")
+	require.Error(t, err)
+	var notFound *ProfileNotFoundError
+	assert.ErrorAs(t, err, &notFound)
+}
+
+func TestLoaderRemoveProfileDeletesOnlyThatProfile(t *testing.T) {
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	require.NoError(t, loader.CreateProfile("work", map[string]any{"llm.provider": "openai_compat"}))
+	require.NoError(t, loader.CreateProfile("personal", map[string]any{"llm.provider": "google"}))
+
+	require.NoError(t, loader.RemoveProfile("work"))
+
+	reloaded, err := NewLoader(path)
+	require.NoError(t, err)
+	cfg, _, err := reloaded.Load()
+	require.NoError(t, err)
+	assert.NotContains(t, cfg.Profiles, "work")
+	require.Contains(t, cfg.Profiles, "personal", "the sibling profile must survive removal of another")
+	llmSection, ok := cfg.Profiles["personal"]["llm"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "google", llmSection["provider"])
+}
+
+func TestLoaderRemoveProfileClearsGeneralProfileWhenItPointedThere(t *testing.T) {
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	require.NoError(t, loader.CreateProfile("work", map[string]any{"llm.provider": "openai_compat"}))
+	require.NoError(t, loader.SetAndSave("general.profile", "work"))
+
+	require.NoError(t, loader.RemoveProfile("work"))
+
+	reloaded, err := NewLoader(path)
+	require.NoError(t, err)
+	cfg, _, err := reloaded.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.General.Profile, "general.profile must be cleared once the profile it pointed to is removed")
+}
+
+func TestLoaderRemoveProfileRejectsUnknownName(t *testing.T) {
+	path := tempConfigPath(t)
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	err = loader.RemoveProfile("ghost")
+	require.Error(t, err)
+	var notFound *ProfileNotFoundError
+	assert.ErrorAs(t, err, &notFound)
+}
+
 func TestNewLoaderUsesDefaultPathWhenEmpty(t *testing.T) {
 	dir := t.TempDir()
 	if runtime.GOOS == "windows" {

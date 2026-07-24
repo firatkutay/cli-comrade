@@ -107,7 +107,7 @@ func runVerification(ctx context.Context, deps RunDeps, mode Mode, command strin
 	if err != nil {
 		return fmt.Errorf("engine: run verification: %w", err)
 	}
-	appendAudit(deps, mode, command, risk, res)
+	appendAudit(deps, mode, command, risk, nil, res)
 
 	if res.ExitCode == 0 && !res.Canceled && !res.TimedOut {
 		tui.PrintStatus(deps.Stdout, deps.tr().T(i18n.MsgVerificationSucceeded, command), deps.ColorEnabled) //nolint:errcheck,gosec // stdout print failure is never actionable here (G104: unhandled error)

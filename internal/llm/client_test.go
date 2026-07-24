@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,6 +82,8 @@ func TestClientCompleteAuthErrorDoesNotTriggerFallback(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrAuthRejected))
 	assert.False(t, secondaryHit, "an auth-rejected error must stop the chain, never reaching the next attempt")
+	assert.Equal(t, `openai_compat: http 401: bad key`, err.Error(),
+		"the provider name must appear exactly once — StatusError.Error() already embeds it, so Client must not prefix it a second time")
 }
 
 func TestClientCompleteParseFailureTriggersFallback(t *testing.T) {
@@ -308,6 +311,37 @@ func TestNewAllowsPublicHTTPSBaseURLForActiveProvider(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, client.attempts, 1)
+}
+
+// TestNewOpenAICompatCompleteHitsConfiguredBaseURLNotOpenAI locks the
+// base_url plumbing internal/cli's auth-login base_url prompt depends on:
+// with cfg.LLM.OpenAICompat.BaseURL pointed at a fake server, Complete
+// must land on THAT server, never on api.openai.com, regardless of what
+// the shipped default (config/schema.go) says.
+func TestNewOpenAICompatCompleteHitsConfiguredBaseURLNotOpenAI(t *testing.T) {
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"qwen-max","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{}}`))
+	}))
+	defer srv.Close()
+
+	cfg := config.Default()
+	cfg.LLM.Provider = "openai_compat"
+	cfg.LLM.OpenAICompat.BaseURL = srv.URL
+
+	client, err := New(cfg, WithKeyResolver(func(string) (string, error) { return "sk-test", nil }))
+	require.NoError(t, err)
+
+	_, err = client.Complete(context.Background(), CompletionRequest{
+		Messages:  []Message{{Role: "user", Content: "hi"}},
+		MaxTokens: 8,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, strings.TrimPrefix(srv.URL, "http://"), gotHost)
+	assert.NotContains(t, gotHost, "openai.com")
 }
 
 func TestNewMissingAPIKeyDefersErrorToAttemptTime(t *testing.T) {

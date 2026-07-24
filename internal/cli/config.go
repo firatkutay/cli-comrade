@@ -50,6 +50,7 @@ func newConfigCmd(newLoader loaderFactory) *cobra.Command {
 		newConfigPathCmd(newLoader),
 		newConfigTestLLMCmd(newLoader),
 		newConfigModelsCmd(newLoader),
+		newConfigProfileCmd(newLoader),
 	)
 
 	return root

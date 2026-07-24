@@ -25,7 +25,7 @@ func TestRunChatNonInteractiveStdinReportsFriendlyErrorInsteadOfHanging(t *testi
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetIn(&bytes.Buffer{})
 
-	err := runChat(cmd, newTestLoaderFactory(), fakeTTY(false))
+	err := runChat(cmd, newTestLoaderFactory(), fakeTTY(false), false)
 
 	require.Error(t, err)
 	assert.Equal(t, "comrade chat needs an interactive terminal (stdin is not a TTY) — run it directly in a terminal, not piped or redirected.", err.Error())
@@ -46,7 +46,7 @@ func TestRunChatNonInteractiveStdinReportsFriendlyErrorInsteadOfHangingInTurkish
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetIn(&bytes.Buffer{})
 
-	err = runChat(cmd, newTestLoaderFactory(), fakeTTY(false))
+	err = runChat(cmd, newTestLoaderFactory(), fakeTTY(false), false)
 
 	require.Error(t, err)
 	assert.Equal(t, "comrade chat, etkileşimli bir terminal gerektirir (stdin bir TTY değil) — doğrudan bir terminalde çalıştırın, boru hattına yönlendirmeyin.", err.Error())

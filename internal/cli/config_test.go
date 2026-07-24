@@ -543,7 +543,7 @@ func TestConfigUnknownSubcommandShowsTranslatedError(t *testing.T) {
 	_, _, err := execRootSplit(t, "dev", "config", "bogus")
 
 	require.Error(t, err)
-	assert.Equal(t, `unknown subcommand "bogus" for comrade config (expected one of: edit, get, list, models, path, set)`, err.Error())
+	assert.Equal(t, `unknown subcommand "bogus" for comrade config (expected one of: edit, get, list, models, path, profile, set)`, err.Error())
 	assert.NotContains(t, err.Error(), "test-llm", "the Hidden test-llm subcommand must never appear in the suggested list")
 }
 
@@ -556,7 +556,7 @@ func TestConfigUnknownSubcommandShowsTranslatedErrorInTurkish(t *testing.T) {
 	_, _, err := execRootSplit(t, "dev", "config", "bogus")
 
 	require.Error(t, err)
-	assert.Equal(t, `"bogus": comrade config için bilinmeyen alt komut (beklenen: edit, get, list, models, path, set)`, err.Error())
+	assert.Equal(t, `"bogus": comrade config için bilinmeyen alt komut (beklenen: edit, get, list, models, path, profile, set)`, err.Error())
 }
 
 // TestConfigBareInvocationStillPrintsHelpAndExitsZero is `comrade

@@ -47,6 +47,17 @@ func detectKeychainAvailable() bool {
 	return err == nil || errors.Is(err, keyring.ErrNotFound)
 }
 
+// KeychainAvailable is detectKeychainAvailable exported for
+// `comrade doctor`'s config/keychain check (internal/doctor): a read-only
+// probe of whether a real, reachable OS keychain backend is behind
+// go-keyring on this machine, independent of any particular Store
+// instance's own (already-decided-at-construction-time) backend choice —
+// see detectKeychainAvailable's own doc comment for exactly what "probe"
+// means here.
+func KeychainAvailable() bool {
+	return detectKeychainAvailable()
+}
+
 // NewStore constructs a Store, choosing its backend once: the OS
 // keychain when detectKeychainAvailable reports one is reachable,
 // otherwise the 0600 file fallback at credentialsPath. stderr receives

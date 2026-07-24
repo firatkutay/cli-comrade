@@ -21,22 +21,30 @@ an installable update without your private key.
 
 ### Rollout behavior
 
-If no real key is embedded yet (the shipped placeholder in
+If no real key is embedded (the shipped placeholder in
 `internal/update/cosign.pub`), signature verification is **skipped with a
-warning** and only the checksum is checked — so upgrades keep working until you
-finish the one-time setup below. Once a real key is embedded **and** releases
-are signed, verification is enforced: a missing or invalid signature **aborts**
+warning** and only the checksum is checked — so upgrades keep working until the
+one-time setup below is done. Once a real key is embedded **and** releases are
+signed, verification is enforced: a missing or invalid signature **aborts**
 the upgrade.
 
-## One-time setup (maintainer)
+**Current status: done.** As of v0.3.0, `internal/update/cosign.pub` holds the
+project's real ECDSA P-256 public key (not the placeholder), and every release
+from v0.3.0 onward is signed in CI — so `comrade upgrade` enforces the
+signature unconditionally for those releases. The one-time setup below is kept
+for reference and for rotating the key (see "Rotating the key").
 
-> **⚠️ Do this _before_ your next release.** Once this change is merged, the
-> release workflow's cosign step **requires** the `COSIGN_PRIVATE_KEY` and
+## One-time setup (maintainer) — already completed
+
+> **⚠️ Before cutting a release without this configured:** the release
+> workflow's cosign step **requires** the `COSIGN_PRIVATE_KEY` and
 > `COSIGN_PASSWORD` secrets — unlike the Homebrew/Scoop/winget publish steps,
 > signing has **no graceful skip**, so a release cut without these secrets set
-> will **fail**. Complete steps 1–3 below first.
+> will **fail**. These secrets and the embedded key below are already
+> configured for this project; the steps are kept here for the record and for
+> setting up a fork or rotating the key.
 
-Activating signing requires you to generate a key pair and configure CI secrets.
+Activating signing requires generating a key pair and configuring CI secrets.
 
 1. **Generate a cosign key pair** (prompts for a password):
    ```bash

@@ -6,7 +6,7 @@ Binary name: `comrade`
 
 ## Türkçe
 
-v0.1.x için **birincil kurulum yolu** aşağıdaki `install.sh`/`install.ps1`
+v0.3.x için **birincil kurulum yolu** aşağıdaki `install.sh`/`install.ps1`
 tek satırlık komutlarıdır. Tüm kurulum yöntemleri her release'de aynı
 imzalanmış/checksum'lı arşivlerden ve paketlerden üretilir (bkz.
 `.goreleaser.yaml`). Hiçbiri `sudo curl | bash` gibi bir "kör" script
@@ -33,11 +33,21 @@ Bu script:
    ile doğrular — doğrulama başarısız olursa kurulum iptal edilir;
 4. `$HOME/.local/bin`'e (yazılamıyorsa `/usr/local/bin`'e, o da
    yazılamıyorsa `sudo` ile) kurar;
-5. `comrade init <shell>` çalıştırmanızı önerir.
+5. kurulum dizini PATH'inizde değilse, kabuğunuza uygun bir PATH export
+   satırını rc dosyanıza (bash → `~/.bashrc`, zsh → `~/.zshrc`, fish →
+   `~/.config/fish/config.fish`, diğerleri → `~/.profile`) **otomatik
+   olarak** ve idempotent şekilde ekler (script'i tekrar çalıştırmak
+   satırı ikinci kez eklemez), ardından kabuğunuzu yeniden başlatmanızı
+   veya ekrana yazdırılan `export ...` komutunu doğrudan çalıştırmanızı
+   söyler;
+6. `comrade init <shell>` çalıştırmanızı önerir.
 
 Ortam değişkenleri: `COMRADE_VERSION` (belirli bir sürümü, örn. `v0.1.4`,
 sabitler — bu durumda script o tag'e özel `checksums.txt`'i kullanır),
-`COMRADE_INSTALL_DIR` (kurulum dizinini değiştirir).
+`COMRADE_INSTALL_DIR` (kurulum dizinini değiştirir), `COMRADE_NO_MODIFY_PATH`
+(herhangi bir değere ayarlanırsa, script rc dosyanızı OTOMATİK
+DÜZENLEMEZ — bunun yerine eski davranışa döner: sadece PATH'e elle
+eklemeniz gerektiğini bildiren bir not basar).
 
 ### Kurulum script'i (Windows PowerShell) — önerilen yöntem
 
@@ -164,11 +174,17 @@ comrade upgrade           # indirir, checksum doğrular, kendini günceller
 yeni bir sürüm olduğunu sessizce bildirir (`general.update_check =
 false` ile kapatılabilir — bkz. CONFIGURATION.md).
 
+`comrade upgrade`, indirdiği sürümü kurmadan önce artık bir cosign
+imzasını (offline, ağ erişimi olmadan) doğrular; imza doğrulanamazsa
+kurulum iptal edilir. Ayrıntılar için bkz.
+[`docs/UPDATE_SIGNING.md`](UPDATE_SIGNING.md) ve
+[`docs/SECURITY.md`](SECURITY.md).
+
 ---
 
 ## English
 
-The **primary install path for v0.1.x** is the `install.sh`/`install.ps1`
+The **primary install path for v0.3.x** is the `install.sh`/`install.ps1`
 one-liners below. Every install method is built from the exact same
 signed/checksummed archives and packages on every release (see
 `.goreleaser.yaml`). None of them is a blind `curl | sudo bash` — even
@@ -197,11 +213,21 @@ This script:
    fails;
 4. installs to `$HOME/.local/bin` (falling back to `/usr/local/bin`,
    then to `sudo` if neither is writable);
-5. suggests running `comrade init <shell>`.
+5. if the install directory isn't already on your PATH, **automatically**
+   appends a shell-appropriate PATH export line to your rc file (bash →
+   `~/.bashrc`, zsh → `~/.zshrc`, fish → `~/.config/fish/config.fish`,
+   anything else → `~/.profile`), idempotently (re-running the script
+   never appends it twice), then tells you to restart your shell or run
+   the printed `export ...` command directly;
+6. suggests running `comrade init <shell>`.
 
 Env overrides: `COMRADE_VERSION` (pin an exact version, e.g. `v0.1.4` —
 this switches the script to that tag's own `checksums.txt` instead of
-`latest`), `COMRADE_INSTALL_DIR` (override the install directory).
+`latest`), `COMRADE_INSTALL_DIR` (override the install directory),
+`COMRADE_NO_MODIFY_PATH` (set to any non-empty value to stop the script
+from auto-editing your rc file — it falls back to the old behavior of
+just printing a note that you need to add the install directory to
+PATH yourself).
 
 ### Install script (Windows PowerShell) — recommended
 
@@ -328,3 +354,9 @@ comrade upgrade           # download, checksum-verify, and self-update
 `comrade` also prints a single, silent, at-most-once-a-week notice at
 the end of any command when a newer version is available (disable with
 `general.update_check = false` — see CONFIGURATION.md).
+
+`comrade upgrade` now verifies a cosign signature (offline, no network
+lookup) on the downloaded release before installing it — the upgrade
+aborts if the signature doesn't check out. See
+[`docs/UPDATE_SIGNING.md`](UPDATE_SIGNING.md) and
+[`docs/SECURITY.md`](SECURITY.md) for details.

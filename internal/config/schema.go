@@ -20,6 +20,9 @@ mode = "ask"              # auto | ask | info
 language = "auto"         # auto | tr | en
 color = true
 update_check = true       # check GitHub Releases for a newer version at most once/week
+show_usage = false        # print a per-run token/cost summary line (also: --usage)
+profile = ""              # active config profile name (empty = none); see [profiles] below and "comrade config profile"
+plan_review = "off"       # off | ask — show the interactive plan preview/edit screen before running (ask mode only, unless --review)
 
 [llm]
 provider = "anthropic"    # anthropic | openai_compat | google | ollama
@@ -57,6 +60,12 @@ retention_days = 90
 
 [executor]
 step_timeout_seconds = 300   # max seconds a single executed step may run before being killed
+
+[profiles]
+# named profile overlays live here as [profiles.<name>] tables, e.g.:
+#   [profiles.work]
+#   llm.provider = "openai_compat"
+# see "comrade config profile" and docs/CONFIGURATION.md's "Config profiles" section.
 `
 
 // GeneralConfig holds the [general] section.
@@ -65,6 +74,27 @@ type GeneralConfig struct {
 	Language    string `mapstructure:"language"`
 	Color       bool   `mapstructure:"color"`
 	UpdateCheck bool   `mapstructure:"update_check"`
+	// ShowUsage is general.show_usage: prints a per-run token/cost
+	// summary line (do/fix/explain: after the run; chat: per turn plus a
+	// session total on exit) even without the per-invocation --usage
+	// flag. See internal/cli/usage.go.
+	ShowUsage bool `mapstructure:"show_usage"`
+	// Profile is general.profile: the active config profile's name
+	// (empty = none). Its precedence against --profile/COMRADE_PROFILE is
+	// resolved by ResolveActiveProfile (profile.go), mirroring
+	// ResolveMode's exact shape (internal/engine/mode.go). See
+	// docs/CONFIGURATION.md's "Config profiles" section.
+	Profile string `mapstructure:"profile"`
+	// PlanReview is general.plan_review ("off" | "ask"): whether `comrade
+	// do`/`comrade fix` show the interactive plan-preview/edit screen
+	// (internal/tui.ReviewPlan, via internal/cli/planreview.go) before
+	// running an ask-mode plan of 2+ steps — "off" (the default) never
+	// shows it regardless of mode; "ask" shows it in ask mode only (auto
+	// mode never shows it from this setting alone — only the
+	// per-invocation --review flag forces it there, per
+	// internal/cli/planreview.go's shouldShowPlanReview). See
+	// internal/config/validate.go's keyDefs entry for the enum.
+	PlanReview string `mapstructure:"plan_review"`
 }
 
 // OpenAICompatConfig holds the [llm.openai_compat] section.
@@ -140,6 +170,16 @@ type Config struct {
 	Privacy  PrivacyConfig  `mapstructure:"privacy"`
 	Audit    AuditConfig    `mapstructure:"audit"`
 	Executor ExecutorConfig `mapstructure:"executor"`
+	// Profiles holds every [profiles.<name>] table, keyed by profile
+	// name, each a RAW nested map of arbitrary known keys (a sparse
+	// overlay, not a fixed sub-schema — see profile.go's ProfileKeys/
+	// ProfileSafetyOverrides for how its contents are inspected). This
+	// field is deliberately EXEMPT from the keyDefs registry
+	// (validate.go) and from TestKeyDefsMatchConfigStruct's drift guard
+	// (schema_test.go asserts that exemption explicitly, so it cannot
+	// rot): it is a container of overrides, not itself a settable scalar
+	// config value.
+	Profiles map[string]map[string]any `mapstructure:"profiles"`
 }
 
 // Default returns the schema's default configuration, parsed from

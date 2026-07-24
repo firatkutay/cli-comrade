@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -18,6 +21,26 @@ import (
 	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/secrets"
 )
+
+// captureOpenAICompatBaseURLWarning swaps auth.go's
+// emitOpenAICompatBaseURLWarning seam for the duration of fn, returning
+// every string it was called with (in call order). Reassigning the real
+// os.Stderr variable would NOT work here: config.EmitBaseURLWarning
+// writes through config's own package-level baseURLWarningWriter, which
+// already captured the original *os.File at THAT package's var-init
+// time, before this test ever ran — only the injectable seam (or a
+// non-portable OS-level fd dup2) can intercept it.
+func captureOpenAICompatBaseURLWarning(t *testing.T, fn func()) []string {
+	t.Helper()
+	var got []string
+	original := emitOpenAICompatBaseURLWarning
+	emitOpenAICompatBaseURLWarning = func(warning string) { got = append(got, warning) }
+	t.Cleanup(func() { emitOpenAICompatBaseURLWarning = original })
+
+	fn()
+
+	return got
+}
 
 // withMockKeychain switches go-keyring's package-level provider to its
 // in-memory mock for the duration of t, so newSecretsStore's underlying
@@ -136,6 +159,466 @@ func TestAuthLoginStoresKeyAndReportsPingSuccess(t *testing.T) {
 	assert.Equal(t, secrets.SourceKeychain, source)
 }
 
+// TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefault is this
+// bug's own regression test: llm.openai_compat.base_url is left at its
+// shipped default value (never pre-set here, unlike every other
+// openai_compat test in this file) which hardcodes OpenAI's own API.
+// Without the fix, pingProvider below would silently ping api.openai.com
+// with a wrong-provider (e.g. Qwen) key and fail with a 401 from OpenAI
+// itself instead of ever reaching the fake "Qwen" endpoint — this test
+// proves the interactive base_url prompt fires instead, that the fake
+// endpoint (not api.openai.com) is what actually receives the request,
+// and that the entered value is persisted before the ping runs.
+func TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefault(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	var requestCount int
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		gotHost = r.Host
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"qwen-max","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, 1, requestCount, "the fake endpoint must receive exactly one request")
+	wantHost := strings.TrimPrefix(srv.URL, "http://")
+	assert.Equal(t, wantHost, gotHost, "the request must land on the fake endpoint")
+	assert.NotEqual(t, "api.openai.com", gotHost, "the request must NOT land on OpenAI's real API")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, got, "the entered base_url must be persisted")
+
+	assert.Contains(t, stdout.String(), "Provider address (base_url) [current: https://api.openai.com/v1]")
+	assert.Contains(t, stdout.String(), "Saved llm.openai_compat.base_url = "+srv.URL)
+	assert.Contains(t, stdout.String(), "Model — enter this provider's model name", "the model prompt must fire once base_url is no longer the OpenAI default")
+	assert.Contains(t, stdout.String(), "Stored key for openai_compat")
+	assert.Contains(t, stdout.String(), "Test request succeeded")
+
+	got, err = loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "", got, "no model line was supplied on stdin, so llm.model must stay empty")
+}
+
+// TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefaultInTurkish is
+// the same proof in Turkish — this project's established TR-smoke-test
+// convention (exact substring pin, not merely "TR appears").
+func TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefaultInTurkish(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+	t.Setenv("COMRADE_LANG", "tr")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"qwen-max","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Contains(t, stdout.String(), "Sağlayıcı adresi (base_url) [şu an: https://api.openai.com/v1]")
+	assert.Contains(t, stdout.String(), "llm.openai_compat.base_url = "+srv.URL+" olarak kaydedildi")
+	assert.Contains(t, stdout.String(), "Model — bu sağlayıcının model adını gir", "the model prompt must fire once base_url is no longer the OpenAI default")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, got)
+}
+
+// TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet proves the
+// prompt is a no-op once llm.openai_compat.base_url's effective VALUE no
+// longer equals the shipped default (set explicitly via `comrade config
+// set` here — the same precondition every OTHER openai_compat test in
+// this file already relies on): stdin is pre-loaded with a URL that must
+// NEVER be read — if the prompt fired anyway, it would persist that
+// sentinel value over the real one and the ping would hit the wrong
+// host — so leaving base_url == srv.URL after Execute, and the ping
+// actually landing on srv (proven by the captured Authorization header),
+// is proof the flow is unchanged and no extra prompt was ever emitted.
+func TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"gpt-5.4-mini","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+	// llm.model is ALSO pre-set here — deliberately, and required for this
+	// test's own sentinel-input proof to still hold: promptOpenAICompatModelIfEmpty
+	// (this task's own new addition) fires whenever base_url is non-default
+	// AND llm.model is empty, regardless of whether base_url was customized
+	// just now or, as here, already set beforehand — so leaving llm.model
+	// empty would make the sentinel line below a LEGITIMATE model-prompt
+	// read instead of the never-consumed poison this test needs it to be.
+	// promptOpenAICompatModelIfEmpty's own firing behavior is covered by
+	// TestAuthLoginOpenAICompatPromptsForModelWhenBaseURLNonDefaultAndModelEmpty.
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-test-key-123"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("http://should-never-be-read.invalid\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, "Bearer sk-test-key-123", gotAuth, "the ping must land on the pre-configured srv.URL, not the unread sentinel")
+	assert.Contains(t, stdout.String(), "Stored key for openai_compat")
+	assert.NotContains(t, stdout.String(), "Provider address (base_url)", "no base_url prompt must be emitted when base_url is already explicitly set")
+	assert.NotContains(t, stdout.String(), "Model —", "no model prompt must be emitted when llm.model is already explicitly set")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, got, "base_url must be unchanged — the unread sentinel must never be persisted")
+}
+
+// TestAuthLoginOpenAICompatUsesEnteredModelEvenWhenDefaultProviderIsStillActive
+// is the independent-review-reported MAJOR bug's own regression test.
+// llm.provider is deliberately left UNSET here (still config.Default()'s
+// "anthropic") — the PRIMARY, fresh-install case — while base_url is
+// pointed at a non-OpenAI provider and a model is entered at the
+// interactive prompt. Before the fix, pingProviderWithKey's own
+// `cfg.LLM.Provider != provider` guard (llmping.go) fired because
+// llm.provider was still "anthropic" at ping time, silently wiping the
+// just-entered model back to "" and pinging the OpenAI default
+// (gpt-5.4-mini) against the fake provider instead. This test captures
+// the ACTUAL "model" field of the request body the fake server received
+// and asserts it is the ENTERED model, not the default — proving the ping
+// now runs as the real provider with the real model — and separately
+// proves (a) llm.provider is now persisted as openai_compat and (b) the
+// 404 notice names the model that was ACTUALLY pinged (== entered model),
+// not a stale/default one.
+func TestAuthLoginOpenAICompatUsesEnteredModelEvenWhenDefaultProviderIsStillActive(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	var gotModel string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		gotModel = body.Model
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"The model '` + body.Model + `' does not exist"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\nqwen-plus\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Equal(t, "qwen-plus", gotModel, "the ping must send the ENTERED model, not the OpenAI default (gpt-5.4-mini)")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", gotProvider, "auth login must activate the provider it just logged into")
+
+	assert.Contains(t, stdout.String(),
+		"Key saved ✓  But model 'qwen-plus' doesn't exist on this provider.",
+		"the 404 notice must name the model that was ACTUALLY pinged, not a stale/default one")
+
+	// The UX-polish proof's other half: unlike the 401 hard-rejection
+	// path (which prints NEITHER notice — see
+	// TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL), this is a
+	// non-rejected, key-STORING path — the deferred activation and
+	// base_url-saved notices must still print, just later than before.
+	assert.Contains(t, stdout.String(), "Active provider set to openai_compat.", "a non-rejected, key-storing login must still print the provider-activation notice")
+	assert.Contains(t, stdout.String(), "Saved llm.openai_compat.base_url = "+srv.URL, "a non-rejected, key-storing login must still print the base_url-saved notice")
+}
+
+// TestAuthLoginOpenAICompatSharedReaderConsumesBothPipedLines is the
+// shared-bufio.Reader regression test called out separately from the
+// masked-default-provider case above: base_url and model are piped
+// through cmd.InOrStdin() in ONE shot. Before newAuthLoginCmd's RunE built
+// ONE bufio.Reader and threaded it through both prompts, a second,
+// independently-constructed bufio.Reader over the same cmd.InOrStdin()
+// would already have drained the underlying reader on its first Read,
+// silently losing the model line — this test proves BOTH piped lines are
+// consumed by asserting both persisted values, not just that the command
+// succeeded.
+func TestAuthLoginOpenAICompatSharedReaderConsumesBothPipedLines(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"qwen-plus","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\nqwen-plus\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, gotBaseURL, "the FIRST piped line must be consumed as base_url")
+
+	gotModel, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "qwen-plus", gotModel, "the SECOND piped line must still be consumed as the model — proof the reader is shared, not rebuilt per prompt")
+
+	assert.Contains(t, stdout.String(), "Test request succeeded")
+}
+
+// TestAuthLoginActivatesProviderAndPrintsNoticeOnlyWhenChanged proves (a)
+// `comrade auth login <provider>` persists llm.provider = <provider> when
+// it was not already active, and (b) MsgAuthProviderActivated is silent
+// on a routine re-login into an ALREADY-active provider — no noise for
+// the common case.
+func TestAuthLoginActivatesProviderAndPrintsNoticeOnlyWhenChanged(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"gpt-5.4-mini","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
+
+	// FIRST login: llm.provider is still the default "anthropic" — must
+	// change, persist, and print the activation notice.
+	var stdout1 strings.Builder
+	cmd1 := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-first"), fakeTTY(true))
+	cmd1.SetOut(&stdout1)
+	cmd1.SetErr(&strings.Builder{})
+	cmd1.SetArgs([]string{"openai_compat"})
+	require.NoError(t, cmd1.Execute())
+
+	assert.Contains(t, stdout1.String(), "Active provider set to openai_compat.")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", gotProvider)
+
+	// SECOND login: llm.provider is ALREADY openai_compat — must stay
+	// silent, no redundant write or notice.
+	var stdout2 strings.Builder
+	cmd2 := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-second"), fakeTTY(true))
+	cmd2.SetOut(&stdout2)
+	cmd2.SetErr(&strings.Builder{})
+	cmd2.SetArgs([]string{"openai_compat"})
+	require.NoError(t, cmd2.Execute())
+
+	assert.NotContains(t, stdout2.String(), "Active provider set to", "logging back into an already-active provider must not print the activation notice")
+}
+
+// TestPromptOpenAICompatBaseURLEmitsCleartextWarningForWarnClassURL is
+// the security-review fix's own regression test: entering a warned-but-
+// allowed endpoint (http:// to a non-loopback host — config.CheckBaseURL's
+// warn class, not its reject class) at the prompt must surface the SAME
+// cleartext-credential warning `comrade config set` prints for the exact
+// same value (config.EmitBaseURLWarning — reused, not duplicated), not
+// silently accept it. Calls promptOpenAICompatBaseURL directly (rather
+// than through the full auth-login flow) so the warn-class host never
+// needs an actual live connection — pingProvider is not involved here at
+// all.
+func TestPromptOpenAICompatBaseURLEmitsCleartextWarningForWarnClassURL(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("http://192.168.1.50:11434\n"))
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	var saved string
+	warnings := captureOpenAICompatBaseURLWarning(t, func() {
+		var promptErr error
+		saved, promptErr = promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), "https://api.openai.com/v1", bufio.NewReader(cmd.InOrStdin()))
+		require.NoError(t, promptErr)
+	})
+
+	require.Len(t, warnings, 1, "the accept path must emit exactly one warning")
+	assert.Equal(t,
+		"warning: llm.openai_compat.base_url is set to an http:// URL (192.168.1.50:11434); the API key will be sent unencrypted over the network to this host",
+		warnings[0])
+
+	assert.Equal(t, "http://192.168.1.50:11434", saved, "the returned value must be what was persisted — the caller prints MsgAuthOpenAICompatBaseURLSaved itself, deferred")
+
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, "http://192.168.1.50:11434", got, "a warn-class (not reject-class) value must still be accepted and saved")
+}
+
+// TestPromptOpenAICompatBaseURLEmitsNoWarningForHTTPSURL proves the
+// warning is genuinely conditional — an https:// value (no cleartext
+// risk) must save without ever invoking the warning seam, exactly like
+// config.CheckBaseURL's own warning == "" case.
+func TestPromptOpenAICompatBaseURLEmitsNoWarningForHTTPSURL(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("https://dashscope.aliyuncs.com/compatible-mode/v1\n"))
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	var saved string
+	warnings := captureOpenAICompatBaseURLWarning(t, func() {
+		var promptErr error
+		saved, promptErr = promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), "https://api.openai.com/v1", bufio.NewReader(cmd.InOrStdin()))
+		require.NoError(t, promptErr)
+	})
+
+	assert.Empty(t, warnings, "an https:// endpoint carries no cleartext risk and must not warn")
+	assert.Equal(t, "https://dashscope.aliyuncs.com/compatible-mode/v1", saved, "the returned value must be what was persisted")
+
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, "https://dashscope.aliyuncs.com/compatible-mode/v1", got)
+}
+
+// TestPromptOpenAICompatModelIfEmptyPromptsAndSavesWhenEligible is this
+// task's own core proof: a non-OpenAI base_url (Qwen, here) combined with
+// an empty llm.model must prompt for — and persist — a model name, so
+// buildProvider (client.go) never silently falls back to
+// llm.DefaultOpenAICompatModel() (an OpenAI-specific name) against a
+// provider that has never heard of it.
+func TestPromptOpenAICompatModelIfEmptyPromptsAndSavesWhenEligible(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("qwen-plus\n"))
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	cfg := config.Default()
+	cfg.LLM.OpenAICompat.BaseURL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+	cfg.LLM.Model = ""
+
+	promptErr := promptOpenAICompatModelIfEmpty(cmd, loader, cfg, i18n.NewTranslator(i18n.LangEN), bufio.NewReader(cmd.InOrStdin()))
+	require.NoError(t, promptErr)
+
+	assert.Contains(t, stdout.String(), "Model — enter this provider's model name")
+
+	got, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "qwen-plus", got, "a non-empty model line must be persisted")
+}
+
+// TestPromptOpenAICompatModelIfEmptySkipsWhenBaseURLIsDefault proves the
+// prompt never fires for a genuine OpenAI user (base_url still the
+// shipped default) — the stdin sentinel below must never be read, since a
+// blocking read here with no input queued would hang the test.
+func TestPromptOpenAICompatModelIfEmptySkipsWhenBaseURLIsDefault(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("should-never-be-read\n"))
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	cfg := config.Default()
+	cfg.LLM.Model = ""
+
+	promptErr := promptOpenAICompatModelIfEmpty(cmd, loader, cfg, i18n.NewTranslator(i18n.LangEN), bufio.NewReader(cmd.InOrStdin()))
+	require.NoError(t, promptErr)
+
+	assert.Empty(t, stdout.String(), "no prompt must be emitted when base_url is still the OpenAI default")
+
+	got, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "", got, "the unread sentinel must never be persisted as a model name")
+}
+
+// TestPromptOpenAICompatModelIfEmptySkipsWhenModelAlreadySet proves the
+// prompt never fires once llm.model already has a value — same
+// never-read-the-sentinel proof as the base_url-default case above, this
+// time with base_url non-default but llm.model already populated.
+func TestPromptOpenAICompatModelIfEmptySkipsWhenModelAlreadySet(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("should-never-be-read\n"))
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	cfg := config.Default()
+	cfg.LLM.OpenAICompat.BaseURL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+	cfg.LLM.Model = "qwen-max"
+
+	promptErr := promptOpenAICompatModelIfEmpty(cmd, loader, cfg, i18n.NewTranslator(i18n.LangEN), bufio.NewReader(cmd.InOrStdin()))
+	require.NoError(t, promptErr)
+
+	assert.Empty(t, stdout.String(), "no prompt must be emitted when llm.model is already set")
+
+	got, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "", got, "loader must be untouched — the pre-set value came from cfg, not from SetAndSave")
+}
+
 func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
@@ -159,14 +642,185 @@ func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {
 
 	require.NoError(t, cmd.Execute(), "a failed ping must not turn auth login into a command error")
 
-	assert.Contains(t, stdout.String(), "Stored key for openai_compat")
-	assert.Contains(t, stdout.String(), "Could not verify it right now")
+	assert.Contains(t, stdout.String(), "Key saved")
+	assert.Contains(t, stdout.String(), "Couldn't verify it right now")
 
 	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
 	require.NoError(t, err)
 	key, _, err := store.Get(context.Background(), "openai_compat")
 	require.NoError(t, err)
 	assert.Equal(t, "sk-still-stored", key, "the key must be stored regardless of whether the ping succeeded")
+}
+
+// TestAuthLoginOpenAICompatReportsModelNotFoundOn404WithModelMessage is
+// this task's own ping-classification proof: a 404 response whose body
+// mentions "model" (openai_compat's real-world shape for an unknown-model
+// error) must render the dedicated MsgAuthModelNotFound notice — naming
+// the model that was actually pinged — rather than the generic
+// MsgAuthStoredKeyPingFailed framing, which would misleadingly read as a
+// network hiccup. Non-fatal: the key is stored and Execute returns nil,
+// exactly like every other ping-failure class except ErrAuthRejected.
+// llm.model is pre-set via `config set` (rather than left for the
+// interactive model prompt to fill) so the effective model name is
+// deterministic and the test needs no stdin at all.
+func TestAuthLoginOpenAICompatReportsModelNotFoundOn404WithModelMessage(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"The model 'gpt-5.4-mini' does not exist"}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute(), "an unknown-model 404 must not turn auth login into a command error")
+
+	assert.Contains(t, stdout.String(),
+		"Key saved ✓  But model 'gpt-5.4-mini' doesn't exist on this provider.\n› Pick a model:  comrade config models   then:  comrade config set llm.model <model>\n")
+	assert.NotContains(t, stdout.String(), "Couldn't verify it right now", "must not use the generic ping-failed framing for an unknown-model 404")
+
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
+	require.NoError(t, err)
+	key, _, err := store.Get(context.Background(), "openai_compat")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-still-stored", key, "the key must be stored — the model, not the key, is the problem")
+}
+
+// TestAuthLoginModelNotFoundDoesNotRollBackProviderOrModel is the
+// over-rollback guard: unlike the 401 hard-rejection path (which DOES
+// restore config — see TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL
+// above), a 404-unknown-model failure DOES store the key. This test
+// starts from the SAME fresh-default-provider precondition (llm.provider
+// still "anthropic") and enters base_url + model at the prompts, exactly
+// like the rollback test, but the ping fails 404 instead of 401. The
+// provider/model activation that happened pre-ping must survive —
+// rollback is scoped to ErrAuthRejected ONLY, never to any path that
+// stores the key.
+func TestAuthLoginModelNotFoundDoesNotRollBackProviderOrModel(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"The model '` + body.Model + `' does not exist"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-qwen-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\nqwen-plus\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute(), "a 404-unknown-model failure must not turn auth login into a command error")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", gotProvider, "a 404-model failure DOES store the key, so the provider activation must NOT be rolled back")
+
+	gotModel, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "qwen-plus", gotModel, "the entered model must NOT be rolled back on a 404-model failure")
+
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, gotBaseURL, "the entered base_url must NOT be rolled back on a 404-model failure")
+}
+
+// TestAuthLoginOpenAICompatReportsPingFailedOn404WithoutModelWording
+// proves the 404 classification is scoped to messages that actually
+// mention "model" — a 404 for an unrelated reason (route not found,
+// resource not found, ...) must fall through to the generic
+// MsgAuthStoredKeyPingFailed framing instead of misreporting an unrelated
+// 404 as a model problem.
+func TestAuthLoginOpenAICompatReportsPingFailedOn404WithoutModelWording(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"resource not found"}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.Contains(t, stdout.String(), "Couldn't verify it right now")
+	assert.NotContains(t, stdout.String(), "doesn't exist on this provider", "a 404 whose message never mentions \"model\" must not be misreported as an unknown-model error")
+}
+
+// TestAuthLoginOpenAICompatReportsPingFailedOnOfflineError proves
+// llm.ErrOffline (a transport-level failure — connection refused here,
+// since srv is closed before Execute ever runs) renders the generic
+// MsgAuthStoredKeyPingFailed notice, not MsgAuthModelNotFound — the
+// 404-model classification must never fire for a class of failure that
+// never even reached the provider's HTTP layer.
+func TestAuthLoginOpenAICompatReportsPingFailedOnOfflineError(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	unreachableURL := srv.URL
+	srv.Close() // closed before Execute: every request against unreachableURL now gets connection-refused
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", unreachableURL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute(), "an offline/unreachable provider must not turn auth login into a command error")
+
+	assert.Contains(t, stdout.String(), "Couldn't verify it right now")
+	assert.NotContains(t, stdout.String(), "doesn't exist on this provider")
+
+	store, err := newSecretsStore(io.Discard, i18n.NewTranslator(i18n.LangEN))
+	require.NoError(t, err)
+	key, _, err := store.Get(context.Background(), "openai_compat")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-still-stored", key)
 }
 
 // TestAuthLoginStoresKeyAndReportsBaseURLUnsafeInsteadOfPingFailed is the
@@ -319,6 +973,108 @@ func TestAuthLoginNeverWritesKeyWhenProviderRejectsItInTurkish(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "openai_compat için bu anahtar sağlayıcı tarafından reddedildi")
 	assert.Contains(t, err.Error(), `comrade auth login openai_compat`)
+}
+
+// TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL is the
+// second independent-review-reported regression's own full-rollback
+// proof. Fresh install: llm.provider is still the default "anthropic".
+// The user enters base_url=<fake Qwen server> and model=qwen-plus at the
+// interactive prompts — both persisted via loader.SetAndSave BEFORE the
+// ping, exactly like llm.provider's own pre-ping activation — but the
+// ping comes back 401 (ErrAuthRejected), the ONE outcome that stores no
+// key at all. A hard-rejected login must leave config EXACTLY as it
+// found it: llm.provider back to "anthropic", llm.model back to "" (NOT
+// left at "qwen-plus", which would silently poison the still-active
+// anthropic provider with an unrelated model name on the very next
+// `comrade "..."` run), and llm.openai_compat.base_url back to the
+// shipped OpenAI default.
+func TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer srv.Close()
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(srv.URL + "\nqwen-plus\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr, "a definitively rejected key must be a nonzero-exit command error")
+	assert.Contains(t, cmdErr.Error(), "The provider rejected this key for openai_compat")
+
+	// The UX-polish proof: MsgAuthProviderActivated and
+	// MsgAuthOpenAICompatBaseURLSaved must NEVER have printed at all on
+	// this path — not "printed then contradicted by the rollback," but
+	// genuinely deferred past the ping until we know the write sticks.
+	// Printing either here would tell the user their provider/base_url
+	// WAS set, which the rollback above just proved false.
+	assert.NotContains(t, stdout.String(), "Active provider set to", "a rejected login must never print the provider-activation notice")
+	assert.NotContains(t, stdout.String(), "Saved llm.openai_compat.base_url", "a rejected login must never print the base_url-saved notice")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "anthropic", gotProvider, "a rejected login must roll llm.provider back to what it was")
+
+	gotModel, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "", gotModel, "a rejected login must roll llm.model back to empty — NOT leave the entered model active against the (rolled-back) anthropic provider")
+
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, config.Default().LLM.OpenAICompat.BaseURL, gotBaseURL, "a rejected login must roll llm.openai_compat.base_url back to the shipped default")
+}
+
+// TestAuthLoginRejectedKeyRestoresProviderWhenNoOpenAICompatPromptsFire is
+// the coordinator's "simple" repro, isolated from the base_url/model
+// rollback covered above: llm.openai_compat.base_url and llm.model are
+// BOTH pre-set via `config set` so NEITHER interactive prompt fires —
+// only llm.provider is ever switched pre-ping, by the activation step
+// alone. llm.provider is left at its default ("anthropic"); the key is
+// rejected (401). Proves the provider-only rollback path works even when
+// the base_url/model prompts are never involved.
+func TestAuthLoginRejectedKeyRestoresProviderWhenNoOpenAICompatPromptsFire(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer srv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr)
+	assert.NotContains(t, stdout.String(), "Provider address (base_url)", "precondition: no base_url prompt should fire")
+	assert.NotContains(t, stdout.String(), "Model —", "precondition: no model prompt should fire")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotProvider, err := loader.Get("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "anthropic", gotProvider, "a rejected login must roll llm.provider back even when no openai_compat prompts fired")
 }
 
 // TestAuthLoginNonInteractiveStdinReportsFriendlyError is QA MINOR-5's

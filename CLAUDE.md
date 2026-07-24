@@ -20,7 +20,7 @@ Global ayar + komut bazında override flag'leri:
 | Mod | Davranış |
 |---|---|
 | `auto` | Aracı devralır, komutları kendisi çalıştırır. Her adımda tek satırlık ne yaptığını yazar. |
-| `ask` | Her komuttan önce kısa gerekçe + komutun kendisini gösterir, `[e]vet / [h]ayır / [d]üzenle / [a]çıkla / [t]ümünü onayla` sorar. **Varsayılan mod budur.** |
+| `ask` | Her komuttan önce kısa gerekçe + komutun kendisini gösterir, `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` sorar. **Varsayılan mod budur.** |
 | `info` | Hiçbir şey çalıştırmaz. Sorunun nedenini ve çözüm adımlarını kopyalanabilir komutlarla açıklar. |
 
 **Güvenlik istisnası (pazarlık edilemez):** `auto` modda bile risk sınıfı `destructive` olan komutlar HER ZAMAN onay ister. Bu davranış ancak config'de `safety.confirm_destructive=false` + `--yolo` flag'i birlikte varsa kapanır ve kapatıldığında uyarı basılır.
@@ -97,12 +97,15 @@ cmd/comrade/            # main, cobra root
 internal/
   cli/                  # alt komutlar: fix, do (default), explain, chat, config, init, history
   config/               # viper yükleme, şema, migration
+  secrets/              # API key saklama: keychain (birincil) + 0600 dosya fallback
   llm/                  # provider interface + connector'lar + parse
   context/              # bağlam toplayıcı, OS/shell tespiti
   redact/               # gizli bilgi maskeleme
   engine/               # plan üretimi, risk sınıflandırma, yürütme döngüsü
   executor/             # platform-özel komut çalıştırma (sh -c / powershell -Command)
   safety/               # kural motoru, denylist, risk override
+  update/               # self-update: release indirme, checksum + gömülü-key cosign imza doğrulama, atomik replace
+  shellinit/            # shell entegrasyonu: bash/zsh/fish/PowerShell hook kurulumu
   audit/                # audit log (JSONL)
   i18n/                 # TR/EN mesaj katalogları
   tui/                  # bubbletea bileşenleri
@@ -133,6 +136,7 @@ docs/
 4. Audit log her yürütülen komutu kaydeder: timestamp, mod, komut, risk sınıfı, exit code
 5. Telemetri varsayılan KAPALI; açılırsa sadece anonim kullanım sayaçları, asla komut içeriği değil
 6. `--yolo` flag'i her kullanımda kırmızı uyarı basar
+7. Self-update (`comrade upgrade`) yalnızca, binary'e gömülü cosign public key'e karşı imzası doğrulanan release'i kurar (saf-Go, offline — Rekor/ağ yok); imza yoksa/doğrulanamıyorsa yükseltme reddedilir (fail-closed). Release'ler CI'da cosign ile imzalanır (`checksums.txt.sig`).
 
 ## Test Stratejisi
 

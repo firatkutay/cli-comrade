@@ -154,9 +154,11 @@
              data-tr="`auto` modda bile yıkıcı komutlar (rm -rf /, mkfs, dd, fork-bomb…) daima onay ister. Yerel bir kural motoru + denylist ikinci kontrolü yapar ve LLM'e asla güvenmez."
              data-en="Even in `auto`, destructive commands (rm -rf /, mkfs, dd, fork bombs…) always require confirmation. A local rule engine + denylist does a second check and never trusts the LLM."></p>
           <ul class="safety__list">
-            <li data-tr="Redaction: makineden hiçbir şey çıkmadan önce sırlar (API anahtarı, token, parola) maskelenir." data-en="Redaction: secrets (API keys, tokens, passwords) are masked before anything leaves the machine."></li>
+            <li data-tr="İmzalı sürümler: her sürümün checksum dosyası cosign ile imzalanır; comrade upgrade, kurmadan önce imzayı ikiliye gömülü anahtara karşı çevrimdışı doğrular — kurcalanmış veya sahte sürüm reddedilir." data-en="Signed releases: every release's checksums are cosign-signed; comrade upgrade verifies the signature offline against a public key baked into the binary before installing anything — a tampered or spoofed release is refused."></li>
+            <li data-tr="Redaction: API anahtarları, token'lar, parolalar, Bearer/Basic başlıkları ve user:pass@ bağlantı dizeleri, LLM'e herhangi bir bağlam gönderilmeden önce maskelenir." data-en="Redaction: API keys, tokens, passwords, Bearer/Basic headers and user:pass@ connection strings are masked before any context is sent to the LLM."></li>
             <li data-tr="Audit log: çalıştırılan her komut zaman damgası, mod ve risk sınıfıyla kaydedilir." data-en="Audit log: every executed command is recorded with timestamp, mode and risk class."></li>
             <li data-tr="API anahtarları keychain'de tutulur, config dosyasına düz metin yazılmaz." data-en="API keys are stored in the OS keychain, never written to config in plaintext."></li>
+            <li data-tr="base_url doğrulaması: sağlayıcı API anahtarı cloud-metadata veya link-local adreslere gönderilemez; şifresiz http uç noktaları için uyarı verilir." data-en="base_url validation: the provider API key can't be sent to a cloud-metadata or link-local address, and cleartext http endpoints get a warning."></li>
           </ul>
         </div>
       </div>
@@ -168,7 +170,7 @@
       <h2 class="section__title" data-tr="Kendi modelini getir" data-en="Bring your own model">Kendi modelini getir</h2>
       <div class="providers">
         <div class="provider"><span class="provider__name">Anthropic</span><span class="provider__meta">Claude</span></div>
-        <div class="provider"><span class="provider__name" data-tr="OpenAI-uyumlu" data-en="OpenAI-compatible">OpenAI-uyumlu</span><span class="provider__meta">OpenAI · OpenRouter · Groq · Mistral…</span></div>
+        <div class="provider"><span class="provider__name" data-tr="OpenAI-uyumlu" data-en="OpenAI-compatible">OpenAI-uyumlu</span><span class="provider__meta">OpenAI · Mistral · Groq · GLM · Qwen · Kimi · OpenRouter · LM Studio…</span><span class="provider__meta" data-tr="base_url ile herhangi bir OpenAI-uyumlu sağlayıcı" data-en="any OpenAI-compatible provider via base_url">base_url ile herhangi bir OpenAI-uyumlu sağlayıcı</span></div>
         <div class="provider"><span class="provider__name">Google</span><span class="provider__meta">Gemini</span></div>
         <div class="provider"><span class="provider__name">Ollama</span><span class="provider__meta" data-tr="yerel · çevrimdışı" data-en="local · offline">yerel · çevrimdışı</span></div>
       </div>
@@ -256,7 +258,7 @@
         <a href="https://github.com/firatkutay/cli-comrade/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
       </div>
       <p class="footer__meta">
-        <span class="footer__ver">v0.2.0</span>
+        <span class="footer__ver">v0.3.1</span>
         <span class="sep">·</span>
         <span data-tr="Terminalde yoldaşlıkla yapıldı." data-en="Built with terminal camaraderie.">Terminalde yoldaşlıkla yapıldı.</span>
       </p>

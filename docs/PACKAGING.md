@@ -27,6 +27,32 @@ it does not need to exist anywhere else).
 
 ---
 
+## Supply-chain signing (cosign) — ✅ SHIPPED (v0.3.0)
+
+Every release's `checksums.txt` (which transitively covers every other
+release artifact, since it lists their digests) is signed with
+**cosign**, key-based and fully offline (`--tlog-upload=false` — no
+Rekor transparency-log entry, no network dependency at sign time). The
+real public key is already committed at `internal/update/cosign.pub`,
+so `comrade upgrade` verifies every downloaded release's signature
+before trusting its checksum or replacing the running binary — see
+[docs/UPDATE_SIGNING.md](UPDATE_SIGNING.md) for the verification flow,
+and `.goreleaser.yaml`'s `signs:` block for the exact `cosign sign-blob`
+invocation.
+
+This channel is **not** gated by the same `skip_upload`/missing-secret
+pattern as Homebrew/Scoop/winget below: per
+[docs/UPDATE_SIGNING.md](UPDATE_SIGNING.md), once the public key is
+embedded, the release workflow's cosign step has **no graceful skip** —
+a release cut without `COSIGN_PRIVATE_KEY`/`COSIGN_PASSWORD` set as
+repository secrets will **fail** the whole release, by design (an
+unsigned release with an embedded verification key would silently
+downgrade every future `comrade upgrade` to a hard failure instead).
+Rotating the key means generating a new pair, updating both secrets,
+and re-committing `internal/update/cosign.pub`.
+
+---
+
 ## 1. Homebrew (`brew install comrade`) — ✅ SHIPPED (live since v0.1.2)
 
 **Target repo:** `firatkutay/homebrew-tap`. Holds a live, auto-updated
@@ -94,6 +120,15 @@ PR opened from a fork.
    on every tagged release once the secret exists. A Microsoft moderator
    / automated validation pipeline reviews and merges — typically hours
    to a few days, entirely outside this repo's control.
+
+**CLA fix (v0.3.0):** `.goreleaser.yaml`'s `winget.commit_author` now
+authors the winget-pkgs commit as the maintainer's own CLA-signed
+identity (name + noreply email) instead of goreleaser's default
+`goreleaserbot` author. winget-pkgs' automated CLA check is keyed on the
+commit author, so a bot-authored commit previously tripped its
+`Needs-CLA` gate on every release PR before a human reviewer ever saw
+it — this fix is what lets the auto-opened PR reach actual moderator
+review instead of being auto-rejected at the CLA gate.
 
 **End-user install command (once live):**
 ```powershell
@@ -168,11 +203,15 @@ snap install cli-comrade --classic
 |---|---|---|---|---|
 | Homebrew | ✅ shipped (since v0.1.2) | `HOMEBREW_TAP_TOKEN` | Nothing (tap repo already exists) | Instant, next tag |
 | Scoop | ✅ shipped (since v0.1.3) | `SCOOP_BUCKET_TOKEN` | Nothing (bucket repo already exists) | Instant, next tag |
-| winget | ⏳ pending | `WINGET_TOKEN` | Fork `microsoft/winget-pkgs` to your account | Hours–days (MS moderator merges the auto-opened PR) |
+| winget | ⏳ pending | `WINGET_TOKEN` | Fork `microsoft/winget-pkgs` to your account | Hours–days (MS moderator merges the auto-opened PR; commit now passes the CLA gate, see above) |
 | Snap | ⏳ pending | `SNAPCRAFT_STORE_CREDENTIALS` | `snapcraft register cli-comrade` + a passed classic-confinement `store-requests` forum review | Multi-week (Canonical manual review), then instant per-release after |
+| Cosign signing | ✅ shipped (v0.3.0) | `COSIGN_PRIVATE_KEY` + `COSIGN_PASSWORD` | Key pair generated, public half committed at `internal/update/cosign.pub` (already done) | Instant, next tag — but **fails the whole release** if the secrets are missing, unlike the four channels above |
 
-None of these are required for `firatkutay/cli-comrade`'s next tagged
-release to succeed — every one degrades to "skip this channel" when its
-secret is absent, verified by running `goreleaser check` and `goreleaser
-release --snapshot --clean --skip=publish` with none of the four secrets
-set (see the release-engineering handoff notes for that run's output).
+The four package-manager channels above are **not** required for
+`firatkutay/cli-comrade`'s next tagged release to succeed — each
+degrades to "skip this channel" when its secret is absent, verified by
+running `goreleaser check` and `goreleaser release --snapshot --clean
+--skip=publish` with none of the four secrets set (see the
+release-engineering handoff notes for that run's output). Cosign
+signing is the one exception to that pattern — see "Supply-chain
+signing (cosign)" above.

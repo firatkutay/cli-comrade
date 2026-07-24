@@ -740,6 +740,25 @@ Created automatically on first run with schema defaults
 environment variable (`COMRADE_...`) > file value > built-in default;
 `comrade config list` shows each key's resolved source.
 
+**`base_url` validation** (`internal/config/validate.go`'s
+`checkBaseURL`, closing SAST finding #3: an unvalidated `base_url` sends
+the provider API key, as an `Authorization: Bearer` header, to whatever
+host it names) applies to `llm.openai_compat.base_url`/
+`llm.ollama.base_url` at three independent points sharing this one
+function, so they cannot drift apart: `comrade config set` (hard-reject),
+config-load-time re-validation of the active provider's own `base_url`
+only (warn-only — a hard fail here would brick every command, including
+the repair commands themselves), and `internal/llm/client.go`'s
+`buildProvider` (hard-reject at the point a client is actually
+constructed for an attempt in the fallback chain, since that path never
+needs to stay reachable for repair). A value that doesn't parse as an
+`http(s)` URL with a host, or whose host is a cloud-metadata/link-local
+address (`169.254.0.0/16`, IPv6 `fe80::/10`), is rejected outright with a
+`*config.InvalidValueError`; a plaintext `http://` URL to a non-loopback
+host is allowed but prints a warning that the key will travel
+unencrypted — private ranges (`10/8`, `192.168/16`, `172.16/12`) and
+self-hosted LAN Ollama/LM-Studio setups are deliberately not blocked.
+
 ## 8. Security model
 
 Full threat-model writeup: [SECURITY.md](SECURITY.md).
@@ -754,11 +773,12 @@ trusts the LLM's label beyond using it as a floor.
 ### Denylist — unconditional `Block`, any mode
 
 Built-in rule categories (`internal/safety/denylist.go`), matched
-against a normalized/tokenized form of the command so quoting can't slip
-a match:
+against a normalized/tokenized form of the command so quoting (and a
+`$(...)` command-substitution wrapper) can't slip a match:
 
 - `rm -rf /` (and `~`/`$HOME`-root equivalents)
-- `mkfs` (filesystem format)
+- `mkfs` and the wider disk-format family (`mke2fs`, `mkswap`,
+  `mkdosfs`, `mkntfs`, `newfs`)
 - `dd of=/dev/<disk>` (raw disk overwrite)
 - `diskpart clean` (wipes a disk's partition table)
 - PowerShell `Remove-Item`/`ri`/`rd`/`rmdir`/`del`/`erase`/`rm` with
@@ -766,32 +786,73 @@ a match:
 - `format <drive>:` (Windows format)
 - fork bomb (`:(){:|:&};:`)
 - `> /dev/<disk>` (shell redirect into a real disk device)
+- a recognized destructive disk tool (`wipefs`/`blkdiscard`/`sgdisk`/
+  `tee`/`shred`) pointed at a real `/dev/<disk>` device
+  (`isDestructiveDiskTool`)
 
-A user can add more via `safety.denylist_extra` (regexes), with the same
-unconditional-`Block` effect; a malformed user regex is skipped with a
-stderr warning rather than crashing the engine.
+Normalization (`internal/safety/tokenize.go`'s `normalizeCommand`)
+strips quote characters and unwraps `$(...)` command substitution before
+any rule ever runs, and every regex-based rule is case-insensitive — so
+`rm -Rf /` and `$(rm -rf /)` are recognized identically to the bare
+form. A user can add more via `safety.denylist_extra` (regexes), with
+the same unconditional-`Block` effect; a malformed user regex is skipped
+with a stderr warning rather than crashing the engine.
 
 ### Escalation rules — raise, never lower, the effective risk
 
 `internal/safety/escalation.go`'s fixed rule set: recursive/force delete
-flags (`rm -r`/`-f`, PowerShell `-Recurse`/`-Force`), `chmod -R 777`,
-disk-device writes, registry deletion (`HKLM:`/`HKCU:`), `killall`/
-`taskkill /F`, firewall resets (`iptables -F`, `netsh advfirewall
-reset`), `git push --force`/`-f`, `sudo`/`runas`/elevation, package
-manager installs, and any command with a network-access verb.
+flags (`rm -r`/`-f`, PowerShell `-Recurse`/`-Force`), `chmod`/`chown -R`
+on a root-ish target, disk-device writes, registry deletion
+(`HKLM:`/`HKCU:`), `killall`/`taskkill /F`, firewall resets
+(`iptables -F`, `netsh advfirewall reset`), `git push --force`/`-f`,
+`sudo`/`runas`/elevation, package manager installs, and any command with
+a network-access verb — plus v0.3.0's hardening additions, which close
+signature-allowlist gaps the model's own declared risk label previously
+had no coverage for: `find ... -delete` (mass, non-`rm` deletion),
+`shred -u`/`--remove` and `truncate -s 0` (non-`rm` secure-delete/
+zero-out), `mv ... /dev/null` (discard via move), Windows storage
+cmdlets (`Format-Volume`/`Clear-Disk`/`Initialize-Disk`/
+`Remove-Partition`), unconditional `reg delete ... /f`,
+`diskpart /s <script>` (opaque script file), bare `eval`, and
+fetch-and-execute recognized in three independent shapes — a pipe
+(`curl|wget|... | sh/bash/zsh/python/pwsh`), a process substitution
+(`bash <(curl ...)`), and a command substitution
+(`bash -c "$(curl ...)"`, caught only because `normalizeCommand`
+unwraps the `$(...)` first) — plus a `base64 -d | sh` decode-and-execute
+pipeline.
+
+**Fail-closed default for an unevaluated decision**
+(`internal/safety/decision.go`'s `Decision.Evaluated`): a zero-value
+`Decision` (`Action: Allow`, `EffectiveRisk: RiskRead`, both enum zero
+values) is otherwise indistinguishable from a legitimate read-`Allow`
+verdict. `Evaluated` is `true` on every real return path out of
+`Engine.Evaluate` (`Block`, `Confirm`, and `Allow` alike), so
+`internal/engine/runner.go`'s `normalizeStepDecisions` can detect a
+`Step` that reached it with an unpopulated `Decision` and re-derive it
+instead of running it unprompted.
 
 ### Redaction (`internal/redact/redact.go`)
 
 Applied to every outbound LLM payload (`internal/llm.Client`, not
-opt-in). Pattern set:
+opt-in). Pattern set, expanded in v0.3.0 to close SAST-audit gaps
+without narrowing anything previously caught:
 
 - PEM private-key blocks
-- `password=`/`token=`/`secret=`/`api_key=`-style key-value pairs (and
-  their `:`-separated forms)
-- `Authorization: Bearer <token>` headers, and bare `Bearer <token>`
-  occurrences
-- Known API-key formats: `sk-...` (OpenAI-style), `ghp_`/`gho_` (GitHub),
-  `AKIA...` (AWS), `xox[baprs]-...` (Slack)
+- `password=`/`token=`/`secret=`/`api_key=`/`access_key=`/
+  `client_secret=`-style key-value pairs (and their `:`-separated
+  forms), including a compound key name prefix/suffix — e.g.
+  `DB_PASSWORD=`, `AWS_SECRET_ACCESS_KEY=`
+- `Authorization: Bearer <token>` and `Authorization: Basic <token>`
+  headers, and bare `Bearer <token>` occurrences
+- `scheme://user:pass@host` connection-string credentials (the
+  password segment only)
+- Azure `AccountKey=<...>` values
+- Known API-key formats: `sk-...` (OpenAI-style), `ghp_`/`gho_`/
+  `github_pat_`/`ghs_` (GitHub), `AKIA...` (AWS), `xox[baprs]-...`
+  (Slack), `AIza...` (Google API/Gemini), `glpat-...` (GitLab),
+  `sk_live_`/`sk_test_` (Stripe), `GOCSPX-...`/`ya29....` (Google
+  OAuth), `SG....` (SendGrid), `npm_...` (npm), and Slack incoming
+  webhook URLs (`https://hooks.slack.com/services/...`)
 - JWTs (three-segment base64url)
 - Email addresses and IPv4/IPv6 addresses — **optional**, gated by
   `privacy.redact_emails`/`privacy.redact_ips`
@@ -1293,8 +1354,15 @@ previous, blunter "no OS keychain available on this machine").
   CLAUDE.md's "brew tap" phrasing predates this and now means a
   Homebrew Cask published to a tap repo, not a Formula)
 - A **Scoop** bucket manifest
-- A **winget** manifest, submitted as a PR to a staging
-  `winget-pkgs` fork
+- A **winget** manifest, submitted as a PR to a staging `winget-pkgs`
+  fork, committed as the maintainer's own CLA-signed identity
+  (`winget.commit_author`) rather than goreleaser's default bot author —
+  the winget-pkgs CLA check is keyed on the commit author, so a bot
+  author trips its `Needs-CLA` gate on every release PR
+- A cosign-signed `checksums.txt.sig` (`signs:`, key-based, offline —
+  `--tlog-upload=false` skips the Rekor transparency log at sign time
+  too, not just at verify time) — see the paragraphs above for what
+  `comrade upgrade` does with it
 
 Install scripts `scripts/install.sh`/`install.ps1` download the release
 archive matching the host OS/arch, verify it against the release's
@@ -1303,10 +1371,56 @@ required.
 
 **`comrade upgrade`** (`internal/update`) does the equivalent at
 runtime: queries GitHub Releases, compares against the running binary's
-build-time version, downloads and checksum-verifies the matching
-archive, and atomically replaces the currently running executable
-(handling Windows's can't-overwrite-a-running-exe case via a rename
-dance).
+build-time version, downloads the matching archive plus `checksums.txt`
+and `checksums.txt.sig`, **verifies `checksums.txt`'s cosign signature**
+against the public key embedded in the binary **before** trusting the
+checksum, checksum-verifies the archive against it, and atomically
+replaces the currently running executable (handling Windows's
+can't-overwrite-a-running-exe case via a rename dance).
+
+**Self-update signature verification** (`internal/update/signature.go`,
+`Updater.Apply`) anchors `checksums.txt` — and, transitively, everything
+`VerifyChecksum` trusts because of it — to a cosign public key baked
+into the binary at build time (`internal/update/cosign.pub`, embedded
+via `//go:embed`). Verification is pure Go and fully offline (ECDSA
+P-256, `crypto/ecdsa`/`crypto/x509`/SHA-256 from the standard library —
+no `cosign` binary or network/transparency-log lookup needed on the
+user's machine): `verifyChecksumsSignatureWith` PEM-decodes the
+embedded key, parses it as an ECDSA public key, and calls
+`ecdsa.VerifyASN1` against `checksums.txt`'s SHA-256 digest and the
+base64-decoded `checksums.txt.sig` contents. The outcome is reported via
+the three-value `SignatureStatus` enum (`internal/update/updater.go`),
+returned to the caller rather than printed by this package directly (it
+has no `i18n.Translator`):
+
+- `SignatureStatusNotConfigured` — the embedded key is still
+  `cosign.pub`'s build-time placeholder (not a decodable `PUBLIC KEY`
+  PEM block). A deliberate rollout-safe fallback: `Apply` proceeds to
+  its pre-existing checksum-only verification exactly as before signing
+  was wired in, so a release built before a real key is embedded keeps
+  working. `internal/cli/upgrade.go` renders this as an informational
+  warning (`MsgUpgradeSignatureNotConfigured`).
+- `SignatureStatusVerified` — a real key is configured and the
+  signature checked out before anything else was trusted.
+- `SignatureStatusUnset` (the enum's zero value) plus a non-nil
+  error — a release published without a `ChecksumsSigFileName`
+  (`checksums.txt.sig`) asset (`ErrMissingSignatureAsset`) or with one
+  that doesn't verify (`ErrSignatureInvalid`) — aborts `Apply` before
+  `VerifyChecksum`/`ExtractBinary` ever run. Once a real key is
+  configured, this is non-negotiable: `Apply` never falls back to
+  checksum-only verification the way it does for
+  `SignatureStatusNotConfigured`.
+
+`Updater.CosignPub` is a test-only override of the embedded key (nil in
+every production caller — `internal/cli`'s `defaultUpgradeDeps` never
+sets it), letting tests exercise every branch (placeholder key,
+mismatched key, tampered checksums, malformed signature) against an
+ephemeral, in-test-generated key pair instead of the one real key
+actually embedded in the binary. See
+[docs/UPDATE_SIGNING.md](UPDATE_SIGNING.md) for the maintainer-facing
+key-rotation and CI-secret setup, and the release-signing block in
+`.goreleaser.yaml` (§11 below) for how `checksums.txt.sig` gets
+published in the first place.
 
 **Drift guard**: the release archive naming scheme is unavoidably
 duplicated in four places — `.goreleaser.yaml`'s `archives[].name_template`,

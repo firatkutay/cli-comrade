@@ -62,16 +62,35 @@ davranışıdır. Çözüm (yönetici olmayan, kullanıcı kapsamında):
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
-### PATH'e kurulum sonrası eklenmiyor
+### `comrade: command not found` / kurulum sonrası PATH'e eklenmiyor
 
-`install.sh`/`install.ps1` kurulum dizinini PATH'te bulamazsa bir not
-basar ama PATH'i **kalıcı olarak** (`install.ps1` `Environment::
-SetEnvironmentVariable` ile User PATH'e ekler — yeni bir terminal
-gerekir) veya rc dosyanıza (`install.sh` sadece bir öneri yazar,
-otomatik eklemez — hangi rc dosyasını kullandığınıza siz karar
-verirsiniz) değiştiremeyebilir. `$PATH`'inize
-`~/.local/bin`/`/usr/local/bin`'i elle eklemeniz gerekebilir; terminali
-yeniden başlatmayı unutmayın.
+`install.sh`/`install.ps1` kurulum dizinini PATH'te bulamazsa artık
+**otomatik olarak** kalıcı hale getirir: `install.ps1`
+`[Environment]::SetEnvironmentVariable` ile User PATH'ine ekler (yeni
+bir terminal gerekir); `install.sh` kabuğunuza uygun rc dosyasına
+(bash → `~/.bashrc`, zsh → `~/.zshrc`, fish →
+`~/.config/fish/config.fish`, diğerleri → `~/.profile`) bir PATH
+export satırı ekler ve ardından kabuğunuzu yeniden başlatmanızı ya da
+ekrana yazdırılan `export ...` komutunu doğrudan çalıştırmanızı ister.
+
+Yine de `comrade` bulunamıyorsa, olası nedenler:
+
+- **`COMRADE_NO_MODIFY_PATH` ayarlıydı** — bu durumda `install.sh`
+  rc dosyanızı hiç düzenlemez, sadece bir not basar; PATH'e elle
+  eklemeniz gerekir.
+- **rc dosyası yazılamadı** (dizin yoktu/izin yoktu) — script bu
+  durumda da sessizce eski uyarı-yazdırma davranışına döner.
+- **Kabuğu yeniden başlatmadınız / rc dosyasını `source` etmediniz** —
+  export satırı eklenmiş olsa bile mevcut oturuma etki etmez.
+
+Herhangi bir durumda, elle eklemek için:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+ve kalıcı olması için bu satırı ilgili rc dosyanıza ekleyip yeni bir
+kabuk açın (ya da `source ~/.bashrc` gibi dosyayı yeniden yükleyin).
 
 ### `comrade upgrade` "bu bir geliştirme (dev) derlemesi" diyor
 
@@ -90,6 +109,12 @@ sorunudur (yarım inen dosya); tekrar deneyin. Israrla tekrarlıyorsa
 [Releases](https://github.com/firatkutay/cli-comrade/releases)
 sayfasından o sürümün `checksums.txt`'ini elle indirip karşılaştırın
 ve bir issue açın.
+
+`comrade upgrade` ayrıca checksum'dan önce bir cosign imza doğrulaması
+yapar; imza geçersizse güncelleme (checksum'a bakılmaksızın) durdurulur
+— bu da kasıtlı, atlanamayan bir güvenlik davranışıdır. Ayrıntılar için
+bkz. [`docs/SECURITY.md`](SECURITY.md) ve
+[`docs/UPDATE_SIGNING.md`](UPDATE_SIGNING.md).
 
 ---
 
@@ -155,16 +180,37 @@ behavior for any PowerShell profile, not specific to comrade. Fix
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
-### PATH isn't updated after installing
+### `comrade: command not found` / PATH isn't updated after installing
 
 If `install.sh`/`install.ps1` can't find the install directory on
-PATH, it prints a note but may not be able to change PATH
-**persistently**: `install.ps1` DOES add it to your User PATH via
-`[Environment]::SetEnvironmentVariable` (a new terminal is required to
-pick it up); `install.sh` only prints a suggestion — it never edits
-your rc file automatically, since which rc file to edit is your
-choice. You may need to add `~/.local/bin`/`/usr/local/bin` to `$PATH`
-by hand; remember to restart your terminal afterward.
+PATH, it now handles it **automatically**: `install.ps1` adds it to
+your User PATH via `[Environment]::SetEnvironmentVariable` (a new
+terminal is required to pick it up); `install.sh` appends a
+shell-appropriate PATH export line to your rc file (bash →
+`~/.bashrc`, zsh → `~/.zshrc`, fish → `~/.config/fish/config.fish`,
+anything else → `~/.profile`), then tells you to restart your shell or
+run the printed `export ...` command directly.
+
+If `comrade` still isn't found, likely causes:
+
+- **`COMRADE_NO_MODIFY_PATH` was set** — `install.sh` then never
+  edits your rc file automatically; it only prints a note, and you
+  need to add the install directory to PATH yourself.
+- **The rc file couldn't be written** (missing directory / no write
+  permission) — the script silently falls back to the same
+  print-only-note behavior in that case.
+- **You haven't restarted your shell / sourced the rc file** — the
+  export line may already be there but not yet loaded into your
+  current session.
+
+Either way, you can add it by hand:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+and add that line to your shell's rc file for it to persist, then open
+a new shell (or `source` the rc file, e.g. `source ~/.bashrc`).
 
 ### `comrade upgrade` says "this is a dev build"
 
@@ -182,3 +228,9 @@ issue (a partially downloaded file); retry. If it persists, manually
 download that release's `checksums.txt` from the
 [Releases page](https://github.com/firatkutay/cli-comrade/releases),
 compare by hand, and open an issue.
+
+`comrade upgrade` also verifies a cosign signature before it even gets
+to the checksum — if the signature doesn't verify, the upgrade is
+aborted regardless of the checksum, by design and non-bypassable. See
+[`docs/SECURITY.md`](SECURITY.md) and
+[`docs/UPDATE_SIGNING.md`](UPDATE_SIGNING.md) for details.

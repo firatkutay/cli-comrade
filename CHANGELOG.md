@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-24
+
+### Fixed
+
+- **`comrade auth login openai_compat` silently sent a non-OpenAI key to `api.openai.com`** whenever `llm.openai_compat.base_url` was still at its shipped default — Mistral/Groq/GLM/Qwen/Kimi/OpenRouter/LM Studio keys all pinged OpenAI's own endpoint and got back a confusing 401 from OpenAI instead of the user's real provider. `auth login openai_compat` now detects the still-default `base_url` and interactively prompts for the real endpoint before ever pinging or storing anything (a bare Enter keeps OpenAI's own URL, so genuine OpenAI users see no behavior change); an entered value is validated with the same `config.CheckBaseURL` reject/warn checks `comrade config set` already applies — including the cleartext-`http` warning — and is persisted via `SetAndSave` *before* the login ping, so the ping and the saved config always agree. Also de-duplicates the doubled `openai_compat: openai_compat: ...` error prefix that showed up in chain-failure messages, across every connector, not just `openai_compat`. (#10)
+
+### Changed
+
+- Documentation refreshed for the v0.3.0 feature set — self-update cosign signing, `install.sh`'s automatic PATH setup and `COMRADE_NO_MODIFY_PATH` opt-out, `base_url` validation's reject/warn split, expanded redaction pattern coverage, and the hardened destructive-command classifier — across README, CLAUDE.md, KNOWN_LIMITATIONS, and `docs/CONFIGURATION.md`/`INSTALL.md`/`PACKAGING.md`/`SECURITY.md`/`TECHNICAL.md`(`.tr.md`)/`TROUBLESHOOTING.md`/`UPDATE_SIGNING.md` (#8).
+- Documented that the inline space-triggered ghost hint is zsh/PowerShell-only: bash's readline has no ghost-text mechanism (Tab/double-Tab still work there), and fish already covers this via its own built-in autosuggestions (#11).
+
 ## [0.3.0] - 2026-07-24
 
 ### Added
@@ -846,7 +857,8 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/firatkutay/cli-comrade/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/firatkutay/cli-comrade/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/firatkutay/cli-comrade/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/firatkutay/cli-comrade/compare/v0.1.3...v0.1.4

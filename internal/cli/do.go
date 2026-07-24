@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/firatkutay/cli-comrade/internal/audit"
 	"github.com/firatkutay/cli-comrade/internal/config"
@@ -37,7 +38,7 @@ func newDoCmd(newLoader loaderFactory) *cobra.Command {
 	}
 	flags := addExecutionFlags(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return runDo(cmd, newLoader, strings.Join(args, " "), flags)
+		return runDo(cmd, newLoader, strings.Join(args, " "), flags, term.IsTerminal)
 	}
 	return cmd
 }
@@ -47,7 +48,7 @@ func newDoCmd(newLoader loaderFactory) *cobra.Command {
 // renderPlan — resolve the active mode and run it through
 // internal/engine.Execute, wiring the real executor, the real
 // tui-backed PromptUI, and (when audit.enabled) the real audit.Logger.
-func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *executionFlags) error {
+func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *executionFlags, isTerminal isTerminalFunc) error {
 	modeFlag, err := flags.modeFlagValue()
 	if err != nil {
 		return err
@@ -107,16 +108,36 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		return fmt.Errorf("comrade do: %w", err)
 	}
 
-	// Ctrl-C: canceling ctx propagates into engine.Execute, which the
-	// currently-running executor.Run call observes and kills its process
-	// group for, per internal/executor's own contract.
+	// Ctrl-C: canceling ctx propagates into engine.Execute (and, before
+	// that, into the plan-review screen below), which the currently-
+	// running executor.Run call/reviewer.Review call observes — the
+	// executor kills its process group for it per internal/executor's own
+	// contract; ReviewPlan surfaces it as an error internal/tui.ReviewPlan
+	// itself returns.
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
 	colorEnabled := resolveColorEnabled(cfg, os.Environ(), cmd.OutOrStdout())
+	safetyEngine := safety.NewEngine(cfg)
+
+	preApproved := false
+	forceOn, forceOff := flags.reviewFlagValue()
+	if shouldShowPlanReview(mode, cfg.General.PlanReview, forceOn, forceOff, isTerminal(int(os.Stdin.Fd())), len(plan.Steps)) {
+		reviewer := &tuiPlanReviewer{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: colorEnabled, tr: tr}
+		reviewedPlan, ok, rerr := reviewPlan(ctx, plan, safetyEngine, reviewer)
+		if rerr != nil {
+			return fmt.Errorf("comrade do: %w", rerr)
+		}
+		if !ok {
+			return fmt.Errorf("comrade do: %s", tr.T(i18n.MsgAbortCanceled))
+		}
+		plan = reviewedPlan
+		preApproved = true
+	}
+
 	deps := engine.RunDeps{
 		Executor:           executor.New(cmd.OutOrStdout(), cmd.ErrOrStderr()),
-		Safety:             safety.NewEngine(cfg),
+		Safety:             safetyEngine,
 		LLM:                client,
 		Prompt:             &tuiPromptUI{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: colorEnabled, llm: client, tr: tr},
 		Audit:              auditSink,
@@ -126,6 +147,7 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		ConfirmDestructive: cfg.Safety.ConfirmDestructive,
 		ConfirmElevated:    cfg.Safety.ConfirmElevated,
 		Yolo:               flags.yolo,
+		PreApproved:        preApproved,
 		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
 		Request:            request,
 		RunID:              newRunID(),

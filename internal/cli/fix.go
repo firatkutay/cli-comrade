@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	contextpkg "github.com/firatkutay/cli-comrade/internal/context"
 	"github.com/firatkutay/cli-comrade/internal/engine"
@@ -50,7 +51,7 @@ func newFixCmd(newLoader loaderFactory) *cobra.Command {
 		if dashAt := cmd.ArgsLenAtDash(); dashAt >= 0 {
 			explicitCommand = strings.Join(args[dashAt:], " ")
 		}
-		return runFix(cmd, newLoader, flags, *rerun, explicitCommand)
+		return runFix(cmd, newLoader, flags, *rerun, explicitCommand, term.IsTerminal)
 	}
 	return cmd
 }
@@ -63,7 +64,7 @@ func newFixCmd(newLoader loaderFactory) *cobra.Command {
 // active mode and run the diagnosis's Plan through engine.Execute exactly
 // as runDo does, followed by engine.OfferVerification's post-solution
 // verification offer (FAZ 7 item 4).
-func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, rerun bool, explicitCommand string) error {
+func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, rerun bool, explicitCommand string, isTerminal isTerminalFunc) error {
 	modeFlag, err := flags.modeFlagValue()
 	if err != nil {
 		return err
@@ -139,12 +140,30 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		return fmt.Errorf("comrade fix: %w", err)
 	}
 
-	// Ctrl-C: canceling ctx propagates into engine.Execute, exactly like
-	// runDo's identical wiring.
+	// Ctrl-C: canceling ctx propagates into engine.Execute (and, before
+	// that, into the plan-review screen below), exactly like runDo's
+	// identical wiring.
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
 	colorEnabled := resolveColorEnabled(cfg, os.Environ(), cmd.OutOrStdout())
+	plan := diagnosis.Plan
+
+	preApproved := false
+	forceOn, forceOff := flags.reviewFlagValue()
+	if shouldShowPlanReview(mode, cfg.General.PlanReview, forceOn, forceOff, isTerminal(int(os.Stdin.Fd())), len(plan.Steps)) {
+		reviewer := &tuiPlanReviewer{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: colorEnabled, tr: tr}
+		reviewedPlan, ok, rerr := reviewPlan(ctx, plan, safetyEngine, reviewer)
+		if rerr != nil {
+			return fmt.Errorf("comrade fix: %w", rerr)
+		}
+		if !ok {
+			return fmt.Errorf("comrade fix: %s", tr.T(i18n.MsgAbortCanceled))
+		}
+		plan = reviewedPlan
+		preApproved = true
+	}
+
 	deps := engine.RunDeps{
 		Executor:           ex,
 		Safety:             safetyEngine,
@@ -157,6 +176,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		ConfirmDestructive: cfg.Safety.ConfirmDestructive,
 		ConfirmElevated:    cfg.Safety.ConfirmElevated,
 		Yolo:               flags.yolo,
+		PreApproved:        preApproved,
 		StepTimeout:        time.Duration(cfg.Executor.StepTimeoutSeconds) * time.Second,
 		Request:            "fix: " + errCtx.Command,
 		RunID:              newRunID(),
@@ -164,7 +184,7 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		Translator:         tr,
 	}
 
-	summary, err := engine.Execute(ctx, diagnosis.Plan, mode, deps)
+	summary, err := engine.Execute(ctx, plan, mode, deps)
 	if err != nil {
 		return fmt.Errorf("comrade fix: %w", err)
 	}

@@ -13,6 +13,15 @@ const (
 	defaultGoogleModel       = "gemini-3.5-flash"
 )
 
+// DefaultOpenAICompatModel exports defaultOpenAICompatModel for callers
+// outside this package (internal/cli's auth login flow names the
+// effective model in a 404-model-not-found notice) that need to name the
+// same model buildProvider falls back to when cfg.LLM.Model is empty,
+// without hand-duplicating the literal — see Derive-or-Guard.
+func DefaultOpenAICompatModel() string {
+	return defaultOpenAICompatModel
+}
+
 // Docs links printed alongside the static model lists below by
 // `comrade config models` (docs/history/UYGULAMA_PLANI.md FAZ 8 item 4), since neither
 // provider exposes a public, unauthenticated "list models" endpoint this

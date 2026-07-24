@@ -332,13 +332,25 @@ const (
 	// One arg: the provider name.
 	MsgAuthEnterKeyPrompt MessageID = "auth_enter_key_prompt"
 
+	// MsgAuthProviderActivated confirms `comrade auth login <provider>`
+	// persisted llm.provider = provider (via Loader.SetAndSave), printed
+	// ONLY when the active provider actually changed — logging back into
+	// an already-active provider stays silent. Without this activation,
+	// pingProviderWithKey's own `cfg.LLM.Provider != provider` guard
+	// (llmping.go) nulls out cfg.LLM.Model whenever the configured
+	// llm.provider (default: "anthropic", config/schema.go) doesn't match
+	// the provider being logged into — silently discarding a model just
+	// entered at MsgAuthOpenAICompatModelPrompt and pinging the wrong
+	// provider's default model. One arg: the provider name.
+	MsgAuthProviderActivated MessageID = "auth_provider_activated"
+
 	// MsgAuthStoredKeyPingFailed reports a stored key whose live test
 	// request failed for a reason OTHER than the provider rejecting the
 	// key itself (network/timeout/5xx/parse — see MsgAuthKeyRejected for
-	// the 401/403 case, which does NOT use this message) — the key is
-	// still stored, since this class of failure says nothing about
-	// whether the key itself is actually good (QA MAJOR-2). Two args:
-	// provider name, the ping error.
+	// the 401/403 case, and MsgAuthModelNotFound for the 404-model case,
+	// neither of which use this message) — the key is still stored, since
+	// this class of failure says nothing about whether the key itself is
+	// actually good (QA MAJOR-2). One arg: the ping error.
 	MsgAuthStoredKeyPingFailed MessageID = "auth_stored_key_ping_failed"
 
 	// MsgAuthKeyRejected reports `comrade auth login`'s live test request
@@ -421,6 +433,29 @@ const (
 	// llm.openai_compat.base_url (via Loader.SetAndSave) before the live
 	// ping runs. One arg: the saved value.
 	MsgAuthOpenAICompatBaseURLSaved MessageID = "auth_openai_compat_base_url_saved"
+
+	// MsgAuthOpenAICompatModelPrompt is `comrade auth login
+	// openai_compat`'s interactive model prompt — shown right after
+	// MsgAuthOpenAICompatBaseURLPrompt, only when the base_url now in
+	// effect is no longer OpenAI's own default AND llm.model is still
+	// empty. Without this, buildProvider (internal/llm/client.go) falls
+	// back to defaultOpenAICompatModel (an OpenAI-specific model name,
+	// e.g. "gpt-5.4-mini") against a provider that has never heard of it,
+	// failing with a confusing 404. Pressing Enter with no input leaves
+	// llm.model empty, same as MsgAuthOpenAICompatBaseURLPrompt's own
+	// empty-line behavior. No args.
+	MsgAuthOpenAICompatModelPrompt MessageID = "auth_openai_compat_model_prompt"
+
+	// MsgAuthModelNotFound reports `comrade auth login`'s live test
+	// request coming back HTTP 404 for what looks like an unknown-model
+	// error (llm.StatusError with StatusCode 404 whose Message mentions
+	// "model") — a DEFINITIVE, known cause distinct from
+	// MsgAuthStoredKeyPingFailed's generic network/timeout/5xx framing.
+	// Non-fatal: the key is still stored (it was never the problem) and
+	// this prints as a notice, not a command error, pointing the user at
+	// `comrade config models` / `comrade config set llm.model`. One arg:
+	// the effective model name that was pinged.
+	MsgAuthModelNotFound MessageID = "auth_model_not_found"
 
 	// MsgSecretsFileFallbackWarning is printed once, the first time any
 	// stored-credential operation actually runs against the 0600 file
@@ -1431,7 +1466,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgVerificationStillFails:   "verification: %s still fails (exit %d)",
 
 	MsgAuthEnterKeyPrompt:         "Enter API key for %s: ",
-	MsgAuthStoredKeyPingFailed:    "Stored key for %s. Could not verify it right now (%v) — this looks like a network or connectivity issue, not necessarily a bad key. The key was saved.\n",
+	MsgAuthProviderActivated:      "Active provider set to %s.\n",
+	MsgAuthStoredKeyPingFailed:    "Key saved ✓  Couldn't verify it right now (%v) — likely a network issue, not a bad key.\n",
 	MsgAuthKeyRejected:            "The provider rejected this key for %s (%v) — it was not saved. Double-check the key and try \"comrade auth login %s\" again.\n",
 	MsgAuthStoredKeyPingSucceeded: "Stored key for %s. Test request succeeded (model=%s, latency=%s).\n",
 	MsgAuthStoredKeyBaseURLUnsafe: "Stored key for %s. Skipped the live test — %s (currently %q) is not a safe endpoint, so your key was never sent there; fix it with: comrade config set %s <valid-url>\n",
@@ -1443,8 +1479,10 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStatusSetEnv:           "set (env: %s)",
 	MsgAuthStatusNotSet:           "not set",
 
-	MsgAuthOpenAICompatBaseURLPrompt: "llm.openai_compat.base_url is still the default OpenAI endpoint (%s). If you're using a different OpenAI-compatible provider (e.g. Qwen: https://dashscope.aliyuncs.com/compatible-mode/v1), enter its base URL now. Press Enter to keep using OpenAI's endpoint: ",
+	MsgAuthOpenAICompatBaseURLPrompt: "Provider address (base_url) [current: %s]\n› Enter another provider's URL (e.g. Qwen → https://dashscope-intl.aliyuncs.com/compatible-mode/v1), or press Enter to keep it: ",
 	MsgAuthOpenAICompatBaseURLSaved:  "Saved llm.openai_compat.base_url = %s\n",
+	MsgAuthOpenAICompatModelPrompt:   "Model — enter this provider's model name (e.g. qwen-plus); leave empty to set it later with 'comrade config set llm.model': ",
+	MsgAuthModelNotFound:             "Key saved ✓  But model '%s' doesn't exist on this provider.\n› Pick a model:  comrade config models   then:  comrade config set llm.model <model>\n",
 
 	MsgSecretsFileFallbackWarning: "cli-comrade: no system keychain found, so API keys are being saved to a local file instead (base64-encoded, not encrypted — see the file's own header for details).\n",
 
@@ -1757,7 +1795,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgVerificationStillFails:   "doğrulama: %s hâlâ başarısız (çıkış %d)",
 
 	MsgAuthEnterKeyPrompt:         "%s için API anahtarını girin: ",
-	MsgAuthStoredKeyPingFailed:    "%s için anahtar kaydedildi. Şu anda doğrulanamadı (%v) — bu, ağ veya bağlantı sorunundan kaynaklanıyor olabilir, anahtarın hatalı olduğu anlamına gelmez. Anahtar kaydedildi.\n",
+	MsgAuthProviderActivated:      "Etkin sağlayıcı %s olarak ayarlandı.\n",
+	MsgAuthStoredKeyPingFailed:    "Anahtar kaydedildi ✓  Şimdi doğrulanamadı (%v) — ağ/bağlantı olabilir, anahtarın yanlış olduğu anlamına gelmez.\n",
 	MsgAuthKeyRejected:            "%s için bu anahtar sağlayıcı tarafından reddedildi (%v) — kaydedilmedi. Anahtarı kontrol edip \"comrade auth login %s\" komutunu tekrar deneyin.\n",
 	MsgAuthStoredKeyPingSucceeded: "%s için anahtar kaydedildi. Test isteği başarılı oldu (model=%s, gecikme=%s).\n",
 	MsgAuthStoredKeyBaseURLUnsafe: "%s için anahtar kaydedildi. Canlı test atlandı — %s (şu an %q) güvenli bir uç nokta değil, bu yüzden anahtarınız oraya hiç gönderilmedi; düzeltmek için: comrade config set %s <geçerli-url>\n",
@@ -1769,8 +1808,10 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgAuthStatusSetEnv:           "kayıtlı (ortam değişkeni: %s)",
 	MsgAuthStatusNotSet:           "kayıtlı değil",
 
-	MsgAuthOpenAICompatBaseURLPrompt: "llm.openai_compat.base_url hâlâ varsayılan OpenAI uç noktası (%s). Farklı bir OpenAI uyumlu sağlayıcı kullanıyorsanız (ör. Qwen: https://dashscope.aliyuncs.com/compatible-mode/v1), şimdi onun taban URL'sini girin. OpenAI'nin uç noktasını kullanmaya devam etmek için Enter'a basın: ",
+	MsgAuthOpenAICompatBaseURLPrompt: "Sağlayıcı adresi (base_url) [şu an: %s]\n› Farklı sağlayıcı için adresini gir (ör. Qwen → https://dashscope-intl.aliyuncs.com/compatible-mode/v1), yoksa Enter: ",
 	MsgAuthOpenAICompatBaseURLSaved:  "llm.openai_compat.base_url = %s olarak kaydedildi\n",
+	MsgAuthOpenAICompatModelPrompt:   "Model — bu sağlayıcının model adını gir (ör. qwen-plus); boş bırakırsan sonra 'comrade config set llm.model' ile ayarla: ",
+	MsgAuthModelNotFound:             "Anahtar kaydedildi ✓  Ama '%s' modeli bu sağlayıcıda yok.\n› Modeli seç:  comrade config models   sonra:  comrade config set llm.model <model>\n",
 
 	MsgSecretsFileFallbackWarning: "cli-comrade: sistem anahtarlığı bulunamadı, bu yüzden API anahtarları yerel bir dosyaya kaydediliyor (base64 ile kodlanmış, şifrelenmemiş — ayrıntılar için dosyanın kendi başlığına bakın).\n",
 

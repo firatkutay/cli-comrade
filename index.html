@@ -90,7 +90,7 @@
     <!-- ============ WHAT IT DOES ============ -->
     <section class="section" id="what">
       <p class="eyebrow" data-tr="// ne yapar" data-en="// what it does">// ne yapar</p>
-      <h2 class="section__title" data-tr="Dört komut, bir yoldaş" data-en="Four commands, one comrade">Dört komut, bir yoldaş</h2>
+      <h2 class="section__title" data-tr="Altı komut, bir yoldaş" data-en="Six commands, one comrade">Altı komut, bir yoldaş</h2>
       <div class="cards">
         <article class="card">
           <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">fix</span></div>
@@ -107,6 +107,14 @@
         <article class="card">
           <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">chat</span></div>
           <p class="card__desc" data-tr="Bağlamı koruyan interaktif sohbet." data-en="Context-preserving interactive chat.">Bağlamı koruyan interaktif sohbet.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">doctor</span></div>
+          <p class="card__desc" data-tr="Kurulumu tek komutla teşhis eder — sürüm, PATH, shell hook, API anahtarı, sağlayıcı erişimi, config — ve her sorun için kopyalanabilir bir düzeltmeyle ✓/⚠/✗ listesi basar." data-en="Diagnoses your setup in one command — version, PATH, shell hook, API key, provider reachability, config — and prints a ✓/⚠/✗ checklist with a copy-pasteable fix per problem.">Kurulumu tek komutla teşhis eder — sürüm, PATH, shell hook, API anahtarı, sağlayıcı erişimi, config — ve her sorun için kopyalanabilir bir düzeltmeyle ✓/⚠/✗ listesi basar.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">undo</span></div>
+          <p class="card__desc" data-tr="Son geri alınabilir işlemi tersine çevirir ya da elle geri alma adımları verir. Türetilen her adım aynı güvenlik onayından geçer — yalnızca ask modunda." data-en="Reverses the last reversible action, or gives you manual steps. Every derived step goes through the same safety confirmation — ask mode only.">Son geri alınabilir işlemi tersine çevirir ya da elle geri alma adımları verir. Türetilen her adım aynı güvenlik onayından geçer — yalnızca ask modunda.</p>
         </article>
       </div>
     </section>
@@ -130,6 +138,10 @@
           <p class="mode__desc" data-tr="Hiçbir şey çalıştırmaz — sebebi ve çözümü açıklar." data-en="Runs nothing — explains the cause and the fix.">Hiçbir şey çalıştırmaz — sebebi ve çözümü açıklar.</p>
         </article>
       </div>
+      <p class="install__after">
+        <code class="inline-code">--review</code>
+        <span data-tr="Çok adımlı görevlerde tüm planı çalışmadan önce TUI'de incele: adımları yeniden sırala, atla veya düzenle. Yıkıcı adımlar yine tek tek onay ister." data-en="For multi-step tasks, review the whole plan in a TUI before anything runs: reorder, skip or edit steps. Destructive steps still confirm individually.">Çok adımlı görevlerde tüm planı çalışmadan önce TUI'de incele: adımları yeniden sırala, atla veya düzenle. Yıkıcı adımlar yine tek tek onay ister.</span>
+      </p>
     </section>
 
     <!-- ============ SAFETY ============ -->
@@ -154,6 +166,7 @@
              data-tr="`auto` modda bile yıkıcı komutlar (rm -rf /, mkfs, dd, fork-bomb…) daima onay ister. Yerel bir kural motoru + denylist ikinci kontrolü yapar ve LLM'e asla güvenmez."
              data-en="Even in `auto`, destructive commands (rm -rf /, mkfs, dd, fork bombs…) always require confirmation. A local rule engine + denylist does a second check and never trusts the LLM."></p>
           <ul class="safety__list">
+            <li data-tr="Niyet tabanlı koruma: kural motoru komutları AST'ye ayrıştırıp gerçek etkisine göre de sınıflandırır — imza listesinin kaçırdığı kaçamakları yakalar: değişken dolaylaması (R=rm; $R -rf /), dinamik disk hedefleri (dd of=$(cat dev)). Çevrimdışı çalışır, komutu asla çalıştırmaz; olsa olsa riski yükseltip onay sorar." data-en="Intent-based guard: the rule engine also parses commands into an AST and classifies them by their real effect — catching evasions the signature list missed: variable indirection (R=rm; $R -rf /), dynamic disk targets (dd of=$(cat dev)). It runs offline, never executes the command, and only ever raises risk to a confirmation."></li>
             <li data-tr="İmzalı sürümler: her sürümün checksum dosyası cosign ile imzalanır; comrade upgrade, kurmadan önce imzayı ikiliye gömülü anahtara karşı çevrimdışı doğrular — kurcalanmış veya sahte sürüm reddedilir." data-en="Signed releases: every release's checksums are cosign-signed; comrade upgrade verifies the signature offline against a public key baked into the binary before installing anything — a tampered or spoofed release is refused."></li>
             <li data-tr="Redaction: API anahtarları, token'lar, parolalar, Bearer/Basic başlıkları ve user:pass@ bağlantı dizeleri, LLM'e herhangi bir bağlam gönderilmeden önce maskelenir." data-en="Redaction: API keys, tokens, passwords, Bearer/Basic headers and user:pass@ connection strings are masked before any context is sent to the LLM."></li>
             <li data-tr="Audit log: çalıştırılan her komut zaman damgası, mod ve risk sınıfıyla kaydedilir." data-en="Audit log: every executed command is recorded with timestamp, mode and risk class."></li>
@@ -174,6 +187,13 @@
         <div class="provider"><span class="provider__name">Google</span><span class="provider__meta">Gemini</span></div>
         <div class="provider"><span class="provider__name">Ollama</span><span class="provider__meta" data-tr="yerel · çevrimdışı" data-en="local · offline">yerel · çevrimdışı</span></div>
       </div>
+      <p class="install__after">
+        <code class="inline-code">comrade config profile use work</code>
+        <span data-tr="Adlandırılmış profiller ve --profile bayrağıyla sağlayıcı/ayar setleri (iş/kişisel, bulut/yerel) arasında anında geçiş." data-en="Switch provider/config sets (work/personal, cloud/local) instantly with named profiles and the --profile flag.">Adlandırılmış profiller ve --profile bayrağıyla sağlayıcı/ayar setleri (iş/kişisel, bulut/yerel) arasında anında geçiş.</span>
+        <span class="sep">·</span>
+        <code class="inline-code">--usage</code>
+        <span data-tr="İsteğe bağlı: istek başına token kullanımı + tahmini maliyet satırı." data-en="Opt-in: a per-request token-usage + estimated-cost line.">İsteğe bağlı: istek başına token kullanımı + tahmini maliyet satırı.</span>
+      </p>
     </section>
 
     <!-- ============ INSTALL ============ -->
@@ -258,7 +278,7 @@
         <a href="https://github.com/firatkutay/cli-comrade/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
       </div>
       <p class="footer__meta">
-        <span class="footer__ver">v0.3.1</span>
+        <span class="footer__ver">v0.4.0</span>
         <span class="sep">·</span>
         <span data-tr="Terminalde yoldaşlıkla yapıldı." data-en="Built with terminal camaraderie.">Terminalde yoldaşlıkla yapıldı.</span>
       </p>

@@ -47,6 +47,92 @@ func TestAppendThenReadAllRoundTripsExactFields(t *testing.T) {
 	assert.Equal(t, int64(1234), got.DurationMs)
 }
 
+// TestAppendThenReadAllRoundTripsNewUndoFields proves RunID/Cwd/
+// Reversible/UndoOf — the comrade-undo schema additions — survive an
+// Append/ReadAll round trip exactly, alongside every pre-existing field.
+func TestAppendThenReadAllRoundTripsNewUndoFields(t *testing.T) {
+	logger := newTestLogger(t)
+	ts := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
+	reversible := true
+
+	entry := Entry{
+		Timestamp:  ts,
+		Request:    "docker kur",
+		Command:    "sudo apt-get install -y docker.io",
+		Risk:       "elevated",
+		Mode:       "auto",
+		ExitCode:   0,
+		DurationMs: 1234,
+		RunID:      "abcd1234ef567890",
+		Cwd:        "/home/user/project",
+		Reversible: &reversible,
+		UndoOf:     "",
+	}
+	require.NoError(t, logger.Append(entry))
+
+	entries, err := logger.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	got := entries[0]
+	assert.Equal(t, "abcd1234ef567890", got.RunID)
+	assert.Equal(t, "/home/user/project", got.Cwd)
+	require.NotNil(t, got.Reversible)
+	assert.True(t, *got.Reversible)
+	assert.Empty(t, got.UndoOf)
+}
+
+// TestAppendThenReadAllRoundTripsUndoOfField proves UndoOf — set only on
+// a step comrade undo itself executed — round-trips exactly, and its
+// sibling Reversible=false round-trips as a non-nil false (not nil,
+// which means "unknown" — see Entry.Reversible's own doc comment).
+func TestAppendThenReadAllRoundTripsUndoOfField(t *testing.T) {
+	logger := newTestLogger(t)
+	reversible := false
+
+	require.NoError(t, logger.Append(Entry{
+		Timestamp:  time.Now(),
+		Command:    "mv /tmp/b /tmp/a",
+		Risk:       "write",
+		Mode:       "ask",
+		RunID:      "undo-run-id",
+		Reversible: &reversible,
+		UndoOf:     "original-run-id",
+	}))
+
+	entries, err := logger.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	got := entries[0]
+	assert.Equal(t, "original-run-id", got.UndoOf)
+	require.NotNil(t, got.Reversible)
+	assert.False(t, *got.Reversible)
+}
+
+// TestReadAllDecodesOldFormatLinesWithZeroValueNewFields proves a
+// pre-undo-support JSONL line — written before RunID/Cwd/Reversible/
+// UndoOf existed, with none of those keys present at all — still decodes
+// cleanly: the four new fields all come back as their zero values (empty
+// string, empty string, nil, empty string), never an error.
+func TestReadAllDecodesOldFormatLinesWithZeroValueNewFields(t *testing.T) {
+	logger := newTestLogger(t)
+
+	oldFormatLine := `{"timestamp":"2026-01-01T00:00:00Z","request":"docker kur","command":"echo hi","risk":"read","mode":"auto","exit_code":0,"duration_ms":5}` + "\n"
+	require.NoError(t, os.WriteFile(logger.Path(), []byte(oldFormatLine), 0o600))
+
+	entries, err := logger.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	got := entries[0]
+	assert.Equal(t, "echo hi", got.Command)
+	assert.Empty(t, got.RunID)
+	assert.Empty(t, got.Cwd)
+	assert.Nil(t, got.Reversible)
+	assert.Empty(t, got.UndoOf)
+}
+
 func TestAppendNeverLogsStdoutOrStderrContent(t *testing.T) {
 	// Entry has no Stdout/Stderr field at all — this test pins that
 	// contract by proving a marshaled entry's JSON never contains

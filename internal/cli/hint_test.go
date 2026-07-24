@@ -34,7 +34,7 @@ func execHint(t *testing.T, buffer ...string) (hint, stderr string) {
 // would offer — see hint.go's renderHint doc comment for the full
 // resolution rules each case below exercises.
 func TestHintTableDriven(t *testing.T) {
-	rootList := "[auth|chat|config|do|doctor|explain|fix|help|history|init|upgrade]"
+	rootList := "[auth|chat|config|do|doctor|explain|fix|help|history|init|undo|upgrade]"
 	authProviders := "[" + strings.Join(secrets.KnownProviders, "|") + "]"
 
 	cases := []struct {

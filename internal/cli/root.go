@@ -173,10 +173,12 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 	fixCmd := newFixCmd(newLoader)
 	explainCmd := newExplainCmd(newLoader)
 	chatCmd := newChatCmd(newLoader)
+	undoCmd := newUndoCmd(newLoader)
 	doCmd.GroupID = groupCore
 	fixCmd.GroupID = groupCore
 	explainCmd.GroupID = groupCore
 	chatCmd.GroupID = groupCore
+	undoCmd.GroupID = groupCore
 
 	authCmd := newAuthCmd(newLoader)
 	initCmd := newInitCmd(defaultInitDeps(), newLoader)
@@ -193,7 +195,7 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 	doctorCmd.GroupID = groupInfo
 
 	root.AddCommand(
-		doCmd, fixCmd, explainCmd, chatCmd,
+		doCmd, fixCmd, explainCmd, chatCmd, undoCmd,
 		authCmd, initCmd, configCmd,
 		historyCmd, upgradeCmd, doctorCmd,
 		newHookCmd(newLoader),

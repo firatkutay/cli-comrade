@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-24
+
+### Fixed
+
+- **`comrade auth login openai_compat` left non-OpenAI providers unusable after login** (#23). The active provider defaulted to `anthropic` and login never changed it, while `llm.model` defaulted to the OpenAI-only `gpt-5.4-mini` — so after pointing `base_url` at Qwen/DashScope (or Groq/Mistral/GLM/Kimi/OpenRouter/LM Studio), the first real request 404'd with "The model 'gpt-5.4-mini' does not exist", and the login test-ping itself pinged the wrong model. `auth login <provider>` now **activates** the provider it logs into (persists `llm.provider`, with a notice only when it actually changes); `auth login openai_compat` additionally **prompts for the model** when `base_url` is non-OpenAI and `llm.model` is empty (e.g. `qwen-plus`), and **classifies a 404 "model does not exist"** distinctly — directing you to `comrade config models` → `comrade config set llm.model <model>` instead of a misleading "network issue" message. The base_url/model prompt copy is tidied to two concise lines. A hard-rejected (401/403) login is now fully atomic: `llm.provider`/`llm.model`/`llm.openai_compat.base_url` roll back to their prior values and no "activated"/"saved" notice is printed — a failed login changes nothing.
+
+### Added
+
+- **`docs/GUIDE.md` — a comprehensive, beginner-friendly bilingual (TR + EN) user guide** (#24): from install through daily use — cloud and local (Ollama) provider setup, the three behavior modes, `fix`/`do`/`explain`/`chat`, the everyday helpers (`undo`/`history`/`config`/profiles/plan preview/`--usage`/`doctor`/`upgrade`), safety in plain words, shell integration, and file locations — linked from the README. Adds **Local LLM (Ollama)** and **OpenAI-compatible provider (Qwen, Groq, …)** setup sections to README / CONFIGURATION / TROUBLESHOOTING (EN + TR).
+
 ## [0.4.0] - 2026-07-24
 
 ### Added

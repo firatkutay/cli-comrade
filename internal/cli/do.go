@@ -53,11 +53,30 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 		return err
 	}
 
-	cfg, client, err := setupCLIRuntime(cmd, newLoader, flags)
+	tally := newUsageTally()
+	cfg, client, err := setupCLIRuntime(cmd, newLoader, flags, tally.record)
 	if err != nil {
 		return fmt.Errorf("comrade do: %w", err)
 	}
 	tr := newTranslator(cfg)
+
+	// The tally is always attached above (zero-cost when display is
+	// off); this defer is what actually PRINTS it, and only when the
+	// run's own show_usage/--usage resolution says to. Deferred (rather
+	// than a single print before runDo's final `return nil`) so the
+	// summary still appears on every other return path below that still
+	// reached the LLM at least once — --dry-run's early return, a mode-
+	// resolution error, an engine.Execute error — printUsageSummary
+	// itself is a no-op when tally recorded zero requests, so this is
+	// safe even for the paths above this point that fail before ever
+	// calling GeneratePlan.
+	if cfg.General.ShowUsage || flags.usage {
+		defer func() {
+			// Best-effort: a stderr write failure here must never mask
+			// runDo's own real result.
+			_ = printUsageSummary(cmd.ErrOrStderr(), tr, tally, resolveColorEnabled(cfg, os.Environ(), cmd.ErrOrStderr()))
+		}()
+	}
 
 	collector := contextpkg.NewCollector()
 	sysCtx := collector.Collect(cmd.Context(), contextpkg.Options{

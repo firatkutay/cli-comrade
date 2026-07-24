@@ -93,6 +93,7 @@ var flagUsageByName = map[string]i18n.MessageID{
 	"ask":     i18n.MsgFlagAsk,
 	"info":    i18n.MsgFlagInfo,
 	"yolo":    i18n.MsgFlagYolo,
+	"usage":   i18n.MsgFlagUsage,
 	"rerun":   i18n.MsgFlagRerun,
 	"json":    i18n.MsgFlagJSON,
 	"limit":   i18n.MsgFlagLimit,

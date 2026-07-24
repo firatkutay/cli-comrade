@@ -21,6 +21,7 @@ func TestDefaultMatchesPlanExactly(t *testing.T) {
 	assert.Equal(t, "auto", cfg.General.Language)
 	assert.Equal(t, true, cfg.General.Color)
 	assert.Equal(t, true, cfg.General.UpdateCheck)
+	assert.Equal(t, false, cfg.General.ShowUsage)
 
 	assert.Equal(t, "anthropic", cfg.LLM.Provider)
 	assert.Equal(t, "", cfg.LLM.Model)

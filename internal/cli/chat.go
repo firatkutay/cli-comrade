@@ -134,15 +134,17 @@ func runChatDo(ctx context.Context, cfg config.Config, client engine.Completer, 
 // turns. See docs/history/phases/FAZ-09.md for the full design (privacy: no
 // autosave, only explicit "/save <file>"; "/do" routing decision).
 func newChatCmd(newLoader loaderFactory) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:               "chat",
 		Short:             "Start an interactive, context-preserving chat session",
 		Args:              translatedNoArgs(newLoader),
 		ValidArgsFunction: cobra.NoFileCompletions,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runChat(cmd, newLoader, term.IsTerminal)
-		},
 	}
+	usage := cmd.Flags().Bool("usage", false, enUsageDefault(i18n.MsgFlagUsage))
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return runChat(cmd, newLoader, term.IsTerminal, *usage)
+	}
+	return cmd
 }
 
 // runChat loads config/builds the LLM client (no --yolo flag here either,
@@ -151,7 +153,7 @@ func newChatCmd(newLoader loaderFactory) *cobra.Command {
 // config general.mode — chat itself defines no --auto/--ask/--info flags:
 // "/mode" is the in-session way to change it), and runs the bubbletea
 // program.
-func runChat(cmd *cobra.Command, newLoader loaderFactory, isTerminal isTerminalFunc) error {
+func runChat(cmd *cobra.Command, newLoader loaderFactory, isTerminal isTerminalFunc, usageFlag bool) error {
 	// QA MINOR-5's guard, extended to chat (the coordinator's own "also
 	// record"/(b) note): bubbletea requires a real TTY and otherwise
 	// hangs indefinitely rather than failing — reported by QA as an
@@ -165,7 +167,24 @@ func runChat(cmd *cobra.Command, newLoader loaderFactory, isTerminal isTerminalF
 	if err != nil {
 		return fmt.Errorf("comrade chat: %w", err)
 	}
-	client, err := buildLLMClient(cmd, cfg, tr)
+
+	// sessionTally accumulates every Complete call for the WHOLE session
+	// (every turn plus every "/do" plan+correction call) — its snapshot
+	// is what appendSessionTotal (chatdispatch.go) renders on "/exit".
+	// turnTally is reset immediately before each dispatchChatLine call
+	// and read immediately after — see chatController.turnTally's own
+	// doc comment for why a second, resettable tally (rather than
+	// diffing two sessionTally snapshots) is what makes a clean per-turn
+	// figure possible at all. Both are fed by the SAME observer, since
+	// llm.WithUsageObserver only accepts one callback per Client.
+	sessionTally := newUsageTally()
+	turnTally := newUsageTally()
+	showUsage := cfg.General.ShowUsage || usageFlag
+
+	client, err := buildLLMClient(cmd, cfg, tr, func(ev llm.UsageEvent) {
+		sessionTally.record(ev)
+		turnTally.record(ev)
+	})
 	if err != nil {
 		return fmt.Errorf("comrade chat: %w", err)
 	}
@@ -179,6 +198,6 @@ func runChat(cmd *cobra.Command, newLoader loaderFactory, isTerminal isTerminalF
 	defer stop()
 
 	colorEnabled := resolveColorEnabled(cfg, os.Environ(), cmd.OutOrStdout())
-	m := newChatModel(cfg, tr, client, newChatSession(initialMode), colorEnabled)
+	m := newChatModel(cfg, tr, client, newChatSession(initialMode), colorEnabled, showUsage, sessionTally, turnTally)
 	return runChatProgram(ctx, m, cmd.InOrStdin(), cmd.OutOrStdout())
 }

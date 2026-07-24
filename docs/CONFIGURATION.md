@@ -29,6 +29,7 @@ gösterir.
 | `general.language` | `auto` | Arayüz dili: `auto`/`tr`/`en` | `COMRADE_GENERAL_LANGUAGE` (ayrıca `COMRADE_LANG`/`LANG`/`LC_ALL`, bkz. aşağı) |
 | `general.color` | `true` | Renkli/lipgloss çıktı | `COMRADE_GENERAL_COLOR` |
 | `general.update_check` | `true` | GitHub Releases'ı haftada en fazla bir kez kontrol et | `COMRADE_GENERAL_UPDATE_CHECK` |
+| `general.show_usage` | `false` | Her çalıştırma sonrası token/maliyet özet satırı yaz (bkz. `--usage`) | `COMRADE_GENERAL_SHOW_USAGE` |
 | `llm.provider` | `anthropic` | `anthropic`/`openai_compat`/`google`/`ollama` | `COMRADE_PROVIDER` |
 | `llm.model` | *(boş)* | Boşsa sağlayıcının kendi varsayılanı | `COMRADE_MODEL` |
 | `llm.fallback` | `[]` | Yedek sağlayıcı/model listesi (virgülle ayrılmış) | `COMRADE_LLM_FALLBACK` |
@@ -150,6 +151,7 @@ default**. `comrade config list` shows each key's actual source
 | `general.language` | `auto` | UI language: `auto`/`tr`/`en` | `COMRADE_GENERAL_LANGUAGE` (also `COMRADE_LANG`/`LANG`/`LC_ALL`, see below) |
 | `general.color` | `true` | Colored/lipgloss output | `COMRADE_GENERAL_COLOR` |
 | `general.update_check` | `true` | Check GitHub Releases at most once/week | `COMRADE_GENERAL_UPDATE_CHECK` |
+| `general.show_usage` | `false` | Print a per-run token/cost summary line (see `--usage`) | `COMRADE_GENERAL_SHOW_USAGE` |
 | `llm.provider` | `anthropic` | `anthropic`/`openai_compat`/`google`/`ollama` | `COMRADE_PROVIDER` |
 | `llm.model` | *(empty)* | Empty means the provider's own default | `COMRADE_MODEL` |
 | `llm.fallback` | `[]` | Fallback provider/model chain (comma-separated) | `COMRADE_LLM_FALLBACK` |

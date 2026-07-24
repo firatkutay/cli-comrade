@@ -195,11 +195,11 @@ func TestNewChatModelWiresColorEnabledIntoPromptStyle(t *testing.T) {
 	cfg := config.Config{}
 	tr := i18n.NewTranslator(i18n.LangEN)
 
-	colored := newChatModel(cfg, tr, nil, newChatSession(engine.ModeAsk), true)
+	colored := newChatModel(cfg, tr, nil, newChatSession(engine.ModeAsk), true, false, nil, nil)
 	require.Equal(t, true, colored.colorEnabled)
 	assert.Equal(t, "\x1b[38;5;222mx\x1b[m", colored.input.Styles().Focused.Prompt.Render("x"))
 
-	plain := newChatModel(cfg, tr, nil, newChatSession(engine.ModeAsk), false)
+	plain := newChatModel(cfg, tr, nil, newChatSession(engine.ModeAsk), false, false, nil, nil)
 	require.Equal(t, false, plain.colorEnabled)
 	assert.Equal(t, "x", plain.input.Styles().Focused.Prompt.Render("x"))
 }

@@ -14,10 +14,18 @@ import (
 
 // clientAttempt is one entry in a Client's fallback chain: a connector
 // paired with the provider name used for debug logging and error
-// messages.
+// messages, and the model buildProvider resolved for it (including its
+// connector-package default when config left llm.model/the fallback
+// entry's own model empty) — model is "" only for ollama with no
+// explicit model configured, since ollamaConnector resolves its model
+// lazily against /api/tags at attempt time rather than up front. See
+// Client.fireUsage for model's one consumer: a fallback for the — never
+// exercised by any of this package's four connectors today — case a
+// successful CompletionResponse.Model comes back empty.
 type clientAttempt struct {
 	providerName string
 	provider     Provider
+	model        string
 }
 
 // Client is the single public entry point into this package's connectors.
@@ -48,6 +56,13 @@ type Client struct {
 	// and docs/history/phases/FAZ-03.md for the non-bypassable-middleware
 	// rationale (CLAUDE.md security rule #3).
 	redactor *redact.Redactor
+
+	// usageObserver is WithUsageObserver's registered callback, or nil
+	// when none was given — see Client.fireUsage, its only caller. Never
+	// used by Stream: streaming has no usage accounting today (see
+	// Chunk's own doc comment) and no production caller, so there is
+	// nothing for an observer to report there.
+	usageObserver func(UsageEvent)
 }
 
 // compile-time assertion: Client itself satisfies Provider, so a caller
@@ -72,7 +87,8 @@ type KeyResolver func(provider string) (string, error)
 type Option func(*clientOptions)
 
 type clientOptions struct {
-	keyResolver KeyResolver
+	keyResolver   KeyResolver
+	usageObserver func(UsageEvent)
 }
 
 // WithKeyResolver overrides the KeyResolver New's connectors use to
@@ -114,18 +130,19 @@ func New(cfg config.Config, opts ...Option) (*Client, error) {
 	attempts := make([]clientAttempt, 0, len(entries))
 	for _, entry := range entries {
 		providerName, model := splitProviderModel(entry)
-		provider, err := buildProvider(providerName, model, cfg, httpClient, options.keyResolver)
+		provider, resolvedModel, err := buildProvider(providerName, model, cfg, httpClient, options.keyResolver)
 		if err != nil {
 			return nil, err
 		}
-		attempts = append(attempts, clientAttempt{providerName: providerName, provider: provider})
+		attempts = append(attempts, clientAttempt{providerName: providerName, provider: provider, model: resolvedModel})
 	}
 
 	return &Client{
-		attempts:    attempts,
-		timeout:     httpTimeout(cfg.LLM.TimeoutSeconds),
-		idleTimeout: idleTimeoutDuration(cfg.LLM.IdleTimeoutSeconds),
-		redactor:    redact.New(cfg.Privacy.RedactEmails, cfg.Privacy.RedactIPs),
+		attempts:      attempts,
+		timeout:       httpTimeout(cfg.LLM.TimeoutSeconds),
+		idleTimeout:   idleTimeoutDuration(cfg.LLM.IdleTimeoutSeconds),
+		redactor:      redact.New(cfg.Privacy.RedactEmails, cfg.Privacy.RedactIPs),
+		usageObserver: options.usageObserver,
 	}, nil
 }
 
@@ -185,7 +202,14 @@ func splitProviderModel(entry string) (provider, model string) {
 // (unlike Load()): `comrade config set`/`config edit`/`config get` never
 // call New at all, so they stay available to repair the value even when
 // every do/fix/chat/explain invocation now refuses to build a client.
-func buildProvider(providerName, model string, cfg config.Config, httpClient *http.Client, resolveKey KeyResolver) (Provider, error) {
+//
+// The second return value is the model actually resolved for this
+// attempt (config's own value, or the connector package's default when
+// that was empty) — New stores it on the resulting clientAttempt for
+// Client.fireUsage's fallback attribution; every case below returns "" as
+// this second value together with a non-nil error, since a failed build
+// has no attempt for anything to attribute usage to.
+func buildProvider(providerName, model string, cfg config.Config, httpClient *http.Client, resolveKey KeyResolver) (Provider, string, error) {
 	switch providerName {
 	case "anthropic":
 		if model == "" {
@@ -193,22 +217,22 @@ func buildProvider(providerName, model string, cfg config.Config, httpClient *ht
 		}
 		key, err := resolveKey("anthropic")
 		if err != nil {
-			return &missingKeyProvider{name: providerName, err: err}, nil
+			return &missingKeyProvider{name: providerName, err: err}, model, nil
 		}
-		return newAnthropicConnector(key, model, httpClient), nil
+		return newAnthropicConnector(key, model, httpClient), model, nil
 
 	case "openai_compat":
 		if model == "" {
 			model = defaultOpenAICompatModel
 		}
 		if _, err := config.CheckBaseURL("llm.openai_compat.base_url", cfg.LLM.OpenAICompat.BaseURL); err != nil {
-			return nil, fmt.Errorf("llm: %s: %w", providerName, err)
+			return nil, "", fmt.Errorf("llm: %s: %w", providerName, err)
 		}
 		key, err := resolveKey("openai_compat")
 		if err != nil {
-			return &missingKeyProvider{name: providerName, err: err}, nil
+			return &missingKeyProvider{name: providerName, err: err}, model, nil
 		}
-		return newOpenAICompatConnector(key, model, cfg.LLM.OpenAICompat.BaseURL, httpClient), nil
+		return newOpenAICompatConnector(key, model, cfg.LLM.OpenAICompat.BaseURL, httpClient), model, nil
 
 	case "google":
 		if model == "" {
@@ -216,20 +240,20 @@ func buildProvider(providerName, model string, cfg config.Config, httpClient *ht
 		}
 		key, err := resolveKey("google")
 		if err != nil {
-			return &missingKeyProvider{name: providerName, err: err}, nil
+			return &missingKeyProvider{name: providerName, err: err}, model, nil
 		}
-		return newGoogleConnector(key, model, httpClient), nil
+		return newGoogleConnector(key, model, httpClient), model, nil
 
 	case "ollama":
 		// model may legitimately be "" here — resolved lazily against
 		// /api/tags on first use (see ollamaConnector.resolveModel).
 		if _, err := config.CheckBaseURL("llm.ollama.base_url", cfg.LLM.Ollama.BaseURL); err != nil {
-			return nil, fmt.Errorf("llm: %s: %w", providerName, err)
+			return nil, "", fmt.Errorf("llm: %s: %w", providerName, err)
 		}
-		return newOllamaConnector(model, cfg.LLM.Ollama.BaseURL, httpClient), nil
+		return newOllamaConnector(model, cfg.LLM.Ollama.BaseURL, httpClient), model, nil
 
 	default:
-		return nil, fmt.Errorf("llm: unknown provider %q", providerName)
+		return nil, "", fmt.Errorf("llm: unknown provider %q", providerName)
 	}
 }
 
@@ -286,6 +310,7 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (Completio
 
 		if err == nil {
 			logAttempt(attempt.providerName, resp.Model, "ok", latency)
+			c.fireUsage(attempt, resp, latency)
 			return resp, nil
 		}
 
@@ -297,6 +322,31 @@ func (c *Client) Complete(ctx context.Context, req CompletionRequest) (Completio
 		}
 	}
 	return CompletionResponse{}, c.finalChainError(lastErr)
+}
+
+// fireUsage invokes c.usageObserver (WithUsageObserver), when one is
+// registered, for one successful Complete attempt — Complete's own
+// success branch is fireUsage's only call site, so a failed attempt
+// never reaches it. model prefers resp.Model — every one of this
+// package's four connectors populates it on a successful
+// CompletionResponse (see types.go's own doc comment) — falling back to
+// attempt.model (buildProvider's resolved default, stored on
+// clientAttempt by New) only for the defensive, not-currently-exercised
+// case a connector's response comes back with Model == "".
+func (c *Client) fireUsage(attempt clientAttempt, resp CompletionResponse, latency time.Duration) {
+	if c.usageObserver == nil {
+		return
+	}
+	model := resp.Model
+	if model == "" {
+		model = attempt.model
+	}
+	c.usageObserver(UsageEvent{
+		Provider: attempt.providerName,
+		Model:    model,
+		Usage:    resp.Usage,
+		Latency:  latency,
+	})
 }
 
 // wrapAttemptError prefixes err's message with providerName for

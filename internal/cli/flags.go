@@ -23,6 +23,10 @@ type executionFlags struct {
 	ask    bool
 	info   bool
 	yolo   bool
+	// usage is --usage: force the per-run token/cost summary line on for
+	// this invocation, regardless of general.show_usage — see
+	// internal/cli/usage.go.
+	usage bool
 }
 
 // addExecutionFlags registers executionFlags on cmd and returns the
@@ -40,6 +44,7 @@ func addExecutionFlags(cmd *cobra.Command) *executionFlags {
 	cmd.Flags().BoolVar(&f.ask, "ask", false, enUsageDefault(i18n.MsgFlagAsk))
 	cmd.Flags().BoolVar(&f.info, "info", false, enUsageDefault(i18n.MsgFlagInfo))
 	cmd.Flags().BoolVar(&f.yolo, "yolo", false, enUsageDefault(i18n.MsgFlagYolo))
+	cmd.Flags().BoolVar(&f.usage, "usage", false, enUsageDefault(i18n.MsgFlagUsage))
 	return f
 }
 

@@ -102,6 +102,15 @@ together — and doing so prints a loud warning on every use.
 - **Keychain-backed secrets** — API keys go through the OS keychain
   (macOS Keychain, Windows Credential Manager, Linux Secret Service) with
   an explicit, opt-in 0600 file fallback; never plaintext in config.
+- **Self-update signature verification** — `comrade upgrade` verifies a
+  cosign signature of the release's `checksums.txt` against a public key
+  embedded in the binary, fully offline, before trusting the checksum or
+  replacing the running executable.
+- **v0.3.0 hardening** — `base_url` validation (an LLM API key can no
+  longer be sent to a cloud-metadata / link-local address, and a
+  plaintext-`http` destination is flagged with a warning that the key
+  would travel unencrypted), broader redaction coverage, and a hardened
+  destructive-command classifier.
 
 Full model: [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -135,6 +144,9 @@ pinned), verify it against that release's `checksums.txt` (`sha256sum -c` /
 `Get-FileHash`) **before** installing anything, and print a `comrade init
 <shell>` hint when done. Set `COMRADE_VERSION` (env var, or `-Version` on
 Windows) to pin an exact release instead of installing the latest one.
+If the install directory isn't already on `PATH`, the script also adds it
+to your shell rc file automatically (opt out with `COMRADE_NO_MODIFY_PATH`)
+— see [docs/INSTALL.md](docs/INSTALL.md) for the exact mechanism.
 
 Full details, env-var reference, and per-channel maintainer notes:
 [docs/INSTALL.md](docs/INSTALL.md) and [docs/PACKAGING.md](docs/PACKAGING.md).
@@ -203,6 +215,7 @@ alongside it). Details:
 - [docs/INSTALL.md](docs/INSTALL.md) — every install channel, in detail.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — every config key.
 - [docs/SECURITY.md](docs/SECURITY.md) — the full safety/security model.
+- [docs/UPDATE_SIGNING.md](docs/UPDATE_SIGNING.md) — self-update signature verification.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common issues.
 - [docs/TECHNICAL.md](docs/TECHNICAL.md) — technical documentation (EN).
 - [docs/TECHNICAL.tr.md](docs/TECHNICAL.tr.md) — teknik dokümantasyon (TR).
@@ -315,6 +328,15 @@ basılır.
   keychain'inden (macOS Keychain, Windows Credential Manager, Linux Secret
   Service) geçer; açık, opt-in bir 0600 dosya fallback'i vardır, config
   dosyasına asla düz metin yazılmaz.
+- **Kendi kendini güncelleme imza doğrulaması** — `comrade upgrade`,
+  binary'ye gömülü bir public key'e karşı release'in `checksums.txt`'inin
+  cosign imzasını, tamamen offline olarak, checksum'a güvenmeden veya
+  çalışan executable'ı değiştirmeden önce doğrular.
+- **v0.3.0 sertleştirmesi** — `base_url` doğrulaması (bir LLM API
+  anahtarı artık bir cloud-metadata / link-local adresine gönderilemez;
+  düz-metin bir `http` hedefi, anahtarın şifresiz gideceğine dair bir
+  uyarıyla işaretlenir), daha geniş redaction kapsamı, ve sertleştirilmiş
+  bir destructive-komut sınıflandırıcısı.
 
 Tam model: [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -349,6 +371,9 @@ bir URL) üzerinden indirir, herhangi bir şey kurmadan **önce** o release'in
 bitince bir `comrade init <shell>` ipucu basar. Belirli bir sürümü
 sabitlemek için `COMRADE_VERSION` ortam değişkenini (Windows'ta `-Version`
 parametresini) kullanın.
+Kurulum dizini `PATH`'te değilse, script bunu shell rc dosyanıza otomatik
+olarak ekler (`COMRADE_NO_MODIFY_PATH` ile devre dışı bırakılabilir) —
+tam mekanizma için [docs/INSTALL.md](docs/INSTALL.md)'a bakın.
 
 Tüm ayrıntılar, ortam değişkeni referansı ve kanal başına bakım notları:
 [docs/INSTALL.md](docs/INSTALL.md) ve [docs/PACKAGING.md](docs/PACKAGING.md).
@@ -418,6 +443,7 @@ Ayrıntılar:
 - [docs/INSTALL.md](docs/INSTALL.md) — tüm kurulum kanalları, ayrıntılı.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — her config anahtarı.
 - [docs/SECURITY.md](docs/SECURITY.md) — tam güvenlik modeli.
+- [docs/UPDATE_SIGNING.md](docs/UPDATE_SIGNING.md) — kendi kendini güncelleme imza doğrulaması.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — yaygın sorunlar.
 - [docs/TECHNICAL.md](docs/TECHNICAL.md) — technical documentation (EN).
 - [docs/TECHNICAL.tr.md](docs/TECHNICAL.tr.md) — teknik dokümantasyon (TR).

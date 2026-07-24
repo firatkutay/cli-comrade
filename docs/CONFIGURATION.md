@@ -57,6 +57,39 @@ ortam değişkeni `COMRADE_BÖLÜM_ALT_ALT` şeklindedir (nokta yerine alt
 ayrıca kısa takma adlar da vardır (yukarıdaki tabloda "Ortam
 değişkeni" sütununda ilk sırada gösterilenler); ikisi de çalışır.
 
+### `base_url` doğrulama kuralları
+
+`llm.openai_compat.base_url` ve `llm.ollama.base_url` düz metin string
+değildir — `comrade config set` (ve config dosyası her yüklendiğinde)
+`internal/config/validate.go`'daki aynı kurala göre doğrulanır, çünkü bu
+değer API anahtarının `Authorization: Bearer` başlığıyla gönderileceği
+hostu belirler:
+
+- **Reddedilir** (`comrade config set` hata döndürür, değer kaydedilmez):
+  şema `http`/`https` değilse, host boşsa, veya host bir bulut-metadata/
+  link-local adrese işaret ediyorsa — `169.254.0.0/16` (AWS/GCP/Azure'un
+  `169.254.169.254` metadata uç noktasını da kapsar) ya da IPv6
+  `fe80::/10`.
+- **Uyarılır ama kabul edilir**: şema `http` ve host loopback değilse
+  (`localhost`, `127.0.0.0/8`, `::1` dışında) — API anahtarının ağ
+  üzerinde şifrelenmemiş gönderileceğine dair bir uyarı basılır, değer
+  yine de kaydedilir. Özel ağ aralıkları (`10/8`, `192.168/16`,
+  `172.16/12`) kendi barındırılan Ollama/LM Studio gibi kurulumlar için
+  meşru kabul edilir ve asla **reddedilmez** — ama diğer loopback-olmayan
+  host'lar gibi, bu aralıklardan birine işaret eden bir `http` base_url
+  yine aynı şifresiz-iletim uyarısını tetikler.
+- Config her yüklendiğinde yalnızca **etkin sağlayıcının**
+  (`llm.provider`) base_url'ü için aynı kontrol tekrar çalışır, ama
+  yükleme asla bu yüzden başarısız olmaz — sadece uyarı basar (aksi halde
+  hatalı bir değer `comrade config set` ile onarma yolunu da
+  kilitleyebilirdi).
+- Gerçek bir LLM istemcisi kurulurken (`do`/`fix`/`chat`/`explain`
+  çalıştığında) etkin sağlayıcının base_url'ü tekrar kontrol edilir ve bu
+  kez reddedilirse istemci hiç oluşturulmaz — `comrade config
+  set`/`get`/`edit` gibi onarım komutları bu sert kontrolden geçmediği
+  için her zaman kullanılabilir kalır. Ayrıntılar için bkz.
+  [SECURITY.md](SECURITY.md).
+
 ### API anahtarları — ayrı bir mekanizma
 
 API anahtarları YUKARIDAKİ config anahtarlarından değil, `comrade auth
@@ -144,6 +177,38 @@ General rule: a `section.sub_key` TOML key's generic env override is
 `general.mode`/`llm.provider`/`llm.model` additionally have short
 aliases (shown first in the "Env override" column above); either form
 works.
+
+### `base_url` validation rules
+
+`llm.openai_compat.base_url` and `llm.ollama.base_url` are not plain
+strings — `comrade config set` (and every config load) validates them
+against the same rule in `internal/config/validate.go`, because this
+value decides which host receives the API key via an `Authorization:
+Bearer` header:
+
+- **Rejected** (`comrade config set` errors, the value is not saved): the
+  scheme isn't `http`/`https`, the host is empty, or the host is a
+  literal cloud-metadata / link-local address — `169.254.0.0/16` (which
+  covers the `169.254.169.254` metadata endpoint used by AWS/GCP/Azure)
+  or IPv6 `fe80::/10`.
+- **Warned but accepted**: the scheme is `http` and the host is not
+  loopback (anything other than `localhost`, `127.0.0.0/8`, `::1`) — a
+  warning that the API key will be sent unencrypted is printed, but the
+  value is still saved. Private network ranges (`10/8`, `192.168/16`,
+  `172.16/12`) are treated as legitimate for self-hosted setups like
+  Ollama/LM Studio and are never **rejected** — but like any other
+  non-loopback host, an `http` base_url pointed at one still triggers the
+  same cleartext warning.
+- Every time config loads, the same check re-runs for the **active
+  provider's** (`llm.provider`) base_url only, but loading never fails
+  because of it — it only warns (a hard failure here could brick the
+  repair path through `comrade config set` itself).
+- When a real LLM client is actually built (running `do`/`fix`/`chat`/
+  `explain`), the active provider's base_url is checked again, and a
+  reject-class value this time means the client is never constructed —
+  repair commands (`comrade config set`/`get`/`edit`) don't go through
+  this hard check and stay usable regardless. See
+  [SECURITY.md](SECURITY.md) for details.
 
 ### API keys — a separate mechanism
 

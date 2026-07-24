@@ -1234,6 +1234,89 @@ const (
 	// internal/undo.Derive — no LLM tier needed at all). Two args: how
 	// many steps the derived plan has, the target run's own RunID.
 	MsgUndoPlanSummary MessageID = "undo_plan_summary"
+
+	// --- config profiles ---
+
+	// MsgFlagProfile is the persistent root --profile flag's --help
+	// description (root.go) — selects the active config profile for this
+	// one invocation, taking precedence over COMRADE_PROFILE and the
+	// file's own general.profile (see config.ResolveActiveProfile).
+	MsgFlagProfile MessageID = "flag_profile"
+
+	// MsgFlagProfileFromCurrent is `comrade config profile add`'s
+	// --from-current flag's --help description.
+	MsgFlagProfileFromCurrent MessageID = "flag_profile_from_current"
+
+	// MsgConfigProfileListHeader is `comrade config profile list`'s table
+	// header row.
+	MsgConfigProfileListHeader MessageID = "config_profile_list_header"
+
+	// MsgConfigProfileUsageError is the shared wrong-arity usage error for
+	// every `comrade config profile <subcommand>` that takes a fixed
+	// positional-argument shape (use/add/remove/set/show) — mirrors
+	// MsgUsageNoArgsError/MsgUnknownSubcommandError's own "one shared,
+	// parameterized message" pattern (argvalidation.go) instead of one
+	// dedicated MessageID per subcommand. Two args: the resolved
+	// cmd.CommandPath() (e.g. "comrade config profile use"), then a
+	// literal argument-hint string built in Go (e.g. "<name>") — never a
+	// raw fmt.Print literal itself, so this needs no catalogCoverageAllowlist
+	// entry.
+	MsgConfigProfileUsageError MessageID = "config_profile_usage_error"
+
+	// MsgConfigProfileNotFound is config.ProfileNotFoundError's translated
+	// rendering — `show`/`use`/`remove`/`set` all reject a name that
+	// isn't a defined profile with this. One arg: the profile name.
+	MsgConfigProfileNotFound MessageID = "config_profile_not_found"
+
+	// MsgConfigProfileAlreadyExists is config.ProfileExistsError's
+	// translated rendering — `add` never silently overwrites an existing
+	// profile. One arg: the profile name.
+	MsgConfigProfileAlreadyExists MessageID = "config_profile_already_exists"
+
+	// MsgConfigProfileInvalidName is config.InvalidProfileNameError's
+	// translated rendering — `add`/`use` reject a name that doesn't match
+	// the required lowercase-letters/digits/-/_ shape. One arg: the
+	// rejected name.
+	MsgConfigProfileInvalidName MessageID = "config_profile_invalid_name"
+
+	// MsgConfigProfileKeyNotAllowed is config.ProfileKeyNotAllowedError's
+	// translated rendering — `set <name> general.profile ...` is rejected
+	// (a profile activating another profile would be unbounded
+	// recursion). One arg: the rejected key ("general.profile").
+	MsgConfigProfileKeyNotAllowed MessageID = "config_profile_key_not_allowed"
+
+	// MsgConfigProfileSafetyOverrideWarning is P-5's mandatory HIGHLIGHTED
+	// warning: `profile use`/`profile show` print this whenever the
+	// target profile overrides any safety.* key (config.ProfileSafetyOverrides).
+	// This is a visibility warning only — the runtime destructive/elevated
+	// confirmation gate itself is untouched by a profile switch; only
+	// config's safety.confirm_destructive/confirm_elevated=false PLUS
+	// --yolo together ever bypass it (CLAUDE.md's security exception).
+	// Two args: the profile name, then the comma-joined list of
+	// overridden safety.* keys.
+	MsgConfigProfileSafetyOverrideWarning MessageID = "config_profile_safety_override_warning"
+
+	// MsgConfigProfileActivated confirms `comrade config profile use
+	// <name>` succeeded. One arg: the now-active profile name.
+	MsgConfigProfileActivated MessageID = "config_profile_activated"
+
+	// MsgConfigProfileAdded confirms `comrade config profile add <name>`
+	// succeeded. One arg: the new profile name.
+	MsgConfigProfileAdded MessageID = "config_profile_added"
+
+	// MsgConfigProfileRemoved confirms `comrade config profile remove
+	// <name>` succeeded. One arg: the removed profile name.
+	MsgConfigProfileRemoved MessageID = "config_profile_removed"
+
+	// MsgConfigProfileShowActive is `comrade config profile show
+	// <name>`'s heading line when name is the currently-active profile.
+	// One arg: the profile name.
+	MsgConfigProfileShowActive MessageID = "config_profile_show_active"
+
+	// MsgConfigProfileShowInactive is `comrade config profile show
+	// <name>`'s heading line when name is NOT the currently-active
+	// profile. One arg: the profile name.
+	MsgConfigProfileShowInactive MessageID = "config_profile_show_inactive"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -1530,6 +1613,27 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 
 	MsgUndoHeuristicRationale: "Reverses: %s",
 	MsgUndoPlanSummary:        "Reverses %d step(s) from run %s, newest first.",
+
+	// --- config profiles ---
+	MsgFlagProfile:            "use this named config profile for this invocation (overrides COMRADE_PROFILE and general.profile)",
+	MsgFlagProfileFromCurrent: "seed the new profile with the current file-level [llm] section's values",
+
+	MsgConfigProfileListHeader: "PROFILE\tACTIVE\tKEYS",
+	MsgConfigProfileUsageError: "usage: %s %s",
+
+	MsgConfigProfileNotFound:      "profile %q is not defined; run \"comrade config profile list\" to see defined profiles",
+	MsgConfigProfileAlreadyExists: "profile %q already exists",
+	MsgConfigProfileInvalidName:   "invalid profile name %q: must start with a lowercase letter or digit and contain only lowercase letters, digits, - or _ (max 32 characters)",
+	MsgConfigProfileKeyNotAllowed: "config key %q cannot be set inside a profile (it selects the active profile itself)",
+
+	MsgConfigProfileSafetyOverrideWarning: "⚠ profile %q overrides safety setting(s): %s — these apply automatically whenever this profile is active",
+
+	MsgConfigProfileActivated: "activated profile %q\n",
+	MsgConfigProfileAdded:     "created profile %q\n",
+	MsgConfigProfileRemoved:   "removed profile %q\n",
+
+	MsgConfigProfileShowActive:   "profile %q (active)\n",
+	MsgConfigProfileShowInactive: "profile %q\n",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -1826,4 +1930,25 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 
 	MsgUndoHeuristicRationale: "Geri alınan: %s",
 	MsgUndoPlanSummary:        "%d adımı, %s çalıştırmasından en yeniden en eskiye doğru geri alır.",
+
+	// --- config profiles ---
+	MsgFlagProfile:            "bu çalıştırma için bu adlandırılmış config profilini kullan (COMRADE_PROFILE ve general.profile'ı geçersiz kılar)",
+	MsgFlagProfileFromCurrent: "yeni profili mevcut dosya seviyesindeki [llm] bölümünün değerleriyle doldur",
+
+	MsgConfigProfileListHeader: "PROFİL\tAKTİF\tANAHTAR",
+	MsgConfigProfileUsageError: "kullanım: %s %s",
+
+	MsgConfigProfileNotFound:      "%q profili tanımlı değil; tanımlı profilleri görmek için \"comrade config profile list\" çalıştırın",
+	MsgConfigProfileAlreadyExists: "%q profili zaten var",
+	MsgConfigProfileInvalidName:   "%q geçersiz profil adı: küçük harf veya rakamla başlamalı ve yalnızca küçük harf, rakam, - veya _ içermeli (en fazla 32 karakter)",
+	MsgConfigProfileKeyNotAllowed: "%q config anahtarı bir profil içinde ayarlanamaz (aktif profili seçen anahtarın kendisi budur)",
+
+	MsgConfigProfileSafetyOverrideWarning: "⚠ %q profili şu safety ayarlarının üzerine yazıyor: %s — bu profil aktifken bunlar otomatik olarak uygulanır",
+
+	MsgConfigProfileActivated: "%q profili etkinleştirildi\n",
+	MsgConfigProfileAdded:     "%q profili oluşturuldu\n",
+	MsgConfigProfileRemoved:   "%q profili kaldırıldı\n",
+
+	MsgConfigProfileShowActive:   "profil %q (aktif)\n",
+	MsgConfigProfileShowInactive: "profil %q\n",
 }

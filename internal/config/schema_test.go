@@ -22,6 +22,7 @@ func TestDefaultMatchesPlanExactly(t *testing.T) {
 	assert.Equal(t, true, cfg.General.Color)
 	assert.Equal(t, true, cfg.General.UpdateCheck)
 	assert.Equal(t, false, cfg.General.ShowUsage)
+	assert.Equal(t, "", cfg.General.Profile)
 
 	assert.Equal(t, "anthropic", cfg.LLM.Provider)
 	assert.Equal(t, "", cfg.LLM.Model)
@@ -49,6 +50,8 @@ func TestDefaultMatchesPlanExactly(t *testing.T) {
 	assert.Equal(t, 90, cfg.Audit.RetentionDays)
 
 	assert.Equal(t, 300, cfg.Executor.StepTimeoutSeconds)
+
+	assert.Empty(t, cfg.Profiles, "no profile is defined by default — profiles are inert until a user defines one")
 }
 
 // TestDefaultDoesNotPanic guards the Default() panic paths: if
@@ -106,11 +109,32 @@ func flattenSettings(m map[string]any, prefix string) []string {
 // Config struct (schema.go) and the keyDefs validation registry
 // (validate.go): a field added to one without the other fails this test,
 // per the project's "no unguarded hand-maintained mirrors" rule.
+//
+// Config.Profiles is the one explicit, asserted EXEMPTION: it is a raw
+// map of sparse profile overlays (arbitrary known keys), not itself a
+// settable scalar config value, so it deliberately has no keyDefs entry
+// of its own — see schema.go's own doc comment on the Profiles field.
+// This test asserts the exemption explicitly (rather than just silently
+// filtering "profiles" out) so the exemption itself cannot rot: if the
+// Profiles field is ever renamed or removed, foundProfiles below goes
+// false and this test fails, forcing whoever changed it to update this
+// comment/assertion too instead of the exemption silently going stale.
 func TestKeyDefsMatchConfigStruct(t *testing.T) {
 	structKeys := flattenStructTags(reflect.TypeOf(Config{}), "")
-	sort.Strings(structKeys)
 
-	assert.Equal(t, structKeys, Keys())
+	var filtered []string
+	foundProfiles := false
+	for _, k := range structKeys {
+		if k == "profiles" {
+			foundProfiles = true
+			continue
+		}
+		filtered = append(filtered, k)
+	}
+	require.True(t, foundProfiles, "Config.Profiles field must exist for this exemption to be meaningful")
+	sort.Strings(filtered)
+
+	assert.Equal(t, filtered, Keys())
 }
 
 // TestKeyDefsMatchDefaultConfigTOML is a bidirectional drift guard between

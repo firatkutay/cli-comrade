@@ -92,6 +92,18 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 	}
 	root.SetVersionTemplate("comrade version {{.Version}}\n")
 
+	// --profile is a PERSISTENT flag (registered on root, inherited by
+	// every subcommand) rather than one addExecutionFlags-style flag per
+	// leaf command: config profiles' active-profile selection is
+	// orthogonal to what a command actually DOES, exactly like
+	// $EDITOR/$XDG_CONFIG_HOME aren't per-subcommand concerns either — so
+	// `comrade --profile work config get llm.provider` and `comrade
+	// config profile use work` (which persists the choice instead of
+	// overriding it for one invocation) both work, from any subcommand,
+	// without each one declaring its own copy.
+	var profileFlag string
+	root.PersistentFlags().StringVar(&profileFlag, "profile", "", enUsageDefault(i18n.MsgFlagProfile))
+
 	// newLoader is resolved lazily, once per subcommand invocation, rather
 	// than once here: the config file path depends on environment
 	// variables (XDG_CONFIG_HOME, APPDATA) that tests set per-case, and
@@ -99,9 +111,13 @@ func newRootCmd(version string, updateFetcher update.ReleaseFetcher) *cobra.Comm
 	// like at process startup instead of at command-execution time. This
 	// is the "Loader constructed ... passed to subcommands" dependency
 	// injection CLAUDE.md calls for: no package-level viper/config state
-	// anywhere in this tree.
+	// anywhere in this tree. profileFlag is read here (not captured
+	// earlier) for the exact same reason: cobra only populates it once
+	// flag parsing actually runs, which happens AFTER newLoader is
+	// constructed but BEFORE any subcommand's RunE (and therefore this
+	// closure) actually executes.
 	newLoader := func() (*config.Loader, error) {
-		return config.NewLoader("")
+		return config.NewLoaderWithProfile("", profileFlag)
 	}
 
 	rootFlags := addExecutionFlags(root)

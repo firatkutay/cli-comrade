@@ -21,6 +21,7 @@ language = "auto"         # auto | tr | en
 color = true
 update_check = true       # check GitHub Releases for a newer version at most once/week
 show_usage = false        # print a per-run token/cost summary line (also: --usage)
+profile = ""              # active config profile name (empty = none); see [profiles] below and "comrade config profile"
 
 [llm]
 provider = "anthropic"    # anthropic | openai_compat | google | ollama
@@ -58,6 +59,12 @@ retention_days = 90
 
 [executor]
 step_timeout_seconds = 300   # max seconds a single executed step may run before being killed
+
+[profiles]
+# named profile overlays live here as [profiles.<name>] tables, e.g.:
+#   [profiles.work]
+#   llm.provider = "openai_compat"
+# see "comrade config profile" and docs/CONFIGURATION.md's "Config profiles" section.
 `
 
 // GeneralConfig holds the [general] section.
@@ -71,6 +78,12 @@ type GeneralConfig struct {
 	// session total on exit) even without the per-invocation --usage
 	// flag. See internal/cli/usage.go.
 	ShowUsage bool `mapstructure:"show_usage"`
+	// Profile is general.profile: the active config profile's name
+	// (empty = none). Its precedence against --profile/COMRADE_PROFILE is
+	// resolved by ResolveActiveProfile (profile.go), mirroring
+	// ResolveMode's exact shape (internal/engine/mode.go). See
+	// docs/CONFIGURATION.md's "Config profiles" section.
+	Profile string `mapstructure:"profile"`
 }
 
 // OpenAICompatConfig holds the [llm.openai_compat] section.
@@ -146,6 +159,16 @@ type Config struct {
 	Privacy  PrivacyConfig  `mapstructure:"privacy"`
 	Audit    AuditConfig    `mapstructure:"audit"`
 	Executor ExecutorConfig `mapstructure:"executor"`
+	// Profiles holds every [profiles.<name>] table, keyed by profile
+	// name, each a RAW nested map of arbitrary known keys (a sparse
+	// overlay, not a fixed sub-schema — see profile.go's ProfileKeys/
+	// ProfileSafetyOverrides for how its contents are inspected). This
+	// field is deliberately EXEMPT from the keyDefs registry
+	// (validate.go) and from TestKeyDefsMatchConfigStruct's drift guard
+	// (schema_test.go asserts that exemption explicitly, so it cannot
+	// rot): it is a container of overrides, not itself a settable scalar
+	// config value.
+	Profiles map[string]map[string]any `mapstructure:"profiles"`
 }
 
 // Default returns the schema's default configuration, parsed from

@@ -90,7 +90,7 @@ func TestCompleteConfigSuggestsSubcommandsExcludingHidden(t *testing.T) {
 
 	candidates, directive := completionCandidates(t, "config", "")
 
-	assert.Equal(t, []string{"edit", "get", "list", "models", "path", "set"}, candidates)
+	assert.Equal(t, []string{"edit", "get", "list", "models", "path", "profile", "set"}, candidates)
 	assert.NotContains(t, candidates, "test-llm")
 	assert.Equal(t, int(cobra.ShellCompDirectiveNoFileComp), directive)
 }

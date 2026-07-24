@@ -7,7 +7,7 @@
 | Mod | Davranış |
 |---|---|
 | `auto` | Komutları kendisi çalıştırır, her adımı tek satırda özetler. |
-| `ask` | *(varsayılan)* Her komuttan önce gerekçe + komutu gösterir, `[e]vet/[h]ayır/[d]üzenle/[a]çıkla/[t]ümünü onayla` sorar. |
+| `ask` | *(varsayılan)* Her komuttan önce gerekçe + komutu gösterir, `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` sorar. |
 | `info` | Hiçbir şey çalıştırmaz; sadece açıklar. |
 
 **Pazarlık edilemez kural:** `auto` modda bile risk sınıfı

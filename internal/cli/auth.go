@@ -176,14 +176,22 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			// the openai_compat-specific prompts below, so their own
 			// base_url/model logic — and the eventual ping, and the
 			// 404-branch's effectiveModel — all see the real, now-active
-			// provider and the model that was actually entered. Only
-			// writes/prints when the provider actually changes; logging
-			// back into an already-active provider stays silent.
-			if cfg.LLM.Provider != provider {
+			// provider and the model that was actually entered.
+			//
+			// providerChanged only tracks whether to WRITE and, later,
+			// whether to PRINT MsgAuthProviderActivated — the print itself
+			// is deliberately deferred until after the ping (see the
+			// deferred-notice block below pingProvider): printing it here,
+			// immediately after the write, would leave a stale "active
+			// provider set to X" line standing even on a hard-rejected
+			// (401/403) login, whose config this same RunE rolls back to
+			// its prior value a few lines further down — the write must
+			// happen now (the ping needs it in place), but the user-facing
+			// claim must wait until we know the write is actually going to
+			// stick.
+			providerChanged := cfg.LLM.Provider != provider
+			if providerChanged {
 				if err := loader.SetAndSave("llm.provider", provider); err != nil {
-					return err
-				}
-				if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthProviderActivated, provider)); err != nil {
 					return err
 				}
 				reloaded, _, err := loader.Load()
@@ -227,9 +235,20 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			// cmd.InOrStdin() would see nothing left to read — silently
 			// losing a model line a piped/scripted caller supplied right
 			// after the base_url line in one shot.
+			// savedBaseURL is "" when promptOpenAICompatBaseURLIfDefault
+			// never persisted anything (prompt skipped entirely, or the
+			// user pressed Enter to keep the default) and the ENTERED
+			// value otherwise — used below, after the ping, to decide
+			// whether to print MsgAuthOpenAICompatBaseURLSaved. Deferred
+			// for the exact same reason providerChanged's print is
+			// deferred above: promptOpenAICompatBaseURL itself no longer
+			// prints it, so a hard-rejected login (which rolls this value
+			// back) never has a stale "saved" line to begin with.
+			var savedBaseURL string
 			if provider == "openai_compat" {
 				reader := bufio.NewReader(cmd.InOrStdin())
-				if err := promptOpenAICompatBaseURLIfDefault(cmd, loader, cfg, tr, reader); err != nil {
+				savedBaseURL, err = promptOpenAICompatBaseURLIfDefault(cmd, loader, cfg, tr, reader)
+				if err != nil {
 					return err
 				}
 				reloaded, _, err := loader.Load()
@@ -280,19 +299,42 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			//     the key, so no rollback — keeping the provider/model/
 			//     base_url activation active is correct here.
 			resp, latency, pingErr := pingProvider(cmd, newLoader, provider, key)
-			if pingErr != nil {
-				if errors.Is(pingErr, llm.ErrAuthRejected) {
-					if err := loader.SetAndSave("llm.provider", priorProvider); err != nil {
-						return err
-					}
-					if err := loader.SetAndSave("llm.model", priorModel); err != nil {
-						return err
-					}
-					if err := loader.SetAndSave("llm.openai_compat.base_url", priorOpenAICompatBaseURL); err != nil {
-						return err
-					}
-					return fmt.Errorf("%s", tr.T(i18n.MsgAuthKeyRejected, provider, pingErr, provider))
+			if pingErr != nil && errors.Is(pingErr, llm.ErrAuthRejected) {
+				if err := loader.SetAndSave("llm.provider", priorProvider); err != nil {
+					return err
 				}
+				if err := loader.SetAndSave("llm.model", priorModel); err != nil {
+					return err
+				}
+				if err := loader.SetAndSave("llm.openai_compat.base_url", priorOpenAICompatBaseURL); err != nil {
+					return err
+				}
+				return fmt.Errorf("%s", tr.T(i18n.MsgAuthKeyRejected, provider, pingErr, provider))
+			}
+
+			// Every path from here on DOES store the key (or, for the
+			// base_url-unsafe case just below, skips ONLY the live test
+			// while still keeping the provider/base_url it just switched
+			// to, for a definitive non-key reason) — none of them is the
+			// ErrAuthRejected rollback path just above, so it is now safe
+			// — and correct — to surface the two notices deferred from
+			// the activation block and promptOpenAICompatBaseURL earlier:
+			// printing them any sooner would have left a stale "active
+			// provider set to X" / "saved base_url = Y" line standing on
+			// a hard-rejected login whose config gets rolled back a few
+			// lines above.
+			if providerChanged {
+				if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthProviderActivated, provider)); err != nil {
+					return err
+				}
+			}
+			if savedBaseURL != "" {
+				if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthOpenAICompatBaseURLSaved, savedBaseURL)); err != nil {
+					return err
+				}
+			}
+
+			if pingErr != nil {
 				// pingProvider's own llm.New call refuses to build a
 				// client at all when the active provider's base_url is
 				// reject-class (isBaseURLRejection — runtime.go, the SAME
@@ -386,9 +428,17 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 // config. The trade-off is a user who explicitly re-set base_url back to
 // literally OpenAI's own URL gets one harmless extra prompt (Enter keeps
 // it) — vastly preferable to the check never triggering for anyone.
-func promptOpenAICompatBaseURLIfDefault(cmd *cobra.Command, loader *config.Loader, cfg config.Config, tr i18n.Translator, reader *bufio.Reader) error {
+//
+// Returns the value it persisted ("" if the prompt never fired, or fired
+// but the user pressed Enter to keep the default) — the caller prints
+// MsgAuthOpenAICompatBaseURLSaved itself, deferred until after the ping,
+// rather than this function printing it immediately (see newAuthLoginCmd's
+// own doc comment on why that print is deferred: a hard-rejected login
+// rolls this value back, and must never have printed a "saved" line for a
+// value that no longer sticks).
+func promptOpenAICompatBaseURLIfDefault(cmd *cobra.Command, loader *config.Loader, cfg config.Config, tr i18n.Translator, reader *bufio.Reader) (string, error) {
 	if cfg.LLM.OpenAICompat.BaseURL != config.Default().LLM.OpenAICompat.BaseURL {
-		return nil
+		return "", nil
 	}
 	return promptOpenAICompatBaseURL(cmd, loader, tr, cfg.LLM.OpenAICompat.BaseURL, reader)
 }
@@ -401,36 +451,39 @@ func promptOpenAICompatBaseURLIfDefault(cmd *cobra.Command, loader *config.Loade
 // default) in the prompt itself (MsgAuthOpenAICompatBaseURLPrompt). An
 // empty line (a bare Enter) leaves llm.openai_compat.base_url untouched —
 // genuine OpenAI users must not be forced to retype their endpoint — and
-// returns nil without writing anything. A non-empty line is validated with
-// config.CheckBaseURL, the SAME reject-class check
+// returns ("", nil) without writing anything. A non-empty line is
+// validated with config.CheckBaseURL, the SAME reject-class check
 // internal/llm/client.go's buildProvider applies at client-construction
 // time: a rejected value is reported via the existing
 // MsgLLMBaseURLRejected message (reused rather than adding a
 // near-duplicate) and re-prompted, never silently kept or saved. An
-// accepted value is persisted via loader.SetAndSave before this returns,
+// accepted value is persisted via loader.SetAndSave before this returns —
 // so the caller's subsequent pingProvider call (which re-Loads config
-// from disk) sees it too.
-func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18n.Translator, currentDefault string, reader *bufio.Reader) error {
+// from disk) sees it too — and returned as-is; this function does NOT
+// print MsgAuthOpenAICompatBaseURLSaved itself (see the caller's own doc
+// comment on why that print is the CALLER's job, deferred until after the
+// ping).
+func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18n.Translator, currentDefault string, reader *bufio.Reader) (string, error) {
 	const key = "llm.openai_compat.base_url"
 	for {
 		if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthOpenAICompatBaseURLPrompt, currentDefault)); err != nil {
-			return err
+			return "", err
 		}
 		line, err := reader.ReadString('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("auth login: read base_url: %w", err)
+			return "", fmt.Errorf("auth login: read base_url: %w", err)
 		}
 		value := strings.TrimSpace(line)
 		if value == "" {
-			return nil
+			return "", nil
 		}
 		warning, checkErr := config.CheckBaseURL(key, value)
 		if checkErr != nil {
 			if _, err := fmt.Fprintln(cmd.OutOrStdout(), tr.T(i18n.MsgLLMBaseURLRejected, key, value, key)); err != nil {
-				return err
+				return "", err
 			}
 			if errors.Is(err, io.EOF) {
-				return nil
+				return "", nil
 			}
 			continue
 		}
@@ -445,15 +498,17 @@ func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18
 		// on non-empty here (rather than relying on
 		// config.EmitBaseURLWarning's own internal empty-check) so the
 		// seam only ever observes a REAL warning, never an empty no-op
-		// call.
+		// call. Kept UN-deferred (unlike MsgAuthOpenAICompatBaseURLSaved
+		// below): this is a security warning about the value the user just
+		// typed, not a confirmation of what got persisted, so it belongs
+		// at entry time regardless of how the ping later turns out.
 		if warning != "" {
 			emitOpenAICompatBaseURLWarning(warning)
 		}
 		if err := loader.SetAndSave(key, value); err != nil {
-			return err
+			return "", err
 		}
-		_, err = fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthOpenAICompatBaseURLSaved, value))
-		return err
+		return value, nil
 	}
 }
 

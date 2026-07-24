@@ -360,6 +360,14 @@ func TestAuthLoginOpenAICompatUsesEnteredModelEvenWhenDefaultProviderIsStillActi
 	assert.Contains(t, stdout.String(),
 		"Key saved ✓  But model 'qwen-plus' doesn't exist on this provider.",
 		"the 404 notice must name the model that was ACTUALLY pinged, not a stale/default one")
+
+	// The UX-polish proof's other half: unlike the 401 hard-rejection
+	// path (which prints NEITHER notice — see
+	// TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL), this is a
+	// non-rejected, key-STORING path — the deferred activation and
+	// base_url-saved notices must still print, just later than before.
+	assert.Contains(t, stdout.String(), "Active provider set to openai_compat.", "a non-rejected, key-storing login must still print the provider-activation notice")
+	assert.Contains(t, stdout.String(), "Saved llm.openai_compat.base_url = "+srv.URL, "a non-rejected, key-storing login must still print the base_url-saved notice")
 }
 
 // TestAuthLoginOpenAICompatSharedReaderConsumesBothPipedLines is the
@@ -474,8 +482,10 @@ func TestPromptOpenAICompatBaseURLEmitsCleartextWarningForWarnClassURL(t *testin
 	var stdout strings.Builder
 	cmd.SetOut(&stdout)
 
+	var saved string
 	warnings := captureOpenAICompatBaseURLWarning(t, func() {
-		promptErr := promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), "https://api.openai.com/v1", bufio.NewReader(cmd.InOrStdin()))
+		var promptErr error
+		saved, promptErr = promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), "https://api.openai.com/v1", bufio.NewReader(cmd.InOrStdin()))
 		require.NoError(t, promptErr)
 	})
 
@@ -483,6 +493,8 @@ func TestPromptOpenAICompatBaseURLEmitsCleartextWarningForWarnClassURL(t *testin
 	assert.Equal(t,
 		"warning: llm.openai_compat.base_url is set to an http:// URL (192.168.1.50:11434); the API key will be sent unencrypted over the network to this host",
 		warnings[0])
+
+	assert.Equal(t, "http://192.168.1.50:11434", saved, "the returned value must be what was persisted — the caller prints MsgAuthOpenAICompatBaseURLSaved itself, deferred")
 
 	got, err := loader.Get("llm.openai_compat.base_url")
 	require.NoError(t, err)
@@ -504,12 +516,15 @@ func TestPromptOpenAICompatBaseURLEmitsNoWarningForHTTPSURL(t *testing.T) {
 	var stdout strings.Builder
 	cmd.SetOut(&stdout)
 
+	var saved string
 	warnings := captureOpenAICompatBaseURLWarning(t, func() {
-		promptErr := promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), "https://api.openai.com/v1", bufio.NewReader(cmd.InOrStdin()))
+		var promptErr error
+		saved, promptErr = promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), "https://api.openai.com/v1", bufio.NewReader(cmd.InOrStdin()))
 		require.NoError(t, promptErr)
 	})
 
 	assert.Empty(t, warnings, "an https:// endpoint carries no cleartext risk and must not warn")
+	assert.Equal(t, "https://dashscope.aliyuncs.com/compatible-mode/v1", saved, "the returned value must be what was persisted")
 
 	got, err := loader.Get("llm.openai_compat.base_url")
 	require.NoError(t, err)
@@ -994,6 +1009,15 @@ func TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL(t *testing.T) {
 
 	require.Error(t, cmdErr, "a definitively rejected key must be a nonzero-exit command error")
 	assert.Contains(t, cmdErr.Error(), "The provider rejected this key for openai_compat")
+
+	// The UX-polish proof: MsgAuthProviderActivated and
+	// MsgAuthOpenAICompatBaseURLSaved must NEVER have printed at all on
+	// this path — not "printed then contradicted by the rollback," but
+	// genuinely deferred past the ping until we know the write sticks.
+	// Printing either here would tell the user their provider/base_url
+	// WAS set, which the rollback above just proved false.
+	assert.NotContains(t, stdout.String(), "Active provider set to", "a rejected login must never print the provider-activation notice")
+	assert.NotContains(t, stdout.String(), "Saved llm.openai_compat.base_url", "a rejected login must never print the base_url-saved notice")
 
 	loader, err := config.NewLoader("")
 	require.NoError(t, err)

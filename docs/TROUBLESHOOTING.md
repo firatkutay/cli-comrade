@@ -13,8 +13,8 @@ comrade auth login <provider>   # örn: comrade auth login anthropic
 
 veya ilgili ortam değişkenini ayarlayın (bkz. CONFIGURATION.md'nin
 "API anahtarları" tablosu — örn. `ANTHROPIC_API_KEY`). Hangi
-sağlayıcıların bir anahtarı olduğunu görmek için: `comrade auth
-status`.
+sağlayıcıların bir anahtarı olduğunu görmek için:
+`comrade auth status`.
 
 ### Ollama çalışmıyor / bağlanamıyor
 
@@ -24,6 +24,24 @@ status`.
 listesini çekmeyi deneyip bağlantıyı doğrulayın. Ollama kurulu değilse
 [ollama.com](https://ollama.com)'dan kurun; comrade'in kendisi Ollama'yı
 kurmaz.
+
+### `http 404: The model '...' does not exist` (openai_compat)
+
+`llm.provider = "openai_compat"` iken, `llm.model` boş bırakıldığında
+(config varsayılanı zaten boştur, `""`) connector `gpt-5.4-mini`'ye
+düşer (fallback) — bu yalnızca OpenAI'nin kendisinde var olan bir
+modeldir. `base_url` başka bir OpenAI-uyumlu sağlayıcıya (Qwen/DashScope,
+Groq, Mistral, OpenRouter, LM Studio, ...) yönlendirilmişse ve
+`llm.model` o sağlayıcının gerçekten sunduğu bir modele ayarlanmamışsa,
+her istek bu hatayla başarısız olur. Çözüm:
+
+```sh
+comrade config models              # uç noktanın gerçek model adlarını listeler, birini seçin
+comrade config set llm.model <yukarıdaki-listeden-model>
+```
+
+Ayrıntılı bir Qwen örneği için bkz. [CONFIGURATION.md](CONFIGURATION.md)
+— "OpenAI-uyumlu sağlayıcılar" bölümü.
 
 ### Shell kancası (hook) tetiklenmiyor / `comrade fix` her zaman yapıştırma moduna düşüyor
 
@@ -45,8 +63,8 @@ kurmaz.
    kılar — comrade bloğunun diğer prompt-özelleştirme araçlarından
    SONRA gelmesi gerekir (`comrade init powershell` zaten dosyanın
    sonuna ekler; elle taşımayın).
-5. Kanca hiç kurulamıyorsa (ör. betikli olmayan bir ortam): `comrade
-   fix -- <komut>` ile komutu comrade'in kendisi çalıştırıp
+5. Kanca hiç kurulamıyorsa (ör. betikli olmayan bir ortam):
+   `comrade fix -- <komut>` ile komutu comrade'in kendisi çalıştırıp
    gözlemlemesini sağlayın, ya da hatayı doğrudan yapıştırın (paste
    modu her zaman çalışır, kanca gerektirmez).
 
@@ -167,6 +185,24 @@ the model list as a connectivity check. If Ollama isn't installed at
 all, get it from [ollama.com](https://ollama.com) — comrade itself
 does not install Ollama for you.
 
+### `http 404: The model '...' does not exist` (openai_compat)
+
+With `llm.provider = "openai_compat"`, when `llm.model` is empty (its
+own config default is already empty, `""`), the connector falls back
+to `gpt-5.4-mini`, which only exists on OpenAI itself. If `base_url` is
+pointed at another OpenAI-compatible provider (Qwen/DashScope, Groq,
+Mistral, OpenRouter, LM Studio, ...) without also setting `llm.model`
+to a model that provider actually serves, every request fails with
+this error. Fix:
+
+```sh
+comrade config models              # lists the endpoint's real model names, pick one
+comrade config set llm.model <model-from-the-list-above>
+```
+
+See [CONFIGURATION.md](CONFIGURATION.md) — "OpenAI-compatible
+providers" — for a worked Qwen example.
+
 ### The shell hook never fires / `comrade fix` always falls back to paste mode
 
 1. Did you run `comrade init`, and did you **open a new shell**
@@ -180,8 +216,8 @@ does not install Ollama for you.
    LAST thing that touches it.
 3. fish: uses the `fish_postexec` event; fish allows multiple handlers
    on the same event, so another plugin using it should not conflict —
-   if you suspect it does anyway, check with `functions --details
-   fish_postexec`.
+   if you suspect it does anyway, check with
+   `functions --details fish_postexec`.
 4. PowerShell: the hook adds a `prompt` function to `$PROFILE`; if
    another tool (e.g. oh-my-posh, starship) defines its OWN `prompt`
    function AFTER comrade's in `$PROFILE`, it overrides comrade's —
@@ -205,8 +241,8 @@ This is not a bug — it's a shell-capability limitation:
   key, which would break magic-space, multiline editing, and paste.
   Use **Tab / double-Tab** after `comrade ` (or any subcommand)
   instead — it gives the same next-word list. Requires `comrade init`
-  to have been run and the shell reloaded (this installs `comrade
-  completion bash`).
+  to have been run and the shell reloaded (this installs
+  `comrade completion bash`).
 - **fish**: fish's own built-in autosuggestions already show
   comrade's completions.
 - **To get the dim ghost hint:** use **zsh** (`comrade init zsh`) or

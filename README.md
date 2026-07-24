@@ -92,8 +92,8 @@ together — and doing so prints a loud warning on every use.
   `read` / `write` / `network` / `elevated` / `destructive`.
 - **Local rule engine + denylist** (`internal/safety`) — a regex/AST-based
   second check that never trusts the LLM's own label; hard-blocks known
-  catastrophic patterns (`rm -rf /`, `mkfs`, `dd of=/dev/...`, `diskpart
-  clean`, fork bombs, etc.) regardless of mode.
+  catastrophic patterns (`rm -rf /`, `mkfs`, `dd of=/dev/...`,
+  `diskpart clean`, fork bombs, etc.) regardless of mode.
 - **Redaction** (`internal/redact`) — every payload sent to the LLM is
   scrubbed of API-key-shaped strings, `password=`/`token=`, bearer headers,
   etc. before it leaves the machine.
@@ -126,6 +126,22 @@ Full model: [docs/SECURITY.md](docs/SECURITY.md).
 A config-driven fallback chain tries providers in order if one errors or
 times out.
 
+### Local LLM (Ollama)
+
+Run comrade fully offline against a locally-served model — no API key
+required:
+
+```sh
+ollama pull llama3.1                     # pull a model with Ollama first
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    # optional — leave unset to auto-pick a pulled model
+comrade "install docker"
+```
+
+Full setup (remote Ollama hosts, fallback-chain syntax) and the
+`openai_compat` model-selection gotcha (Qwen, Groq, Mistral, ...):
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
 ### Install
 
 | Channel | Command | Status |
@@ -141,9 +157,10 @@ times out.
 The install scripts download the matching release archive via GitHub's
 no-API `releases/latest/download` redirect (or a tag-scoped URL when
 pinned), verify it against that release's `checksums.txt` (`sha256sum -c` /
-`Get-FileHash`) **before** installing anything, and print a `comrade init
-<shell>` hint when done. Set `COMRADE_VERSION` (env var, or `-Version` on
-Windows) to pin an exact release instead of installing the latest one.
+`Get-FileHash`) **before** installing anything, and print a
+`comrade init <shell>` hint when done. Set `COMRADE_VERSION` (env var,
+or `-Version` on Windows) to pin an exact release instead of installing
+the latest one.
 If the install directory isn't already on `PATH`, the script also adds it
 to your shell rc file automatically (opt out with `COMRADE_NO_MODIFY_PATH`)
 — see [docs/INSTALL.md](docs/INSTALL.md) for the exact mechanism.
@@ -177,6 +194,10 @@ comrade fix                   # after a failed command
 comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
+
+New to the terminal? [docs/GUIDE.md](docs/GUIDE.md) walks through all of
+the above — install, provider setup, the 3 modes, and daily use — in
+plain language, bilingual (TR/EN).
 
 ### Shell completion
 
@@ -212,6 +233,7 @@ alongside it). Details:
 
 ### Docs
 
+- [docs/GUIDE.md](docs/GUIDE.md) — the full "install to daily use" user guide (bilingual).
 - [docs/INSTALL.md](docs/INSTALL.md) — every install channel, in detail.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — every config key.
 - [docs/SECURITY.md](docs/SECURITY.md) — the full safety/security model.
@@ -352,6 +374,22 @@ Tam model: [docs/SECURITY.md](docs/SECURITY.md).
 Config'te tanımlı sıralı bir fallback zinciri, bir sağlayıcı hata verir
 veya zaman aşımına uğrarsa sıradakine geçer.
 
+### Yerel LLM (Ollama)
+
+comrade'i, API anahtarı gerektirmeden, tamamen çevrimdışı olarak yerel
+bir modele karşı çalıştırın:
+
+```sh
+ollama pull llama3.1                     # önce modeli Ollama ile indirin
+comrade config set llm.provider ollama
+comrade config set llm.model llama3.1    # opsiyonel — boş bırakılırsa kurulu bir model otomatik seçilir
+comrade "docker kur"
+```
+
+Tam kurulum (uzak Ollama sunucuları, fallback-zinciri sözdizimi) ve
+`openai_compat` model-seçim tuzağı (Qwen, Groq, Mistral, ...):
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
 ### Kurulum
 
 | Kanal | Komut | Durum |
@@ -406,6 +444,10 @@ comrade explain "git rebase -i HEAD~5"
 comrade chat
 ```
 
+Terminalle arası pek iyi değil misiniz? [docs/GUIDE.md](docs/GUIDE.md),
+yukarıdakilerin hepsini — kurulum, sağlayıcı ayarı, 3 mod, günlük
+kullanım — sade dille, çift dilli (TR/EN) olarak anlatır.
+
 ### Kabuk (shell) tamamlama
 
 `comrade init <shell>`, shell kancasıyla birlikte Tab-tamamlamayı da
@@ -432,14 +474,15 @@ sağlayıcıları listeler; `comrade config get <Tab>` her gerçek config
 anahtarını listeler; `comrade init <Tab>` desteklenen shell'leri listeler.
 
 **`comrade init` zaten kurulu mu?** Tamamlamalar ve boşluk ipucu, mevcut
-hook'un üzerine eklenen yeni içeriktir — bunları almak için `comrade
-init <shell>`'i bir kez yeniden çalıştırın (idempotenttir: mevcut
-hook'unuza dokunulmaz, yeni içerik yalnızca onun yanına eklenir).
+hook'un üzerine eklenen yeni içeriktir — bunları almak için
+`comrade init <shell>`'i bir kez yeniden çalıştırın (idempotenttir:
+mevcut hook'unuza dokunulmaz, yeni içerik yalnızca onun yanına eklenir).
 Ayrıntılar:
 [docs/TECHNICAL.tr.md §9](docs/TECHNICAL.tr.md#9-shell-entegrasyonu).
 
 ### Dokümanlar
 
+- [docs/GUIDE.md](docs/GUIDE.md) — "kurulumdan günlük kullanıma" tam kullanım kılavuzu (çift dilli).
 - [docs/INSTALL.md](docs/INSTALL.md) — tüm kurulum kanalları, ayrıntılı.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — her config anahtarı.
 - [docs/SECURITY.md](docs/SECURITY.md) — tam güvenlik modeli.

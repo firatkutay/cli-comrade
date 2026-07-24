@@ -80,7 +80,13 @@ type chatModel struct {
 // (color.go's single decision point) for this session's real output
 // stream — see chatModel.colorEnabled's own doc comment for what it
 // gates.
-func newChatModel(cfg config.Config, tr i18n.Translator, client *llm.Client, session *chatSession, colorEnabled bool) *chatModel {
+//
+// showUsage/sessionTally/turnTally are runChat's own usage-display
+// wiring (usage.go/chatdispatch.go's appendTurnUsage/appendSessionTotal):
+// client was already built with an observer feeding both tallies before
+// this call, so newChatModel only has to forward them into the
+// controller, never construct or attach anything usage-related itself.
+func newChatModel(cfg config.Config, tr i18n.Translator, client *llm.Client, session *chatSession, colorEnabled bool, showUsage bool, sessionTally, turnTally *usageTally) *chatModel {
 	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	vp.SetContent(tr.T(i18n.MsgChatWelcome))
 
@@ -98,10 +104,13 @@ func newChatModel(cfg config.Config, tr i18n.Translator, client *llm.Client, ses
 
 	m := &chatModel{session: session, viewport: vp, input: ti, spinner: sp, colorEnabled: colorEnabled}
 	m.controller = &chatController{
-		tr:        tr,
-		llm:       client,
-		save:      saveTranscript,
-		maxTokens: cfg.LLM.MaxTokens,
+		tr:           tr,
+		llm:          client,
+		save:         saveTranscript,
+		maxTokens:    cfg.LLM.MaxTokens,
+		showUsage:    showUsage,
+		sessionTally: sessionTally,
+		turnTally:    turnTally,
 	}
 	m.controller.doRun = m.newRealChatDoRunner(cfg, client)
 	return m

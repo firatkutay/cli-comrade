@@ -964,6 +964,46 @@ const (
 	// explain/chat's "/do" waits on a blocking LLM call) renders next to
 	// its animated frame. No args — this is the whole label, every time.
 	MsgSpinnerThinking MessageID = "spinner_thinking"
+
+	// --- token usage ---
+
+	// MsgFlagUsage is --usage's --help description (do/fix/chat's
+	// cobra-registered flag; `comrade explain --usage` handles the flag
+	// manually — DisableFlagParsing — so it never reaches cobra's own
+	// --help rendering at all, see explain.go).
+	MsgFlagUsage MessageID = "flag_usage"
+
+	// MsgUsageSummary is the base per-run/per-turn token-usage line
+	// internal/cli/usage.go's formatUsageLine renders (do/fix/explain
+	// after the run; chat per turn and at session-total time) — the cost
+	// segment (MsgUsageCostEstimate/MsgUsageCostLocal) is appended after
+	// it, never interpolated into it, so a translation can reorder/omit
+	// the cost segment independently of this line's own word order. Five
+	// args: formatted input-token count, formatted output-token count,
+	// request count, provider name, model name.
+	MsgUsageSummary MessageID = "usage_summary"
+
+	// MsgUsageCostEstimate is appended to MsgUsageSummary when
+	// llm.EstimateUSD found a priced table row for the run's most recent
+	// provider/model. One arg: the formatted dollar amount (e.g.
+	// "$0.0021").
+	MsgUsageCostEstimate MessageID = "usage_cost_estimate"
+
+	// MsgUsageCostLocal is appended to MsgUsageSummary instead of
+	// MsgUsageCostEstimate when the run's most recent provider is
+	// ollama — a local runtime has no real USD cost to estimate. No
+	// args.
+	MsgUsageCostLocal MessageID = "usage_cost_local"
+
+	// MsgChatUsageSessionTotal prefixes the cumulative session-total
+	// usage line `comrade chat` appends to its "/exit"/"/quit" reply
+	// (chatdispatch.go's appendSessionTotal) — as opposed to the
+	// unprefixed per-turn line appendTurnUsage appends after every
+	// ordinary turn. One arg: formatUsageLine's own rendered line (the
+	// same MsgUsageSummary + cost-segment shape used everywhere else),
+	// embedded here as an already-fully-translated fragment, not raw
+	// prose.
+	MsgChatUsageSessionTotal MessageID = "chat_usage_session_total"
 )
 
 // catalogEN is the English catalog — also the fallback catalog every
@@ -1187,6 +1227,13 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgConfirmLegend:     "[y]es [n]o [e]dit [x]plain [a]ll: ",
 	MsgConfirmEditHeader: "Edit command (enter to confirm, esc to cancel):\n",
 	MsgSpinnerThinking:   "thinking…",
+
+	// --- token usage ---
+	MsgFlagUsage:             "show a per-request token usage and estimated cost summary",
+	MsgUsageSummary:          "tokens: %s in / %s out across %d requests (%s/%s)",
+	MsgUsageCostEstimate:     " · est. %s",
+	MsgUsageCostLocal:        " · local",
+	MsgChatUsageSessionTotal: "session total — %s",
 }
 
 // catalogTR is the Turkish catalog. Every message here is a natural,
@@ -1410,4 +1457,11 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgConfirmLegend:     "[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: ",
 	MsgConfirmEditHeader: "Komutu düzenle (onaylamak için enter, iptal için esc):\n",
 	MsgSpinnerThinking:   "düşünüyorum…",
+
+	// --- token usage ---
+	MsgFlagUsage:             "bu çalıştırma için token kullanımı ve tahmini maliyeti göster",
+	MsgUsageSummary:          "token: %s giriş / %s çıkış, %d istekte (%s/%s)",
+	MsgUsageCostEstimate:     " · tah. %s",
+	MsgUsageCostLocal:        " · yerel",
+	MsgChatUsageSessionTotal: "oturum toplamı — %s",
 }

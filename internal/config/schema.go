@@ -20,6 +20,7 @@ mode = "ask"              # auto | ask | info
 language = "auto"         # auto | tr | en
 color = true
 update_check = true       # check GitHub Releases for a newer version at most once/week
+show_usage = false        # print a per-run token/cost summary line (also: --usage)
 
 [llm]
 provider = "anthropic"    # anthropic | openai_compat | google | ollama
@@ -65,6 +66,11 @@ type GeneralConfig struct {
 	Language    string `mapstructure:"language"`
 	Color       bool   `mapstructure:"color"`
 	UpdateCheck bool   `mapstructure:"update_check"`
+	// ShowUsage is general.show_usage: prints a per-run token/cost
+	// summary line (do/fix/explain: after the run; chat: per turn plus a
+	// session total on exit) even without the per-invocation --usage
+	// flag. See internal/cli/usage.go.
+	ShowUsage bool `mapstructure:"show_usage"`
 }
 
 // OpenAICompatConfig holds the [llm.openai_compat] section.

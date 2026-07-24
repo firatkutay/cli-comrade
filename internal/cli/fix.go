@@ -69,11 +69,23 @@ func runFix(cmd *cobra.Command, newLoader loaderFactory, flags *executionFlags, 
 		return err
 	}
 
-	cfg, client, err := setupCLIRuntime(cmd, newLoader, flags)
+	tally := newUsageTally()
+	cfg, client, err := setupCLIRuntime(cmd, newLoader, flags, tally.record)
 	if err != nil {
 		return fmt.Errorf("comrade fix: %w", err)
 	}
 	tr := newTranslator(cfg)
+
+	// See runDo's identical defer for why this is deferred rather than
+	// printed once before a single final return: it must still fire on
+	// every other return path below that reached the LLM at least once.
+	if cfg.General.ShowUsage || flags.usage {
+		defer func() {
+			// Best-effort: a stderr write failure here must never mask
+			// runFix's own real result.
+			_ = printUsageSummary(cmd.ErrOrStderr(), tr, tally, resolveColorEnabled(cfg, os.Environ(), cmd.ErrOrStderr()))
+		}()
+	}
 
 	collector := contextpkg.NewCollector()
 	sysCtx := collector.Collect(cmd.Context(), contextpkg.Options{

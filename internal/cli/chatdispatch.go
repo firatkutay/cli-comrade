@@ -39,6 +39,29 @@ type chatController struct {
 	// engine.Planner/Explainer/Diagnoser already use for every other
 	// Complete call in this codebase.
 	maxTokens int
+
+	// showUsage is runChat's cfg.General.ShowUsage||--usage resolution
+	// (usage.go) — gates both appendTurnUsage and appendSessionTotal
+	// below; when false neither ever appends anything, regardless of
+	// what sessionTally/turnTally recorded.
+	showUsage bool
+
+	// sessionTally accumulates every Complete call for the whole chat
+	// session; appendSessionTotal reads it on "/exit"/"/quit".
+	// turnTally is reset by dispatchChatLine immediately before every
+	// dispatch and read by appendTurnUsage immediately after — a second,
+	// independently-resettable tally (rather than diffing two
+	// sessionTally snapshots) is what makes an exact per-turn figure
+	// possible: llm.Client only accepts ONE usageObserver, so both
+	// tallies are fed by the same callback (see runChat's own wiring),
+	// and turnTally's reset/read window is scoped to exactly one
+	// dispatchChatLine call — safe because chatModel.Update only ever
+	// has one dispatch in flight at a time (see its own "waiting" gate).
+	// Both are nil in any chatController a test builds without opting
+	// into usage tracking; every method below treats a nil tally exactly
+	// like showUsage == false.
+	sessionTally *usageTally
+	turnTally    *usageTally
 }
 
 // dispatchChatLine parses one line of chat input (parseChatInput) and
@@ -56,7 +79,32 @@ type chatController struct {
 // makes it unit-testable end to end (chat_test.go) without a TTY, per
 // docs/history/UYGULAMA_PLANI.md FAZ 9's own "pure functions, bubbletea is the shell"
 // requirement.
+//
+// Usage-display wiring wraps the switch below rather than touching each
+// branch individually: dc.turnTally is reset up front (a no-op for any
+// branch that never reaches the LLM — mode/clear/save/help/unknown —
+// since it simply stays at zero), and the switch's own result is run
+// through appendSessionTotal (for "/exit"/"/quit") or appendTurnUsage
+// (every other branch) before returning — both are no-ops when
+// dc.showUsage is false or the relevant tally recorded zero requests, so
+// this is safe to apply unconditionally.
 func (dc *chatController) dispatchChatLine(ctx context.Context, session *chatSession, line string) (output string, exit bool) {
+	if dc.turnTally != nil {
+		dc.turnTally.reset()
+	}
+
+	output, exit = dc.dispatch(ctx, session, line)
+	if exit {
+		return dc.appendSessionTotal(output), true
+	}
+	return dc.appendTurnUsage(output), false
+}
+
+// dispatch is dispatchChatLine's actual slash-command/chat-turn routing,
+// factored out so dispatchChatLine itself can wrap it uniformly with the
+// turnTally reset/usage-append bookkeeping above without duplicating it
+// into every case below.
+func (dc *chatController) dispatch(ctx context.Context, session *chatSession, line string) (output string, exit bool) {
 	cmd := parseChatInput(line)
 
 	switch cmd.kind {
@@ -101,6 +149,38 @@ func (dc *chatController) dispatchChatLine(ctx context.Context, session *chatSes
 	default: // chatCmdUnknown
 		return dc.tr.T(i18n.MsgChatUnknownCommand, cmd.arg), false
 	}
+}
+
+// appendTurnUsage appends a blank line plus dc.turnTally's own
+// formatUsageLine to output, when dc.showUsage is set and this turn's
+// dispatch recorded at least one request — a no-op (returns output
+// unchanged) otherwise, which covers both usage display being off and
+// every slash command that never reaches the LLM at all.
+func (dc *chatController) appendTurnUsage(output string) string {
+	if !dc.showUsage || dc.turnTally == nil {
+		return output
+	}
+	snap := dc.turnTally.snapshot()
+	if snap.requests == 0 {
+		return output
+	}
+	return output + "\n" + formatUsageLine(dc.tr, snap)
+}
+
+// appendSessionTotal appends dc.sessionTally's cumulative
+// MsgChatUsageSessionTotal line to output — dispatchChatLine's own
+// "/exit"/"/quit" branch, called once the session's about to end. A
+// no-op under the same conditions as appendTurnUsage (usage display off,
+// or zero requests recorded across the whole session).
+func (dc *chatController) appendSessionTotal(output string) string {
+	if !dc.showUsage || dc.sessionTally == nil {
+		return output
+	}
+	snap := dc.sessionTally.snapshot()
+	if snap.requests == 0 {
+		return output
+	}
+	return output + "\n" + dc.tr.T(i18n.MsgChatUsageSessionTotal, formatUsageLine(dc.tr, snap))
 }
 
 // renderChatLLMError renders err (a failed chat-turn or "/do" pipeline

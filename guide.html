@@ -450,14 +450,14 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-en=" writes the file-level value, NOT the active profile — to change a key INSIDE a profile use "> dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil İÇİNDEKİ bir anahtarı değiştirmek için </span><code class="inline-code">comrade config profile set work llm.provider openai_compat</code><span
                data-tr=" kullanın. "
                data-en=". "> kullanın. </span><code class="inline-code nowrap">--profile</code><span
-               data-tr=" bayrağı, ham argüman alan alt komutlarda etkili olmaz: "
-               data-en=" has no effect on the subcommands that take raw arguments: "> bayrağı, ham argüman alan alt komutlarda etkili olmaz: </span><code class="inline-code">config set</code><span
+               data-tr=" bayrağı, ham argüman alan alt komutlarda çalışmaz: "
+               data-en=" does not work on the subcommands that take raw arguments: "> bayrağı, ham argüman alan alt komutlarda çalışmaz: </span><code class="inline-code">config set</code><span
                data-tr=" ve "
                data-en=" and "> ve </span><code class="inline-code">config profile set</code><span
                data-tr=" kullanım hatası verir, "
                data-en=" give a usage error, and "> kullanım hatası verir, </span><code class="inline-code">explain</code><span
-               data-tr=" ise sessizce yok sayar; bu üçünde onun yerine "
-               data-en=" silently ignores it; for those three use "> ise sessizce yok sayar; bu üçünde onun yerine </span><code class="inline-code">COMRADE_PROFILE=work</code><span
+               data-tr=" ise onu açıklanan komut metnine karıştırır ve isteği yine varsayılan profille çalıştırır; bu üçünde onun yerine "
+               data-en=" folds it into the command text being explained and still runs under the default profile; for those three use "> ise onu açıklanan komut metnine karıştırır ve isteği yine varsayılan profille çalıştırır; bu üçünde onun yerine </span><code class="inline-code">COMRADE_PROFILE=work</code><span
                data-tr=" kullanın ("
                data-en=" instead ("> kullanın (</span><a href="https://github.com/firatkutay/cli-comrade/issues/27" target="_blank" rel="noopener noreferrer">issue #27</a><span
                data-tr=")."

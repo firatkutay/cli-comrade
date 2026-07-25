@@ -85,16 +85,22 @@ func buildFakeArchive(t *testing.T) (archive, checksums []byte) {
 
 // testUpgradeDeps builds upgradeDeps wired entirely to fakes — no test
 // in this file ever reaches the real network or replaces a real running
-// executable.
+// executable. getenv/evalSymlinks default to "no env signal, no path
+// signal" (an empty env lookup and an identity path resolver) — i.e.
+// "not npm-managed" — matching every existing test's expectation;
+// npm-managed-detection tests override one or both fields directly
+// (LOW-8, PR #37 review) instead of reaching for t.Setenv.
 func testUpgradeDeps(version string, fetcher update.ReleaseFetcher, downloader update.AssetDownloader, replace func(string, []byte, string) error) upgradeDeps {
 	return upgradeDeps{
-		version:    version,
-		goos:       "linux",
-		goarch:     "amd64",
-		fetcher:    fetcher,
-		downloader: downloader,
-		executable: func() (string, error) { return "/fake/path/comrade", nil },
-		replace:    replace,
+		version:      version,
+		goos:         "linux",
+		goarch:       "amd64",
+		fetcher:      fetcher,
+		downloader:   downloader,
+		executable:   func() (string, error) { return "/fake/path/comrade", nil },
+		replace:      replace,
+		getenv:       func(string) string { return "" },
+		evalSymlinks: func(p string) (string, error) { return p, nil },
 	}
 }
 
@@ -355,14 +361,16 @@ func TestUpgradeApplyResolvesSymlinkedExecutableBeforeReplace(t *testing.T) {
 	}
 
 	deps := upgradeDeps{
-		version:    "v0.1.0",
-		goos:       "linux",
-		goarch:     "amd64",
-		fetcher:    fetcher,
-		downloader: downloader,
-		executable: func() (string, error) { return symlinkPath, nil },
-		replace:    replace,
-		cosignPub:  fakePlaceholderCosignPub,
+		version:      "v0.1.0",
+		goos:         "linux",
+		goarch:       "amd64",
+		fetcher:      fetcher,
+		downloader:   downloader,
+		executable:   func() (string, error) { return symlinkPath, nil },
+		replace:      replace,
+		cosignPub:    fakePlaceholderCosignPub,
+		getenv:       func(string) string { return "" },
+		evalSymlinks: func(p string) (string, error) { return p, nil },
 	}
 
 	_, err := execUpgradeCmd(t, deps)
@@ -463,69 +471,124 @@ func TestUpgradeApplyRealEmbeddedKeyRequiresSignatureAsset(t *testing.T) {
 	assert.Equal(t, "this release does not include a signature file; refusing to install it", err.Error())
 }
 
+// npmManagedGetenv is a GetenvFunc-shaped fake reporting
+// COMRADE_MANAGED_BY=npm and every other variable unset — injected via
+// upgradeDeps.getenv directly (LOW-8, PR #37 review) rather than
+// t.Setenv, so these tests don't block a future t.Parallel() and
+// exercise upgradeDeps' own DI seam instead of the real process
+// environment.
+func npmManagedGetenv(key string) string {
+	if key == "COMRADE_MANAGED_BY" {
+		return "npm"
+	}
+	return ""
+}
+
 // TestUpgradeRefusesWhenNPMManagedViaEnv proves the env-signal path
 // (COMRADE_MANAGED_BY=npm, exactly what npm/main/bin/comrade.js's
-// dispatcher sets in the child env) makes `comrade upgrade` refuse to
-// self-update, exit non-zero, and point at `npm update -g cli-comrade`
-// instead of downloading/replacing anything.
+// dispatcher sets in the child env) makes a real `comrade upgrade`
+// (not --check) refuse to self-update, exit non-zero, and point at
+// updating via a Node package manager instead of downloading/replacing
+// anything.
 func TestUpgradeRefusesWhenNPMManagedViaEnv(t *testing.T) {
-	t.Setenv("COMRADE_MANAGED_BY", "npm")
-
 	replaceCalled := false
 	replace := func(string, []byte, string) error { replaceCalled = true; return nil }
 	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.2.0"}}, fakeDownloader{}, replace)
+	deps.getenv = npmManagedGetenv
 
 	_, err := execUpgradeCmd(t, deps)
 	require.Error(t, err)
-	assert.Equal(t, "comrade was installed via npm; self-update is disabled to keep npm's installed version in sync — run `npm update -g cli-comrade` instead", err.Error())
+	assert.Equal(t, "comrade was installed through a Node package manager (e.g. npm, pnpm, yarn, bun); self-update is disabled to keep its installed version in sync — update it with that package manager instead (e.g. `npm update -g cli-comrade` for npm)", err.Error())
 	assert.False(t, replaceCalled, "an npm-managed install must never reach ReplaceBinary")
 }
 
 // TestUpgradeRefusesWhenNPMManagedViaEnvInTurkish is the same case
 // under COMRADE_LANG=tr, proving the refusal is genuinely translated
-// (this project's established TR-smoke-test convention).
+// (this project's established TR-smoke-test convention). COMRADE_LANG
+// itself is read directly from the real process environment by
+// i18n.ResolveLanguage (unrelated to upgradeDeps), so it still needs
+// t.Setenv; only the managed-by signal is injected via deps.getenv.
 func TestUpgradeRefusesWhenNPMManagedViaEnvInTurkish(t *testing.T) {
 	t.Setenv("COMRADE_LANG", "tr")
-	t.Setenv("COMRADE_MANAGED_BY", "npm")
 
 	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.2.0"}}, fakeDownloader{}, nil)
+	deps.getenv = npmManagedGetenv
 
 	_, err := execUpgradeCmd(t, deps)
 	require.Error(t, err)
-	assert.Equal(t, "comrade npm üzerinden kuruldu; npm'in kurulu sürümüyle tutarlılığı korumak için kendi kendini güncelleme devre dışı — bunun yerine `npm update -g cli-comrade` çalıştırın", err.Error())
+	assert.Equal(t, "comrade bir Node paket yöneticisiyle (ör. npm, pnpm, yarn, bun) kuruldu; kurulu sürümle tutarlılığı korumak için kendi kendini güncelleme devre dışı — bunun yerine o paket yöneticisiyle güncelleyin (ör. npm için `npm update -g cli-comrade`)", err.Error())
 }
 
-// TestUpgradeCheckRefusesWhenNPMManagedViaEnv proves the same refusal
-// applies to `--check` too (no check-only carve-out).
-func TestUpgradeCheckRefusesWhenNPMManagedViaEnv(t *testing.T) {
-	t.Setenv("COMRADE_MANAGED_BY", "npm")
+// TestUpgradeCheckProceedsAndAppendsNodePackageManagerNoticeWhenNPMManaged
+// is MEDIUM-5's regression guard (PR #37 review): --check must NOT be
+// refused under an npm-managed install — it downloads and mutates
+// nothing, so the desync rationale doesn't apply, and it's documented
+// as always safe to poll. It must exit 0, report the newer-version
+// result exactly as it would for any other install, and additionally
+// append the package-manager remediation note.
+func TestUpgradeCheckProceedsAndAppendsNodePackageManagerNoticeWhenNPMManaged(t *testing.T) {
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{
+		TagName: "v0.2.0",
+		HTMLURL: "https://github.com/firatkutay/cli-comrade/releases/tag/v0.2.0",
+	}}, fakeDownloader{}, nil)
+	deps.getenv = npmManagedGetenv
 
-	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.2.0"}}, fakeDownloader{}, nil)
+	out, err := execUpgradeCmd(t, deps, "--check")
+	require.NoError(t, err, "--check must never refuse under an npm-managed install")
+	assert.Contains(t, out, "v0.2.0")
+	assert.Contains(t, out, "a newer version is available")
+	assert.Contains(t, out, "Node package manager")
+	assert.Contains(t, out, "npm update -g cli-comrade")
+}
 
-	_, err := execUpgradeCmd(t, deps, "--check")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "npm update -g cli-comrade")
+// TestUpgradeCheckUpToDateOmitsNodePackageManagerNoticeWhenNPMManaged
+// proves the appended notice is conditioned on an update actually being
+// available — an npm-managed install that's already current sees the
+// plain up-to-date message, with no unnecessary remediation text.
+func TestUpgradeCheckUpToDateOmitsNodePackageManagerNoticeWhenNPMManaged(t *testing.T) {
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.1.0"}}, fakeDownloader{}, nil)
+	deps.getenv = npmManagedGetenv
+
+	out, err := execUpgradeCmd(t, deps, "--check")
+	require.NoError(t, err)
+	assert.Contains(t, out, "already on the latest version")
+	assert.NotContains(t, out, "Node package manager")
 }
 
 // TestUpgradeRefusesWhenNPMManagedViaPathFallback proves the fallback
 // path-signal detection (no COMRADE_MANAGED_BY set at all) also refuses
-// self-update, for a direct invocation of the resolved platform binary
-// that bypasses npm/main/bin/comrade.js's dispatcher entirely.
+// a real upgrade, for a direct invocation of the resolved platform
+// binary that bypasses npm/main/bin/comrade.js's dispatcher entirely —
+// and specifically through a SYMLINK to that binary (rather than the
+// real path directly), with the REAL filepath.EvalSymlinks wired in
+// (not a fake), proving the path signal survives exactly the
+// symlink-indirection case resolveRealExecutablePath's own doc comment
+// describes for a Homebrew-style install. Before LOW-8 (PR #37 review)
+// this branch was unreachable from a command-level test at all, since
+// upgrade.go called filepath.EvalSymlinks directly instead of through
+// an injectable seam.
 func TestUpgradeRefusesWhenNPMManagedViaPathFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require elevated privileges on Windows CI runners")
+	}
+
 	dir := t.TempDir()
 	nodeModulesBin := filepath.Join(dir, "node_modules", "@firatkutay", "comrade-linux-x64", "bin")
 	require.NoError(t, os.MkdirAll(nodeModulesBin, 0o755))
-	fakeExePath := filepath.Join(nodeModulesBin, "comrade")
-	require.NoError(t, os.WriteFile(fakeExePath, []byte("fake-binary"), 0o755))
+	realExePath := filepath.Join(nodeModulesBin, "comrade")
+	require.NoError(t, os.WriteFile(realExePath, []byte("fake-binary"), 0o755))
+	symlinkPath := filepath.Join(dir, "comrade-symlink")
+	require.NoError(t, os.Symlink(realExePath, symlinkPath))
 
 	replaceCalled := false
 	replace := func(string, []byte, string) error { replaceCalled = true; return nil }
 	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.2.0"}}, fakeDownloader{}, replace)
-	deps.executable = func() (string, error) { return fakeExePath, nil }
+	deps.executable = func() (string, error) { return symlinkPath, nil }
+	deps.evalSymlinks = filepath.EvalSymlinks
 
 	_, err := execUpgradeCmd(t, deps)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "npm update -g cli-comrade")
+	assert.Contains(t, err.Error(), "Node package manager")
 	assert.False(t, replaceCalled)
 }
 

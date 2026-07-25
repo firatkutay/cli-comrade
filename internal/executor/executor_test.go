@@ -103,6 +103,43 @@ func TestRunCapturesStderr(t *testing.T) {
 	assert.Contains(t, res.Stderr, "boom")
 }
 
+// TestRunStripsManagedByEnvVarFromChildEnv is MEDIUM-2's regression
+// guard (PR #37 review): update.ManagedByEnvVar (COMRADE_MANAGED_BY)
+// must never leak into a spawned command's own environment, even
+// though this test process's own environment has it set — otherwise a
+// plan step that itself invokes another comrade binary would wrongly
+// inherit "npm-managed" from an unrelated parent process, and the
+// variable being user-settable would make it a denial-of-patch
+// primitive against `comrade upgrade` (see childEnv's own doc comment).
+func TestRunStripsManagedByEnvVarFromChildEnv(t *testing.T) {
+	t.Setenv("COMRADE_MANAGED_BY", "npm")
+
+	var stdout, stderr bytes.Buffer
+	e := newUnixExecutor(&stdout, &stderr)
+
+	res, err := e.Run(context.Background(), `echo "value=[$COMRADE_MANAGED_BY]"`, Options{})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, res.ExitCode)
+	assert.Contains(t, res.Stdout, "value=[]", "COMRADE_MANAGED_BY must never reach the spawned command's own environment")
+}
+
+// TestRunPreservesOtherEnvVarsForChild proves the strip in childEnv is
+// scoped to exactly COMRADE_MANAGED_BY — every other environment
+// variable must still reach the child unchanged.
+func TestRunPreservesOtherEnvVarsForChild(t *testing.T) {
+	t.Setenv("COMRADE_MANAGED_BY", "npm")
+	t.Setenv("COMRADE_EXECUTOR_TEST_CUSTOM_VAR", "still-here")
+
+	var stdout, stderr bytes.Buffer
+	e := newUnixExecutor(&stdout, &stderr)
+
+	res, err := e.Run(context.Background(), `echo "custom=[$COMRADE_EXECUTOR_TEST_CUSTOM_VAR]"`, Options{})
+
+	require.NoError(t, err)
+	assert.Contains(t, res.Stdout, "custom=[still-here]", "stripping COMRADE_MANAGED_BY must not affect any other environment variable")
+}
+
 func TestRunCapCapturesOnlyTailOfLongOutput(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	e := newUnixExecutor(&stdout, &stderr)

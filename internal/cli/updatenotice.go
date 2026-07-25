@@ -103,11 +103,13 @@ func maybeNotifyUpdate(cmd *cobra.Command, newLoader loaderFactory, version stri
 
 	tr := newTranslator(*cfg)
 
-	// An npm-managed install can't act on "run `comrade upgrade`" (see
-	// upgrade.go's own refusal for that case) — the notice itself is
-	// still shown (a newer version genuinely is available), but it
-	// points at the one command that actually works for this install:
-	// `npm update -g cli-comrade`.
+	// A Node package manager-managed install can't act on "run `comrade
+	// upgrade`" (see upgrade.go's own refusal for that case) — the
+	// notice itself is still shown (a newer version genuinely is
+	// available), but it points at using that package manager instead,
+	// npm given as the worked example (deliberately generic, not
+	// npm-specific — see MsgUpgradeNPMManagedError's own doc comment for
+	// why: pnpm/yarn/bun-managed installs are detected identically).
 	if update.IsNPMManaged(os.Getenv, executableForCleanup, filepath.EvalSymlinks) {
 		_, _ = fmt.Fprint(cmd.ErrOrStderr(), tr.T(i18n.MsgUpdateAvailableNoticeNPM, rel.TagName, version))
 		return

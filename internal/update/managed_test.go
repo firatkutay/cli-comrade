@@ -141,7 +141,7 @@ func TestIsNPMManagedEnvSignal(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			getenv := func(key string) string {
-				if key == managedByEnvVar && tt.isSet {
+				if key == ManagedByEnvVar && tt.isSet {
 					return tt.envValue
 				}
 				return ""

@@ -2,13 +2,18 @@ package update
 
 import "strings"
 
-// managedByEnvVar is the environment variable npm/main/bin/comrade.js
+// ManagedByEnvVar is the environment variable npm/main/bin/comrade.js
 // sets (in a copy of its own process env, before spawning the real Go
 // binary) so a self-update check downstream can tell it is running
 // under npm's dispatcher without having to inspect its own path at all.
-const managedByEnvVar = "COMRADE_MANAGED_BY"
+// Exported so internal/executor can strip it from every spawned
+// command's own environment (PR #37 review, MEDIUM-2) without a THIRD
+// hardcoded copy of this literal — see managed_mirror_test.go for the
+// guard against the one cross-language copy that can't be derived
+// (npm/main/bin/comrade.js, a different language entirely).
+const ManagedByEnvVar = "COMRADE_MANAGED_BY"
 
-// managedByEnvValue is managedByEnvVar's expected value for an
+// managedByEnvValue is ManagedByEnvVar's expected value for an
 // npm-managed install. Any other value (or the variable being unset) is
 // treated as "not npm-managed" by the env signal — see IsNPMManaged.
 const managedByEnvValue = "npm"
@@ -64,7 +69,7 @@ type EvalSymlinksFunc func(string) (string, error)
 // negative (a rare direct-invocation edge case silently allowed to
 // self-update).
 func IsNPMManaged(getenv GetenvFunc, executable ExecutableFunc, evalSymlinks EvalSymlinksFunc) bool {
-	if getenv(managedByEnvVar) == managedByEnvValue {
+	if getenv(ManagedByEnvVar) == managedByEnvValue {
 		return true
 	}
 

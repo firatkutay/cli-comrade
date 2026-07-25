@@ -180,9 +180,13 @@ func TestUpdateNoticeSkipsWhenRecentlyChecked(t *testing.T) {
 
 // TestUpdateNoticeSuggestsNpmUpdateWhenNpmManaged proves the passive
 // notice is NOT suppressed for an npm-managed install (a newer version
-// genuinely is available, so it still says so) but points at `npm
-// update -g cli-comrade` instead of `comrade upgrade`, since the latter
-// is refused for an npm-managed install (see upgrade_test.go).
+// genuinely is available, so it still says so) but points at using a
+// Node package manager (npm given as the worked example) instead of
+// `comrade upgrade`, since the latter is refused for an npm-managed
+// install (see upgrade_test.go). The wording is deliberately generic —
+// see MsgUpgradeNPMManagedError's own doc comment (PR #37 review,
+// MEDIUM-4) — since pnpm/yarn/bun-managed installs are detected
+// identically.
 func TestUpdateNoticeSuggestsNpmUpdateWhenNpmManaged(t *testing.T) {
 	dir := withIsolatedConfigDir(t)
 	t.Setenv("COMRADE_MANAGED_BY", "npm")
@@ -193,6 +197,7 @@ func TestUpdateNoticeSuggestsNpmUpdateWhenNpmManaged(t *testing.T) {
 	assert.NotEmpty(t, out)
 	assert.Contains(t, errOut, "v2.0.0")
 	assert.Contains(t, errOut, "v1.0.0")
+	assert.Contains(t, errOut, "Node package manager")
 	assert.Contains(t, errOut, "npm update -g cli-comrade")
 	assert.NotContains(t, errOut, "comrade upgrade")
 

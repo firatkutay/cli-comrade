@@ -959,18 +959,39 @@ const (
 	// args.
 	MsgUpgradeSignatureInvalid MessageID = "upgrade_signature_invalid"
 
-	// MsgUpgradeNPMManagedError refuses `comrade upgrade` (--check or
-	// not) when update.IsNPMManaged detects this binary is running out
-	// of an npm install (either the npm/main/bin/comrade.js dispatcher's
+	// MsgUpgradeNPMManagedError refuses a real `comrade upgrade` (the
+	// APPLY path only — never --check, see MsgUpgradeCheckNPMManagedNotice
+	// below; PR #37 review, MEDIUM-5) when update.IsNPMManaged detects
+	// this binary is running out of a Node package manager's install
+	// (either the npm/main/bin/comrade.js dispatcher's
 	// COMRADE_MANAGED_BY=npm env signal, or a node_modules path segment
 	// in the resolved running executable, as a fallback for a direct
 	// invocation that bypasses the dispatcher). A Go-side self-update in
-	// that case would overwrite the platform binary npm itself installed
-	// under node_modules without updating npm's own package-lock/manifest
-	// bookkeeping, so the two would desync — the next `npm update` would
-	// silently revert it. No args: the fix is always the same one
-	// command, `npm update -g cli-comrade`.
+	// that case would overwrite the platform binary the package manager
+	// itself installed under node_modules without updating ITS OWN
+	// lockfile/manifest bookkeeping, so the two would desync — the next
+	// package-manager update would silently revert it.
+	//
+	// Deliberately generic ("your Node package manager") rather than
+	// npm-specific (PR #37 review, MEDIUM-4): pnpm/yarn/bun-managed
+	// installs run the exact same dispatcher and resolve under the exact
+	// same node_modules tree, so they are ALL detected here too — but
+	// `npm update -g cli-comrade` on a pnpm-managed install either fails
+	// outright or installs a second, npm-managed copy shadowing the
+	// first, which is the same desync class this message exists to
+	// prevent. No args: the fix is always "use whichever package manager
+	// installed it", with npm given as the one worked example.
 	MsgUpgradeNPMManagedError MessageID = "upgrade_npm_managed_error"
+
+	// MsgUpgradeCheckNPMManagedNotice is appended to `comrade upgrade
+	// --check`'s normal output (after MsgUpgradeNewerAvailable) when
+	// update.IsNPMManaged is true and a newer version exists (PR #37
+	// review, MEDIUM-5): --check itself downloads and mutates nothing,
+	// so unlike a real upgrade it is never refused — it still reports
+	// the newer-version-available result, with this note appended
+	// pointing at the package manager instead of `comrade upgrade`. No
+	// args.
+	MsgUpgradeCheckNPMManagedNotice MessageID = "upgrade_check_npm_managed_notice"
 
 	// -- per-flag --help descriptions (comrade upgrade) -------------------
 
@@ -986,12 +1007,12 @@ const (
 	MsgUpdateAvailableNotice MessageID = "update_available_notice"
 
 	// MsgUpdateAvailableNoticeNPM is MsgUpdateAvailableNotice's variant
-	// for an npm-managed install (update.IsNPMManaged): it still reports
-	// the newer version (the notice itself is never suppressed for an
-	// npm install), but points at `npm update -g cli-comrade` instead of
+	// for a Node package manager-managed install (update.IsNPMManaged):
+	// it still reports the newer version (the notice itself is never
+	// suppressed), but points at using that package manager instead of
 	// `comrade upgrade`, since the latter is refused in that case (see
-	// MsgUpgradeNPMManagedError). Two args: the latest version, the
-	// current version.
+	// MsgUpgradeNPMManagedError, including its "generic, not npm-specific"
+	// rationale). Two args: the latest version, the current version.
 	MsgUpdateAvailableNoticeNPM MessageID = "update_available_notice_npm"
 
 	// -- internal/tui ask-mode confirm prompt ----------------------------
@@ -1624,7 +1645,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUpgradeSignatureNotConfigured: "cli-comrade: release signature verification is not configured; proceeding with checksum-only verification\n",
 	MsgUpgradeSignatureMissing:       "this release does not include a signature file; refusing to install it",
 	MsgUpgradeSignatureInvalid:       "this release's signature could not be verified; refusing to install it",
-	MsgUpgradeNPMManagedError:        "comrade was installed via npm; self-update is disabled to keep npm's installed version in sync — run `npm update -g cli-comrade` instead",
+	MsgUpgradeNPMManagedError:        "comrade was installed through a Node package manager (e.g. npm, pnpm, yarn, bun); self-update is disabled to keep its installed version in sync — update it with that package manager instead (e.g. `npm update -g cli-comrade` for npm)",
+	MsgUpgradeCheckNPMManagedNotice:  "note: comrade was installed through a Node package manager; update it with that package manager instead (e.g. `npm update -g cli-comrade` for npm) rather than running `comrade upgrade`\n",
 
 	MsgHelpShortUpgrade: "Check for or install a newer released version of comrade",
 	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
@@ -1648,7 +1670,7 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpMoreInfo:                  `Use "{{.CommandPath}} [command] --help" for more information about a command.`,
 
 	MsgUpdateAvailableNotice:    "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
-	MsgUpdateAvailableNoticeNPM: "\ncomrade: a new version is available: %s (you have %s). Run `npm update -g cli-comrade` to update.\n",
+	MsgUpdateAvailableNoticeNPM: "\ncomrade: a new version is available: %s (you have %s). Update it with your Node package manager instead (e.g. `npm update -g cli-comrade` for npm).\n",
 
 	MsgConfirmLegend:     "[y]es [n]o [e]dit [x]plain [a]ll: ",
 	MsgConfirmEditHeader: "Edit command (enter to confirm, esc to cancel):\n",
@@ -1958,7 +1980,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUpgradeSignatureNotConfigured: "cli-comrade: sürüm imza doğrulaması yapılandırılmamış; yalnızca sağlama toplamı (checksum) ile doğrulamaya devam ediliyor\n",
 	MsgUpgradeSignatureMissing:       "bu sürüm bir imza dosyası içermiyor; kurulum reddediliyor",
 	MsgUpgradeSignatureInvalid:       "bu sürümün imzası doğrulanamadı; kurulum reddediliyor",
-	MsgUpgradeNPMManagedError:        "comrade npm üzerinden kuruldu; npm'in kurulu sürümüyle tutarlılığı korumak için kendi kendini güncelleme devre dışı — bunun yerine `npm update -g cli-comrade` çalıştırın",
+	MsgUpgradeNPMManagedError:        "comrade bir Node paket yöneticisiyle (ör. npm, pnpm, yarn, bun) kuruldu; kurulu sürümle tutarlılığı korumak için kendi kendini güncelleme devre dışı — bunun yerine o paket yöneticisiyle güncelleyin (ör. npm için `npm update -g cli-comrade`)",
+	MsgUpgradeCheckNPMManagedNotice:  "not: comrade bir Node paket yöneticisiyle kuruldu; `comrade upgrade` çalıştırmak yerine o paket yöneticisiyle güncelleyin (ör. npm için `npm update -g cli-comrade`)\n",
 
 	MsgHelpShortUpgrade: "comrade'in daha yeni bir yayımlanmış sürümünü denetler veya kurar",
 	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",
@@ -1982,7 +2005,7 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpMoreInfo:                  `Bir komut hakkında daha fazla bilgi için "{{.CommandPath}} [command] --help" kullanın.`,
 
 	MsgUpdateAvailableNotice:    "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
-	MsgUpdateAvailableNoticeNPM: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `npm update -g cli-comrade` çalıştırın.\n",
+	MsgUpdateAvailableNoticeNPM: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Node paket yöneticinizle güncelleyin (ör. npm için `npm update -g cli-comrade`).\n",
 
 	MsgConfirmLegend:     "[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: ",
 	MsgConfirmEditHeader: "Komutu düzenle (onaylamak için enter, iptal için esc):\n",

@@ -51,6 +51,37 @@ func TestVersionCheckBehindWarnsWithUpgradeFix(t *testing.T) {
 	assert.Equal(t, "comrade upgrade", result.Fix)
 }
 
+// TestVersionCheckAgreesWithUpgradeRefusalUnderNPMManagedEnv is HIGH-1's
+// regression guard (PR #37 review): `comrade doctor` must never advise
+// `comrade upgrade` as the Fix when `comrade upgrade` itself refuses to
+// run — both must call the exact same update.IsNPMManaged detection, and
+// this pins that agreement directly under COMRADE_MANAGED_BY=npm rather
+// than trusting the two call sites to stay in sync by inspection alone.
+func TestVersionCheckAgreesWithUpgradeRefusalUnderNPMManagedEnv(t *testing.T) {
+	deps := baseDeps()
+	deps.Version = "v1.0.0"
+	deps.Fetcher = fakeFetcher{release: update.Release{TagName: "v1.2.0"}}
+	deps.Getenv = func(name string) string {
+		if name == "COMRADE_MANAGED_BY" {
+			return "npm"
+		}
+		return ""
+	}
+
+	// Sanity-check the premise: the env var this test sets is genuinely
+	// what update.IsNPMManaged (the SAME function comrade upgrade calls)
+	// detects, using the exact seams VersionCheck itself reads from deps.
+	require.True(t, update.IsNPMManaged(deps.Getenv, deps.Executable, filepath.EvalSymlinks),
+		"test setup: COMRADE_MANAGED_BY=npm must be what IsNPMManaged detects")
+
+	result := VersionCheck(context.Background(), deps)
+
+	assert.Equal(t, SeverityWarn, result.Severity)
+	assert.NotEqual(t, "comrade upgrade", result.Fix,
+		"doctor must never recommend a command comrade upgrade itself refuses under a Node-managed install")
+	assert.Contains(t, result.Fix, "Node package manager")
+}
+
 func TestVersionCheckFetchErrorIsWarnNotFail(t *testing.T) {
 	deps := baseDeps()
 	deps.Fetcher = fakeFetcher{err: errors.New("network unreachable")}

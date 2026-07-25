@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/update"
@@ -32,11 +33,15 @@ func VersionCheck(ctx context.Context, deps Deps) Result {
 	writeVersionCheckState(deps, result.LatestVersion)
 
 	if result.UpdateAvailable {
+		fix := "comrade upgrade"
+		if npmManaged(deps) {
+			fix = npmManagedFixInstruction()
+		}
 		return Result{
 			Severity:    SeverityWarn,
 			Summary:     i18n.MsgDoctorVersionBehind,
 			SummaryArgs: []any{result.LatestVersion, result.CurrentVersion},
-			Fix:         "comrade upgrade",
+			Fix:         fix,
 		}
 	}
 	return Result{
@@ -44,6 +49,44 @@ func VersionCheck(ctx context.Context, deps Deps) Result {
 		Summary:     i18n.MsgDoctorVersionUpToDate,
 		SummaryArgs: []any{result.CurrentVersion},
 	}
+}
+
+// npmManaged reports whether this process is running under a Node
+// package manager-managed install (see update.IsNPMManaged) — VersionCheck
+// uses this so its Fix instruction agrees with what `comrade upgrade`
+// itself will actually do (internal/cli/upgrade.go's own refusal),
+// instead of the two mechanisms silently disagreeing (PR #37 review,
+// HIGH-1: doctor's own package doc comment already states this package
+// exists precisely so its checks and the commands they describe never
+// disagree).
+//
+// deps.Getenv or deps.Executable being nil (a hand-built Deps in a test
+// that doesn't wire them) is treated as "not npm-managed" — the same
+// fail-open default IsNPMManaged itself applies to a resolution error,
+// and consistent with PathCheck's own direct (uninjected)
+// filepath.EvalSymlinks call elsewhere in this package.
+func npmManaged(deps Deps) bool {
+	if deps.Getenv == nil || deps.Executable == nil {
+		return false
+	}
+	return update.IsNPMManaged(deps.Getenv, deps.Executable, filepath.EvalSymlinks)
+}
+
+// npmManagedFixInstruction is VersionCheck's Fix remediation when
+// npmManaged is true (PR #37 review, HIGH-1 + MEDIUM-4): deliberately
+// generic ("your Node package manager") rather than npm-specific, since
+// a pnpm/yarn/bun-managed install resolves under the exact same
+// node_modules tree and sees the exact same COMRADE_MANAGED_BY=npm
+// signal npm/main/bin/comrade.js's dispatcher sets today — there is no
+// reliable way, at a globally-installed binary's own runtime, to tell
+// WHICH Node package manager actually installed it (npm_config_user_agent
+// is only set for scripts a package manager itself runs, not for a bare
+// global-binary invocation). See doctor.Result.Fix's own doc comment for
+// why this is plain, untranslated text rather than a MessageID — a
+// contained i18n conversion of Fix as a whole is a bigger, separate
+// change (see this function's own PR discussion).
+func npmManagedFixInstruction() string {
+	return "update it with your Node package manager instead (e.g. `npm update -g cli-comrade` for npm) — comrade upgrade refuses to self-update under a Node-managed install"
 }
 
 // writeVersionCheckState persists a successful fetch's outcome to

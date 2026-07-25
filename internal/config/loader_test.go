@@ -397,6 +397,64 @@ func TestLoaderProfileEnvOverridesFileValue(t *testing.T) {
 	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "COMRADE_PROFILE must win over the file's own general.profile")
 }
 
+// TestLoaderGenericProfileEnvActivatesOverlay is the regression proof for
+// GitHub issue #19's real bug: COMRADE_GENERAL_PROFILE (the generic
+// COMRADE_<SECTION>_<KEY> form every other key already gets for free) used
+// to set general.profile's VALUE (via viper.AutomaticEnv, applied after
+// the overlay decision was made) without ever ACTIVATING the profile
+// overlay itself, since ResolveActiveProfile only ever consulted the
+// canonical COMRADE_PROFILE name. It must now activate the overlay exactly
+// like COMRADE_PROFILE does.
+func TestLoaderGenericProfileEnvActivatesOverlay(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[llm]\nprovider = \"anthropic\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_GENERAL_PROFILE", "work")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "work", cfg.General.Profile, "COMRADE_GENERAL_PROFILE must still set the value, as it always did")
+	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "COMRADE_GENERAL_PROFILE must ALSO activate the profile overlay, not just set the value")
+}
+
+// TestLoaderCanonicalProfileEnvOutranksGenericProfileEnv pins the
+// documented precedence with BOTH env forms set at once, to different
+// profiles: the explicit, canonical COMRADE_PROFILE must still win over
+// the generic COMRADE_GENERAL_PROFILE form.
+func TestLoaderCanonicalProfileEnvOutranksGenericProfileEnv(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[profiles.personal]\nllm.provider = \"google\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_PROFILE", "personal")
+	t.Setenv("COMRADE_GENERAL_PROFILE", "work")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "google", cfg.LLM.Provider, "COMRADE_PROFILE must win over COMRADE_GENERAL_PROFILE when both are set")
+}
+
+// TestLoaderProfileFlagOutranksBothProfileEnvForms is
+// TestLoaderProfileFlagOverridesEnvAndFile's counterpart with the generic
+// env form also in play: the --profile flag must win over COMRADE_PROFILE,
+// COMRADE_GENERAL_PROFILE, and the file's general.profile all at once.
+func TestLoaderProfileFlagOutranksBothProfileEnvForms(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"personal\"\n\n[profiles.personal]\nllm.provider = \"google\"\n\n[profiles.ambient]\nllm.provider = \"ollama\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_PROFILE", "personal")
+	t.Setenv("COMRADE_GENERAL_PROFILE", "ambient")
+
+	loader, err := NewLoaderWithProfile(path, "work")
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "--profile flag must win over COMRADE_PROFILE, COMRADE_GENERAL_PROFILE, and the file's general.profile")
+}
+
 // TestLoaderEnvStaysKingOverActiveProfile is the whole reason applyProfileOverlay
 // merges via MergeConfigMap instead of viper.Set: a COMRADE_ environment
 // variable for a key the active profile ALSO overrides must still win —
@@ -460,6 +518,24 @@ func TestLoaderSourceReportsProfileForKeyTheActiveProfileOverrides(t *testing.T)
 	src, err = loader.Source("llm.timeout_seconds")
 	require.NoError(t, err)
 	assert.Equal(t, SourceDefault, src)
+}
+
+// TestLoaderSourceReportsProfileForGenericEnvActivatedProfile is
+// TestLoaderSourceReportsProfileForKeyTheActiveProfileOverrides's
+// counterpart via COMRADE_GENERAL_PROFILE instead of general.profile in
+// the file — Source() must agree with Load() that the generic env form
+// activates the overlay too.
+func TestLoaderSourceReportsProfileForGenericEnvActivatedProfile(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[llm]\nprovider = \"anthropic\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_GENERAL_PROFILE", "work")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	src, err := loader.Source("llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, SourceProfile, src)
 }
 
 func TestLoaderSourceReportsEnvOverProfile(t *testing.T) {

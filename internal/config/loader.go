@@ -153,7 +153,7 @@ func (l *Loader) Source(key string) (Source, error) {
 	// itself, and ValidateProfileKey already forbids it from ever being
 	// set INSIDE a profile — so it can never legitimately be SourceProfile.
 	if key != "general.profile" {
-		active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), fv.GetString("general.profile"))
+		active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), os.Getenv("COMRADE_GENERAL_PROFILE"), fv.GetString("general.profile"))
 		if active != "" {
 			if raw, ok := fv.Get("profiles").(map[string]any); ok {
 				if profile, ok := raw[active].(map[string]any); ok && profileHasKey(profile, key) {
@@ -262,13 +262,18 @@ func (l *Loader) newEffectiveViper() (*viper.Viper, error) {
 	}
 
 	// Active-profile precedence mirrors ResolveMode's own shape:
-	// l.profileOverride (the --profile flag) > COMRADE_PROFILE > the
-	// file's own general.profile value, read here BEFORE env binding is
-	// set up below so this reflects defaults+file only, never an env
-	// override of general.profile itself (that's handled by the
-	// envAliases entry for general.profile, applied afterward, exactly
-	// like every other key).
-	active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), v.GetString("general.profile"))
+	// l.profileOverride (the --profile flag) > COMRADE_PROFILE >
+	// COMRADE_GENERAL_PROFILE (the generic COMRADE_<SECTION>_<KEY> form
+	// general.profile gets for free from viper.AutomaticEnv, same as any
+	// other key — see envAliases's own doc comment) > the file's own
+	// general.profile value, read here BEFORE env binding is set up below
+	// so this reflects defaults+file only, never an env override of
+	// general.profile itself (that's handled by the envAliases entry for
+	// general.profile, applied afterward, exactly like every other key).
+	// Both env forms are read directly via os.Getenv rather than through
+	// v itself, since v has no env binding wired up yet at this point in
+	// construction.
+	active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), os.Getenv("COMRADE_GENERAL_PROFILE"), v.GetString("general.profile"))
 	if active != "" {
 		applyProfileOverlay(v, active)
 	}

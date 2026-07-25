@@ -76,15 +76,25 @@ func ValidateProfileName(name string) error {
 // ResolveActiveProfile implements config profiles' active-profile
 // precedence, mirroring engine.ResolveMode's exact shape
 // (internal/engine/mode.go): an explicit --profile flag wins outright,
-// then COMRADE_PROFILE, then the file's general.profile value. An empty
-// string at any source is treated as "not set" and falls through to the
-// next; empty for all three means no profile is active. Unlike
-// ResolveMode, there is no fixed enum to validate against — any
-// non-empty string is a syntactically legal candidate; whether it names
-// an actually-DEFINED profile is a separate question applyProfileOverlay
-// (Load-time) or the CLI's own existence checks answer.
-func ResolveActiveProfile(flagValue, envValue, fileValue string) string {
-	for _, candidate := range []string{flagValue, envValue, fileValue} {
+// then the canonical COMRADE_PROFILE env var, then the generic
+// COMRADE_GENERAL_PROFILE form every other key already gets for free from
+// viper.AutomaticEnv (see envAliases's own doc comment in loader.go), then
+// the file's general.profile value. An empty string at any source is
+// treated as "not set" and falls through to the next; empty for all four
+// means no profile is active. Unlike ResolveMode, there is no fixed enum
+// to validate against — any non-empty string is a syntactically legal
+// candidate; whether it names an actually-DEFINED profile is a separate
+// question applyProfileOverlay (Load-time) or the CLI's own existence
+// checks answer.
+//
+// canonicalEnvValue outranking genericEnvValue (rather than the two being
+// merged into one "env" tier) matters only when a caller sets BOTH
+// COMRADE_PROFILE and COMRADE_GENERAL_PROFILE to different values at once
+// — an edge case, but one with a deterministic, tested answer: the
+// explicit, documented name wins over the generic, mechanically-derived
+// one.
+func ResolveActiveProfile(flagValue, canonicalEnvValue, genericEnvValue, fileValue string) string {
+	for _, candidate := range []string{flagValue, canonicalEnvValue, genericEnvValue, fileValue} {
 		if candidate != "" {
 			return candidate
 		}
@@ -219,5 +229,30 @@ func applyProfileOverlay(v *viper.Viper, name string) {
 		}
 	}
 
-	_ = v.MergeConfigMap(profile)
+	_ = v.MergeConfigMap(stripPlaceholder(profile))
+}
+
+// stripPlaceholder returns profile with the internal profilePlaceholderKey
+// bookkeeping entry removed (a shallow copy — profile itself is never
+// mutated in place, since it is the same map instance viper's own
+// "profiles" settings tree holds, and mutating it in place would corrupt
+// that tree for any other reader sharing v). Without this, an
+// otherwise-empty active profile (one CreateProfile seeded with only
+// profilePlaceholderKey — see its own doc comment) would merge that
+// internal marker into the effective TOP-level config layer via
+// MergeConfigMap below. Harmless in practice (Config has no matching
+// field, so Unmarshal simply drops it), but it has no business leaking
+// out of the profiles table it was invented to keep alive on disk.
+func stripPlaceholder(profile map[string]any) map[string]any {
+	if _, ok := profile[profilePlaceholderKey]; !ok {
+		return profile
+	}
+	out := make(map[string]any, len(profile)-1)
+	for k, v := range profile {
+		if k == profilePlaceholderKey {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }

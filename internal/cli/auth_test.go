@@ -531,6 +531,37 @@ func TestPromptOpenAICompatBaseURLEmitsNoWarningForHTTPSURL(t *testing.T) {
 	assert.Equal(t, "https://dashscope.aliyuncs.com/compatible-mode/v1", got)
 }
 
+// TestPromptOpenAICompatBaseURLIfDefaultFiresForTrailingSlashDefault is
+// this follow-up's regression test for promptOpenAICompatBaseURLIfDefault
+// itself (the "still the default?" gate, as opposed to
+// promptOpenAICompatBaseURL which this wraps): a base_url that is
+// OpenAI's own shipped default PLUS a trailing slash must still be
+// recognized as "still the default" via
+// config.IsDefaultOpenAICompatBaseURL, so the prompt DOES fire — before
+// the shared-predicate fix, the bare `!=` compare here treated this
+// spelling as "already customized" and silently skipped the prompt for a
+// genuine OpenAI user.
+func TestPromptOpenAICompatBaseURLIfDefaultFiresForTrailingSlashDefault(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("\n")) // bare Enter: keep the current value
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	cfg := config.Default()
+	cfg.LLM.OpenAICompat.BaseURL = config.Default().LLM.OpenAICompat.BaseURL + "/"
+
+	saved, promptErr := promptOpenAICompatBaseURLIfDefault(cmd, loader, cfg, i18n.NewTranslator(i18n.LangEN), bufio.NewReader(cmd.InOrStdin()))
+	require.NoError(t, promptErr)
+
+	assert.Contains(t, stdout.String(), "Provider address (base_url)", "the prompt must fire for a trailing-slash spelling of the OpenAI default")
+	assert.Empty(t, saved, "a bare Enter must not persist a new value")
+}
+
 // TestPromptOpenAICompatModelIfEmptyPromptsAndSavesWhenEligible is this
 // task's own core proof: a non-OpenAI base_url (Qwen, here) combined with
 // an empty llm.model must prompt for — and persist — a model name, so
@@ -584,6 +615,40 @@ func TestPromptOpenAICompatModelIfEmptySkipsWhenBaseURLIsDefault(t *testing.T) {
 	require.NoError(t, promptErr)
 
 	assert.Empty(t, stdout.String(), "no prompt must be emitted when base_url is still the OpenAI default")
+
+	got, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "", got, "the unread sentinel must never be persisted as a model name")
+}
+
+// TestPromptOpenAICompatModelIfEmptySkipsWhenBaseURLIsDefaultTrailingSlash
+// is this follow-up's regression test: a base_url that is OpenAI's own
+// shipped default PLUS a trailing slash (a legal, config.CheckBaseURL-
+// accepted spelling — exactly what promptOpenAICompatBaseURLIfDefault's
+// own prompt would persist verbatim on a bare Enter) must be recognized
+// as STILL the default via config.IsDefaultOpenAICompatBaseURL, so this
+// prompt must NOT fire — before the shared-predicate fix, the bare `==`
+// compare here treated this as a "different provider" and fired the
+// model prompt for a genuine OpenAI user.
+func TestPromptOpenAICompatModelIfEmptySkipsWhenBaseURLIsDefaultTrailingSlash(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+
+	cmd := &cobra.Command{}
+	cmd.SetIn(strings.NewReader("should-never-be-read\n"))
+	var stdout strings.Builder
+	cmd.SetOut(&stdout)
+
+	cfg := config.Default()
+	cfg.LLM.OpenAICompat.BaseURL = config.Default().LLM.OpenAICompat.BaseURL + "/"
+	cfg.LLM.Model = ""
+
+	promptErr := promptOpenAICompatModelIfEmpty(cmd, loader, cfg, i18n.NewTranslator(i18n.LangEN), bufio.NewReader(cmd.InOrStdin()))
+	require.NoError(t, promptErr)
+
+	assert.Empty(t, stdout.String(), "no prompt must be emitted for a trailing-slash spelling of the OpenAI default")
 
 	got, err := loader.Get("llm.model")
 	require.NoError(t, err)

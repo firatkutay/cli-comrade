@@ -1061,6 +1061,18 @@ const (
 	// so an empty MessageID resolves to literally nothing via
 	// i18n.Translator.T). No args.
 	MsgDoctorSkipConfigUnavailable MessageID = "doctor_skip_config_unavailable"
+	// MsgDoctorSkipDependencyUnavailable is the generic Skip summary
+	// shared by every check's defensive "a Deps seam this check needs
+	// wasn't wired at all" guard (PathCheck's deps.LookPath == nil,
+	// ShellHookCheck's deps.Getenv == nil, ReachCheck's deps.HTTP == nil)
+	// — should never happen in production (defaultDoctorDeps always
+	// wires every seam), but a hand-built Deps in a test, or a future
+	// caller that forgets one, must still render a real row instead of a
+	// blank-looking one. Distinct from MsgDoctorSkipConfigUnavailable:
+	// that one means "we don't know enough about config/the active
+	// provider to check"; this one means "the check itself has no way to
+	// even ask the question, regardless of config". No args.
+	MsgDoctorSkipDependencyUnavailable MessageID = "doctor_skip_dependency_unavailable"
 
 	// MsgDoctorVersionTitle is the "version" check's row title.
 	MsgDoctorVersionTitle MessageID = "doctor_version_title"
@@ -1625,7 +1637,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUsageCostLocal:        " · local",
 	MsgChatUsageSessionTotal: "session total — %s",
 
-	MsgDoctorSkipConfigUnavailable: "skipped (config unavailable)",
+	MsgDoctorSkipConfigUnavailable:     "skipped (config unavailable)",
+	MsgDoctorSkipDependencyUnavailable: "skipped (dependency unavailable)",
 
 	MsgDoctorVersionTitle:   "version",
 	MsgDoctorPathTitle:      "PATH",
@@ -1956,7 +1969,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUsageCostLocal:        " · yerel",
 	MsgChatUsageSessionTotal: "oturum toplamı — %s",
 
-	MsgDoctorSkipConfigUnavailable: "atlandı (yapılandırma kullanılamıyor)",
+	MsgDoctorSkipConfigUnavailable:     "atlandı (yapılandırma kullanılamıyor)",
+	MsgDoctorSkipDependencyUnavailable: "atlandı (bağımlılık kullanılamıyor)",
 
 	MsgDoctorVersionTitle:   "sürüm",
 	MsgDoctorPathTitle:      "PATH",

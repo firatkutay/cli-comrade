@@ -84,10 +84,13 @@ var pricingTable = []priceEntry{
 // "gpt-5.4-mini"-named passthrough) at a completely different real
 // price — silently reusing OpenAI's rate for it would print a
 // confidently wrong dollar figure, which is worse than printing none.
-// So baseURL must match config.Default().LLM.OpenAICompat.BaseURL
-// (OpenAI's own shipped default) exactly, or this function returns
-// (0, false) regardless of how closely model matches a pricingTable
-// prefix.
+// So baseURL must be config.IsDefaultOpenAICompatBaseURL (OpenAI's own
+// shipped default, per that function's own trailing-slash/case-
+// insensitive identity rule — the SAME predicate
+// internal/doctor/check_baseurl.go's BaseURLCheck uses, so the two
+// checks can never disagree about what counts as "still the default"),
+// or this function returns (0, false) regardless of how closely model
+// matches a pricingTable prefix.
 //
 // Every other provider is matched against pricingTable by the LONGEST
 // modelPrefix that is a prefix of model (bestPriceMatch) — never an
@@ -101,7 +104,7 @@ func EstimateUSD(provider, model, baseURL string, u Usage) (float64, bool) {
 	if provider == "ollama" {
 		return 0, true
 	}
-	if provider == "openai_compat" && baseURL != config.Default().LLM.OpenAICompat.BaseURL {
+	if provider == "openai_compat" && !config.IsDefaultOpenAICompatBaseURL(baseURL) {
 		return 0, false
 	}
 

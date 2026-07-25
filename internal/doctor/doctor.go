@@ -146,6 +146,27 @@ type Deps struct {
 	// context.Collector/shellinit.RCPath's own injectable OS-environment
 	// seams, so every check is tests without depending on the real
 	// process environment or the OS the test binary runs on.
+	//
+	// Deliberate, disposed exception: Getenv covers every lightweight
+	// "is this var SET" display/detection touchpoint (KeyCheck's
+	// FirstSetEnvVar, ShellHookCheck's shell detection) — but the one
+	// path that resolves an ACTUAL credential value to send over the
+	// wire (ResolveKeyForLive's llm.ResolveEnvKey fallback,
+	// check_reach.go; BaseURLCheck's key-prefix sniff fallback,
+	// check_baseurl.go) intentionally calls llm.ResolveEnvKey directly
+	// against the REAL process environment instead of through this
+	// seam. This mirrors internal/cli's own secretsKeyResolver
+	// (secretsstore.go), which likewise calls llm.ResolveEnvKey directly
+	// with no injectable getenv of its own — routing ResolveKeyForLive
+	// through Deps.Getenv instead would make it behaviorally DIVERGE
+	// from the exact function it exists to mirror (and from what
+	// `comrade auth login`'s own ping actually resolves), which is a
+	// worse outcome than the seam gap itself: a --live run must resolve
+	// the SAME key a real request would use, not whatever a test's fake
+	// Getenv happens to return. TestResolveKeyForLiveMatchesSecretsKeyResolver
+	// (internal/cli/doctor_mirror_test.go) pins this equivalence
+	// directly against the real process environment for exactly this
+	// reason.
 	Getenv     func(string) string
 	LookPath   func(string) (string, error)
 	Executable func() (string, error)

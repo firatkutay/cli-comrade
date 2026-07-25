@@ -72,6 +72,30 @@ func TestBaseURLCheckWarnsOnSuspectedVendorMismatch(t *testing.T) {
 	}
 }
 
+// TestBaseURLCheckWarnsOnSuspectedVendorMismatchWithTrailingSlashDefault
+// is this follow-up's regression test for the security-adjacent bug a
+// bare `!=` comparison against config.Default().LLM.OpenAICompat.BaseURL
+// used to have: a user whose stored/persisted base_url is
+// "https://api.openai.com/v1/" (trailing slash — legal per
+// config.CheckBaseURL, and exactly what `comrade auth login`'s own
+// prompt persists verbatim) is STILL running against OpenAI's real
+// default endpoint (newOpenAICompatConnector trims the slash before
+// ever using it), so a Groq-looking key must still trigger the
+// vendor-mismatch Warn here — not silently fall through to a
+// false-negative SeverityOK.
+func TestBaseURLCheckWarnsOnSuspectedVendorMismatchWithTrailingSlashDefault(t *testing.T) {
+	deps := baseDeps()
+	deps.Cfg.LLM.Provider = "openai_compat"
+	deps.Cfg.LLM.OpenAICompat.BaseURL = config.Default().LLM.OpenAICompat.BaseURL + "/"
+	deps.Store = newFakeStore(map[string]string{"openai_compat": "gsk_abc123"})
+
+	result := BaseURLCheck(context.Background(), deps)
+
+	assert.Equal(t, SeverityWarn, result.Severity)
+	assert.Equal(t, i18n.MsgDoctorBaseURLSuspectedVendor, result.Summary)
+	assert.Equal(t, []any{"Groq"}, result.SummaryArgs)
+}
+
 func TestBaseURLCheckOKWhenNoKeyResolvedAtAll(t *testing.T) {
 	// llm.ResolveEnvKey (BaseURLCheck's fallback once Store has nothing)
 	// reads the REAL process environment, not deps.Getenv — clear both

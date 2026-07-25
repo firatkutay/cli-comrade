@@ -28,7 +28,7 @@ import (
 // "one Result" shape.
 func ShellHookCheck(ctx context.Context, deps Deps) Result {
 	if deps.Getenv == nil {
-		return Result{Severity: SeveritySkip}
+		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorSkipDependencyUnavailable}
 	}
 	shellName := comradecontext.DetectShell(deps.GOOS, deps.Getenv)
 	if shellName == "" {

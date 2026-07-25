@@ -43,7 +43,7 @@ func ReachCheck(ctx context.Context, deps Deps) Result {
 		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorReachSkip, SummaryArgs: []any{provider}}
 	}
 	if deps.HTTP == nil {
-		return Result{Severity: SeveritySkip}
+		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorSkipDependencyUnavailable}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -135,6 +135,12 @@ func reachCheckLive(ctx context.Context, deps Deps, provider string) Result {
 // order diverges from the other — see that test file's own doc comment
 // for why a behavioral-equivalence pinning test, not a shared package, is
 // this pair's chosen drift guard.
+//
+// Deliberately bypasses Deps.Getenv: the llm.ResolveEnvKey fallback below
+// reads the REAL process environment directly, exactly like
+// secretsKeyResolver does — see Deps.Getenv's own doc comment for why
+// this is a disposed exception, not an oversight (a --live run must
+// resolve the SAME key a real request would use).
 func ResolveKeyForLive(ctx context.Context, deps Deps, provider string) (string, error) {
 	if deps.Store != nil {
 		if key, source, err := deps.Store.Get(ctx, provider); err == nil && source != secrets.SourceNone {

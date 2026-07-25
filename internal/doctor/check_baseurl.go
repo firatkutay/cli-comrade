@@ -14,16 +14,19 @@ import (
 // otherwise): it sniffs the LOCALLY-resolved key's prefix — never a
 // network call, never printing any fragment of the key itself — and
 // warns when llm.openai_compat.base_url is still the shipped OpenAI
-// default AND the key's prefix looks like a different vendor's key
-// format (a user who logged in with, say, a Groq key without ever
-// customizing base_url — see internal/cli/auth.go's
-// promptOpenAICompatBaseURLIfDefault, which this check is the read-only,
-// after-the-fact diagnostic counterpart of).
+// default (config.IsDefaultOpenAICompatBaseURL — the SAME predicate
+// internal/llm/pricing.go's EstimateUSD uses for its own base_url gate,
+// so a trailing-slash or differently-cased default configured value
+// never disagrees between "is this still OpenAI" checks) AND the key's
+// prefix looks like a different vendor's key format (a user who logged
+// in with, say, a Groq key without ever customizing base_url — see
+// internal/cli/auth.go's promptOpenAICompatBaseURLIfDefault, which this
+// check is the read-only, after-the-fact diagnostic counterpart of).
 func BaseURLCheck(ctx context.Context, deps Deps) Result {
 	if deps.ConfigErr != nil || deps.Cfg.LLM.Provider != "openai_compat" {
 		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorBaseURLSkip}
 	}
-	if deps.Cfg.LLM.OpenAICompat.BaseURL != config.Default().LLM.OpenAICompat.BaseURL {
+	if !config.IsDefaultOpenAICompatBaseURL(deps.Cfg.LLM.OpenAICompat.BaseURL) {
 		return Result{Severity: SeverityOK, Summary: i18n.MsgDoctorBaseURLOK}
 	}
 

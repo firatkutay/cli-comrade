@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/firatkutay/cli-comrade/internal/config"
 	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 )
@@ -78,17 +79,30 @@ func TestNewUsageObserverSessionAccumulatesAcrossTurnResets(t *testing.T) {
 	assert.Equal(t, 10, turnSnap.inTok)
 }
 
-// TestNewUsageObserverNoUsageLeavesBothTalliesAtZero proves the no-usage
-// case: an observer that is never invoked (e.g. a run that never reached
-// the LLM) leaves both tallies at their zero-request state, matching
-// printUsageSummary's own "zero requests is a no-op" contract.
-func TestNewUsageObserverNoUsageLeavesBothTalliesAtZero(t *testing.T) {
+// TestNewUsageObserverZeroUsageEventStillCountsAsOneRequestInBothTallies
+// proves the no-usage-tokens case (e.g. a successful completion with no
+// reported token counts): the observer must still record it as exactly
+// one request in BOTH tallies, not silently drop it — printUsageSummary
+// only treats an observer that was NEVER invoked (zero requests) as a
+// no-op; an event with a zero-value Usage is a real recorded event, and
+// this test can only pass if newUsageObserver actually forwards ev to
+// both tallies' record (a broken/no-op observer, or one that only feeds
+// one tally, both fail this exact assertion).
+func TestNewUsageObserverZeroUsageEventStillCountsAsOneRequestInBothTallies(t *testing.T) {
 	session := newUsageTally()
 	turn := newUsageTally()
-	_ = newUsageObserver(session, turn)
+	observer := newUsageObserver(session, turn)
 
-	assert.Equal(t, 0, session.snapshot().requests)
-	assert.Equal(t, 0, turn.snapshot().requests)
+	observer(llm.UsageEvent{Provider: "ollama", Model: "llama3.1", Usage: llm.Usage{}})
+
+	sessionSnap := session.snapshot()
+	turnSnap := turn.snapshot()
+	assert.Equal(t, 1, sessionSnap.requests)
+	assert.Equal(t, 0, sessionSnap.inTok)
+	assert.Equal(t, 0, sessionSnap.outTok)
+	assert.Equal(t, 1, turnSnap.requests)
+	assert.Equal(t, 0, turnSnap.inTok)
+	assert.Equal(t, 0, turnSnap.outTok)
 }
 
 func TestUsageTallyRecordSumsAcrossMultipleEvents(t *testing.T) {
@@ -130,6 +144,60 @@ func TestUsageTallyCostUnknownWhenAnyEventIsUnpriced(t *testing.T) {
 
 	snap := tally.snapshot()
 	assert.False(t, snap.costKnown, "one unpriced event must make the whole tally's cost unknown")
+}
+
+// TestUsageTallyRecordUsesEventBaseURLForOpenAICompatPricing is this
+// follow-up's load-bearing proof for usage.go's own EstimateUSD call
+// site (record's ev.BaseURL argument): the SAME provider/model pair
+// ("openai_compat"/"gpt-5.4-mini") must be priced or unpriced depending
+// ENTIRELY on which endpoint served it, not on the model name alone.
+// This is exactly the seam a reviewer found untested: hardcoding
+// ev.BaseURL to the OpenAI default at record's EstimateUSD call site
+// makes case (a) below fail (a Qwen-style gateway would get priced at
+// OpenAI's rate — the "confidently wrong dollar figure" this whole
+// feature exists to prevent); hardcoding it to "" makes case (b) and (c)
+// fail (a real OpenAI user's cost silently vanishes).
+func TestUsageTallyRecordUsesEventBaseURLForOpenAICompatPricing(t *testing.T) {
+	t.Run("non-OpenAI gateway with an OpenAI-looking model name is cost-unknown", func(t *testing.T) {
+		tally := newUsageTally()
+		tally.record(llm.UsageEvent{
+			Provider: "openai_compat",
+			Model:    "gpt-5.4-mini",
+			BaseURL:  "https://dashscope.aliyuncs.com/compatible-mode/v1",
+			Usage:    llm.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000},
+		})
+
+		snap := tally.snapshot()
+		assert.False(t, snap.costKnown, "a non-OpenAI gateway must never be priced from OpenAI's own rate")
+	})
+
+	t.Run("OpenAI's own default endpoint is priced at the exact expected cost", func(t *testing.T) {
+		tally := newUsageTally()
+		tally.record(llm.UsageEvent{
+			Provider: "openai_compat",
+			Model:    "gpt-5.4-mini",
+			BaseURL:  config.Default().LLM.OpenAICompat.BaseURL,
+			Usage:    llm.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000},
+		})
+
+		snap := tally.snapshot()
+		assert.True(t, snap.costKnown)
+		assert.InDelta(t, 5.25, snap.costUSD, 1e-9) // $0.75 in + $4.50 out per MTok
+	})
+
+	t.Run("trailing-slash spelling of the OpenAI default is still priced", func(t *testing.T) {
+		tally := newUsageTally()
+		tally.record(llm.UsageEvent{
+			Provider: "openai_compat",
+			Model:    "gpt-5.4-mini",
+			BaseURL:  config.Default().LLM.OpenAICompat.BaseURL + "/",
+			Usage:    llm.Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000},
+		})
+
+		snap := tally.snapshot()
+		assert.True(t, snap.costKnown, "a legal trailing-slash base_url must still count as the OpenAI default")
+		assert.InDelta(t, 5.25, snap.costUSD, 1e-9)
+	})
 }
 
 func TestUsageTallyCostStaysUnknownOnceFlippedEvenAfterAPricedEvent(t *testing.T) {

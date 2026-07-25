@@ -19,7 +19,7 @@ func PathCheck(_ context.Context, deps Deps) Result {
 	}
 
 	if deps.LookPath == nil {
-		return Result{Severity: SeveritySkip}
+		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorSkipDependencyUnavailable}
 	}
 	foundPath, err := deps.LookPath(binaryName)
 	if err != nil {

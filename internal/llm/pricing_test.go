@@ -101,3 +101,17 @@ func TestEstimateUSDOpenAICompatUnknownWhenBaseURLIsNonOpenAI(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, 0.0, cost)
 }
+
+// TestEstimateUSDOpenAICompatPricedWithTrailingSlashDefault is the
+// pricing-side regression test for the bare `!=` comparison bug: a
+// legal, config.CheckBaseURL-accepted trailing-slash spelling of the
+// OpenAI default (exactly what `comrade auth login`'s own prompt
+// persists verbatim) must still be priced — newOpenAICompatConnector's
+// own strings.TrimRight treats it as the identical endpoint at request
+// time, so EstimateUSD must agree via config.IsDefaultOpenAICompatBaseURL
+// rather than a naive exact-string compare.
+func TestEstimateUSDOpenAICompatPricedWithTrailingSlashDefault(t *testing.T) {
+	cost, ok := EstimateUSD("openai_compat", "gpt-5.4-mini", config.Default().LLM.OpenAICompat.BaseURL+"/", Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000})
+	assert.True(t, ok)
+	assert.InDelta(t, 5.25, cost, 1e-9)
+}

@@ -22,6 +22,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -93,6 +94,36 @@ func TestReadFileOrEmptyMatchesDoctorMirror(t *testing.T) {
 		require.NoError(t, doctorErr)
 		assert.Empty(t, cliContent)
 		assert.Empty(t, doctorContent)
+	})
+
+	// TestReadFileOrEmptyMatchesDoctorMirror's third case: an EXISTING but
+	// unreadable file (permission denied) must surface as a real, non-nil
+	// error from BOTH copies — never silently swallowed into empty
+	// content like the "missing file" case above. This is the exact
+	// divergence a mutation making doctor's ReadFileOrEmpty swallow ALL
+	// read errors slipped past before this subtest existed:
+	// ShellHookCheck (check_shellhook.go) branches on that error to emit
+	// a Warn, so a mirror that silently returns ("", nil) instead would
+	// turn a genuine permission problem into a false "shell hook not
+	// installed" — skipped when running as root (Geteuid()==0 ignores
+	// file permissions) or on Windows (chmod 0000 does not remove read
+	// access the way it does on POSIX).
+	t.Run("unreadable file is a real error, not swallowed", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("chmod 0000 does not make a file unreadable on Windows")
+		}
+		if os.Geteuid() == 0 {
+			t.Skip("root ignores file permission bits, so this file would still be readable")
+		}
+		path := filepath.Join(t.TempDir(), "unreadable.rc")
+		require.NoError(t, os.WriteFile(path, []byte("secret"), 0o600))
+		require.NoError(t, os.Chmod(path, 0o000))
+
+		_, cliErr := readFileOrEmpty(path)
+		_, doctorErr := doctor.ReadFileOrEmpty(path)
+
+		assert.Error(t, cliErr, "cli's readFileOrEmpty must surface a permission error, not swallow it")
+		assert.Error(t, doctorErr, "doctor.ReadFileOrEmpty must surface a permission error, not swallow it")
 	})
 }
 

@@ -15,12 +15,13 @@
 #                         when the install dir isn't already on PATH (default:
 #                         unset — the rc file is edited automatically)
 #
-# Requirements on PATH:
+# Requirements on PATH (all preflighted by main() before any network call):
 #   - curl or wget (download)
 #   - one SHA-256 checksum tool: sha256sum (GNU/most Linux distros),
 #     shasum (macOS/BSD), or openssl (fallback) — checksum verification
 #     is mandatory and never skipped
 #   - tar and gzip (archive extraction)
+#   - install (places the binary with the correct permissions)
 set -eu
 
 REPO="firatkutay/cli-comrade"
@@ -83,6 +84,15 @@ probe_checksum_tool() {
     gnu) printf '' | sha256sum >/dev/null 2>&1 ;;
     bsd) printf '' | shasum -a 256 >/dev/null 2>&1 ;;
     openssl) printf '' | openssl dgst -sha256 >/dev/null 2>&1 ;;
+    *)
+      # Unreachable: the three call sites below only ever pass a literal
+      # gnu/bsd/openssl. Fail closed anyway, for the same reason
+      # verify_checksum's `*)` branch exists — an unrecognized probe name
+      # returning "success" (a bare `case` with no match is exit 0) would
+      # be the exact fail-open shape that finding closed, one function
+      # up the call chain.
+      return 1
+      ;;
   esac
 }
 
@@ -128,8 +138,17 @@ verify_checksum() {
       # field either way, so `awk '{print $NF}'` is version-agnostic and
       # doesn't need to match the label. Compared case-insensitively
       # since checksums.txt generators and openssl builds differ in case.
+      # `--` ends option parsing before $file, so a filename starting with
+      # "-" (e.g. a crafted "-rf_linux_amd64.tar.gz") is treated as a
+      # filename, never as an openssl option (verified against OpenSSL
+      # 3.0.2). Without it this branch alone would diverge from gnu/bsd
+      # for such a name: those read the filename out of checksum.line's
+      # file content, not argv, so they're unaffected either way, but
+      # `--` keeps all three verifier paths behaving identically instead
+      # of relying on the archive-filename guard below as the only line
+      # of defense for this one branch.
       expected_hash="$(printf '%s\n' "$checksum_line" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
-      actual_hash="$(openssl dgst -sha256 "$file" | awk '{print $NF}' | tr '[:upper:]' '[:lower:]')"
+      actual_hash="$(openssl dgst -sha256 -- "$file" | awk '{print $NF}' | tr '[:upper:]' '[:lower:]')"
       if [ -z "$expected_hash" ] || [ -z "$actual_hash" ] || [ "$expected_hash" != "$actual_hash" ]; then
         echo "install.sh: checksum mismatch for ${file} (expected ${expected_hash}, got ${actual_hash})" >&2
         exit 1
@@ -333,8 +352,15 @@ main() {
   # checksums.txt write the download outside the mktemp workdir — before
   # verification even runs. Requires control of checksums.txt to exploit;
   # closed here defensively since it costs nothing.
+  #
+  # A leading "-" is rejected too (e.g. "-rf_linux_amd64.tar.gz"): a
+  # dash-leading name is never a legitimate goreleaser archive filename,
+  # and this guard runs before verify_checksum is ever called, so it's
+  # the first line of defense for all three verifier branches — the
+  # openssl branch's own `--` (see verify_checksum above) is defense in
+  # depth for that function's other callers, not the only guard here.
   case "$archive" in
-    */* | .*)
+    */* | .* | -*)
       echo "install.sh: refusing unsafe archive filename from checksums.txt: ${archive}" >&2
       exit 1
       ;;

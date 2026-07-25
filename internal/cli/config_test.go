@@ -611,6 +611,33 @@ func TestConfigEditOpensEditorOnConfigFile(t *testing.T) {
 	assert.NoError(t, err, "expected the configured $EDITOR to have run")
 }
 
+// TestConfigEditStripsManagedByEnvVarFromEditor is PR #37 review's N1
+// regression guard: `comrade config edit`'s spawned $EDITOR must never
+// see COMRADE_MANAGED_BY, even though this test process's own
+// environment has it set — an editor can itself shell out (e.g. vim's
+// `:!comrade upgrade`), so leaving it unstripped here would be exactly
+// the "strip one process-spawn site while another leaves it unstripped"
+// gap MEDIUM-2 was about.
+func TestConfigEditStripsManagedByEnvVarFromEditor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell-script editor is Unix-only")
+	}
+
+	dir := withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_MANAGED_BY", "npm")
+	capturedPath := filepath.Join(dir, "editor-env-capture")
+
+	script := filepath.Join(dir, "fake-editor.sh")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho \"value=[$COMRADE_MANAGED_BY]\" > \""+capturedPath+"\"\n"), 0o755))
+	t.Setenv("EDITOR", script)
+
+	_ = execRoot(t, "dev", "config", "edit")
+
+	captured, err := os.ReadFile(capturedPath) // #nosec G304 -- fixed test-owned temp path
+	require.NoError(t, err, "expected the configured $EDITOR to have run")
+	assert.Contains(t, string(captured), "value=[]", "COMRADE_MANAGED_BY must never reach the spawned $EDITOR process")
+}
+
 func TestConfigTestLLMPrintsProviderModelAndLatency(t *testing.T) {
 	withIsolatedConfigDir(t)
 	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")

@@ -262,7 +262,9 @@ bir terminal/TTY gerektirir). Oturum içi komutlar:
 - **`comrade upgrade`** — yeni bir sürümü kontrol eder/kurar; `--check`
   sadece rapor verir, kurmaz. Yalnızca resmi paket kanallarından
   kurulmuş sürümlerde çalışır (kaynaktan `go build` ile yapılan yerel
-  derlemelerde değil).
+  derlemelerde değil). npm (veya aynı dağıtımı kullanan pnpm/yarn/bun)
+  ile kurulduysa kendi kendini güncellemeyi reddeder — bunun yerine o
+  paket yöneticisiyle güncelleyin (`--check` bu durumda reddetmez).
 
 ### Güvenlik, sade anlatım
 
@@ -563,7 +565,9 @@ If the command starts with a dash: `comrade explain -- <command>`.
 - **`comrade upgrade`** — checks for / installs a newer version;
   `--check` only reports, never installs. Only works on versions
   installed via the official package channels (not a local `go build`
-  from source).
+  from source). Refuses to self-update if installed via npm (or pnpm/
+  yarn/bun, which use the same distribution) — update it with that
+  package manager instead (`--check` is never refused).
 
 ### Safety, in plain words
 

@@ -140,9 +140,28 @@ kabuk açın (ya da `source ~/.bashrc` gibi dosyayı yeniden yükleyin).
 `go build`/`go install` ile (bir `-ldflags -X main.version=...`
 olmadan) yaptığınız yerel bir derlemeyi çalıştırıyorsunuz — bu
 derlemeler `dev` sürüm dizesini taşır ve karşılaştırılacak bir release
-etiketi yoktur. Yalnızca yukarıdaki resmi paket
-yöneticilerinden/scriptlerinden kurulan sürümler `comrade upgrade`'i
-destekler.
+etiketi yoktur. `comrade upgrade` yalnızca yukarıdaki resmi paket
+yöneticilerinden/scriptlerinden kurulan sürümlerde karşılaştırılacak bir
+release etiketine sahiptir — npm/pnpm/yarn/bun kurulumlarının kendine
+özgü ek davranışı için aşağıya bakın.
+
+### `comrade upgrade` bir Node paket yöneticisiyle kurulduğunu söyleyip reddediyor
+
+comrade'i `npm install -g cli-comrade` ile (veya aynı dağıtım
+dispatcher'ını kullanan pnpm/yarn/bun ile) kurduysanız, `comrade upgrade`
+kendi kendini güncellemeyi kasıtlı olarak reddeder — ikili dosyayı
+yerinde değiştirmek, paket yöneticisinin kendi kayıtlı sürümünü
+diskteki gerçek durumdan koparır ve bir sonraki paket yöneticisi
+güncellemesi bunu sessizce geri alır. Bunun yerine kurulumu yaptığınız
+paket yöneticisiyle güncelleyin, örn. npm için:
+
+```sh
+npm update -g cli-comrade
+```
+
+`comrade upgrade --check` bu durumda reddetmez — hiçbir şey indirmez
+veya değiştirmez, yalnızca daha yeni bir sürüm olup olmadığını bildirir
+ve aynı öneriyi ekler.
 
 ### Checksum doğrulaması başarısız oluyor (kurulum veya `comrade upgrade`)
 
@@ -303,7 +322,26 @@ You're running a local build made with `go build`/`go install`
 (without a `-ldflags -X main.version=...`) — these builds carry the
 literal version string `dev` and have no release tag to compare
 against. Only versions installed via the official package
-managers/scripts above support `comrade upgrade`.
+managers/scripts above have a release tag to compare against at all —
+see below for npm/pnpm/yarn/bun installs' own additional behavior.
+
+### `comrade upgrade` refuses, saying it was installed through a Node package manager
+
+If you installed comrade with `npm install -g cli-comrade` (or
+pnpm/yarn/bun, which run the exact same distribution dispatcher),
+`comrade upgrade` deliberately refuses to self-update — replacing the
+binary in place would desync the package manager's own recorded
+installed version from what's actually on disk, and its next update command
+would silently revert it. Update it with whichever package manager you
+installed it with instead, e.g. for npm:
+
+```sh
+npm update -g cli-comrade
+```
+
+`comrade upgrade --check` is NOT refused in this case — it downloads
+and changes nothing, so it still reports whether a newer version is
+available and appends the same remediation note.
 
 ### Checksum verification fails (during install or `comrade upgrade`)
 

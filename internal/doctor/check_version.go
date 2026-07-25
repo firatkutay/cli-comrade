@@ -2,6 +2,7 @@ package doctor
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/update"
@@ -32,11 +33,23 @@ func VersionCheck(ctx context.Context, deps Deps) Result {
 	writeVersionCheckState(deps, result.LatestVersion)
 
 	if result.UpdateAvailable {
+		// PR #37 review, P2: the Node-managed caveat belongs in the
+		// TRANSLATED Summary line, not smuggled into Fix — Fix stays a
+		// bare, copy-pasteable shell command either way (per
+		// doctor.Result.Fix's own doc comment; see npmManagedFixCommand's
+		// doc comment for why it's still npm-specific despite the
+		// generic Summary wording above it).
+		summary := i18n.MsgDoctorVersionBehind
+		fix := "comrade upgrade"
+		if npmManaged(deps) {
+			summary = i18n.MsgDoctorVersionBehindNodeManaged
+			fix = npmManagedFixCommand
+		}
 		return Result{
 			Severity:    SeverityWarn,
-			Summary:     i18n.MsgDoctorVersionBehind,
+			Summary:     summary,
 			SummaryArgs: []any{result.LatestVersion, result.CurrentVersion},
-			Fix:         "comrade upgrade",
+			Fix:         fix,
 		}
 	}
 	return Result{
@@ -45,6 +58,45 @@ func VersionCheck(ctx context.Context, deps Deps) Result {
 		SummaryArgs: []any{result.CurrentVersion},
 	}
 }
+
+// npmManaged reports whether this process is running under a Node
+// package manager-managed install (see update.IsNPMManaged) — VersionCheck
+// uses this so its Fix instruction agrees with what `comrade upgrade`
+// itself will actually do (internal/cli/upgrade.go's own refusal),
+// instead of the two mechanisms silently disagreeing (PR #37 review,
+// HIGH-1: doctor's own package doc comment already states this package
+// exists precisely so its checks and the commands they describe never
+// disagree).
+//
+// deps.Getenv or deps.Executable being nil (a hand-built Deps in a test
+// that doesn't wire them) is treated as "not npm-managed" — the same
+// fail-open default IsNPMManaged itself applies to a resolution error,
+// and consistent with PathCheck's own direct (uninjected)
+// filepath.EvalSymlinks call elsewhere in this package.
+func npmManaged(deps Deps) bool {
+	if deps.Getenv == nil || deps.Executable == nil {
+		return false
+	}
+	return update.IsNPMManaged(deps.Getenv, deps.Executable, filepath.EvalSymlinks)
+}
+
+// npmManagedFixCommand is VersionCheck's Fix when npmManaged is true
+// (PR #37 review, P2): a bare, copy-pasteable shell command — restoring
+// doctor.Result.Fix's own documented contract ("almost always a literal
+// comrade (or vendor, e.g. `ollama pull llama3.1`) command", never
+// prose) instead of HIGH-1's original fix, which smuggled a full
+// generic-wording sentence into Fix itself.
+//
+// This is deliberately npm-specific (unlike MsgDoctorVersionBehindNodeManaged's
+// Summary text, which is generic) because Fix has no room for a
+// "your package manager" hedge and still be a single runnable command —
+// the Summary line printed directly above it already tells a pnpm/yarn/
+// bun user this is only the worked EXAMPLE, not a literal must-run
+// instruction (there is no reliable way, at a globally-installed
+// binary's own runtime, to tell WHICH Node package manager actually
+// installed it: npm_config_user_agent is only set for scripts a package
+// manager itself runs, not for a bare global-binary invocation).
+const npmManagedFixCommand = "npm update -g cli-comrade"
 
 // writeVersionCheckState persists a successful fetch's outcome to
 // update_check.json (update.WriteState), throttling the NEXT background

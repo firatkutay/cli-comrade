@@ -178,6 +178,33 @@ func TestUpdateNoticeSkipsWhenRecentlyChecked(t *testing.T) {
 	assert.Equal(t, "v0.0.1", got.LatestKnownVersion, "a recent check must not be overwritten")
 }
 
+// TestUpdateNoticeSuggestsNpmUpdateWhenNpmManaged proves the passive
+// notice is NOT suppressed for an npm-managed install (a newer version
+// genuinely is available, so it still says so) but points at using a
+// Node package manager (npm given as the worked example) instead of
+// `comrade upgrade`, since the latter is refused for an npm-managed
+// install (see upgrade_test.go). The wording is deliberately generic —
+// see MsgUpgradeNPMManagedError's own doc comment (PR #37 review,
+// MEDIUM-4) — since pnpm/yarn/bun-managed installs are detected
+// identically.
+func TestUpdateNoticeSuggestsNpmUpdateWhenNpmManaged(t *testing.T) {
+	dir := withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_MANAGED_BY", "npm")
+	fetcher := fakeReleaseFetcher{release: update.Release{TagName: "v2.0.0"}}
+
+	out, errOut, err := execRootWithFetcher(t, "v1.0.0", fetcher, "config", "path")
+	require.NoError(t, err)
+	assert.NotEmpty(t, out)
+	assert.Contains(t, errOut, "v2.0.0")
+	assert.Contains(t, errOut, "v1.0.0")
+	assert.Contains(t, errOut, "Node package manager")
+	assert.Contains(t, errOut, "npm update -g cli-comrade")
+	assert.NotContains(t, errOut, "comrade upgrade")
+
+	got := update.ReadState(updateCheckStatePath(t, dir))
+	assert.Equal(t, "v2.0.0", got.LatestKnownVersion)
+}
+
 // countingFetcher wraps fakeReleaseFetcher's behavior while recording
 // whether LatestRelease was ever actually invoked.
 type countingFetcher struct {

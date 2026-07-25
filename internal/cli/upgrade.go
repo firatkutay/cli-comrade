@@ -17,8 +17,9 @@ import (
 // needs, exactly like initDeps (init.go) bundles init's own — newLoader
 // wires the real ones in NewRootCmd via defaultUpgradeDeps; tests
 // construct their own upgradeDeps directly, injecting fakes for
-// fetcher/downloader/executable/replace so no test ever reaches the real
-// network or touches a real running executable.
+// fetcher/downloader/executable/replace/getenv/evalSymlinks so no test
+// ever reaches the real network, environment, or touches a real running
+// executable.
 type upgradeDeps struct {
 	version    string
 	goos       string
@@ -27,6 +28,17 @@ type upgradeDeps struct {
 	downloader update.AssetDownloader
 	executable func() (string, error)
 	replace    func(targetPath string, content []byte, goos string) error
+
+	// getenv and evalSymlinks back update.IsNPMManaged's two signals
+	// (PR #37 review, LOW-8): previously this command called os.Getenv/
+	// filepath.EvalSymlinks directly despite update.GetenvFunc/
+	// EvalSymlinksFunc existing exactly for injection, which forced every
+	// env-signal test onto t.Setenv (incompatible with t.Parallel) and
+	// left the path signal's EvalSymlinks-failure branch unreachable from
+	// a command-level test. defaultUpgradeDeps wires the real os.Getenv/
+	// filepath.EvalSymlinks; tests inject fakes for both.
+	getenv       func(string) string
+	evalSymlinks func(string) (string, error)
 
 	// cosignPub overrides update.Updater's embedded cosign.pub for tests
 	// only, via update.Updater.CosignPub — the zero value (nil) means
@@ -41,13 +53,15 @@ type upgradeDeps struct {
 // string.
 func defaultUpgradeDeps(version string) upgradeDeps {
 	return upgradeDeps{
-		version:    version,
-		goos:       runtime.GOOS,
-		goarch:     runtime.GOARCH,
-		fetcher:    &update.GitHubClient{},
-		downloader: update.HTTPDownloader{},
-		executable: os.Executable,
-		replace:    update.ReplaceBinary,
+		version:      version,
+		goos:         runtime.GOOS,
+		goarch:       runtime.GOARCH,
+		fetcher:      &update.GitHubClient{},
+		downloader:   update.HTTPDownloader{},
+		executable:   os.Executable,
+		replace:      update.ReplaceBinary,
+		getenv:       os.Getenv,
+		evalSymlinks: filepath.EvalSymlinks,
 	}
 }
 
@@ -67,6 +81,31 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 			_, tr, err := loadConfigWithNotice(cmd, newLoader)
 			if err != nil {
 				return err
+			}
+
+			// A Node package manager-managed install (npm/main/bin/
+			// comrade.js's dispatcher, or pnpm/yarn/bun running the same
+			// dispatcher, spawned the real binary out of node_modules)
+			// must never self-update its binary in place: that would
+			// desync the package manager's own recorded installed
+			// version from what's actually on disk, and its next update
+			// command would silently revert it.
+			//
+			// This check runs FIRST, before any disk mutation at all
+			// (PR #37 review, LOW-7) — including the leftover-.old
+			// cleanup just below — so a refusal genuinely precedes every
+			// side effect. --check is deliberately exempt (MEDIUM-5):
+			// unlike a real upgrade it downloads and mutates nothing, so
+			// the desync rationale doesn't apply, and scripts document
+			// it as always safe to poll (docs/INSTALL.md) — it still
+			// runs to completion and reports its normal result, with the
+			// package-manager remediation appended instead of a refusal
+			// (see printUpgradeCheckResult). No override flag for the
+			// apply path — per YAGNI; the fix is always "use whichever
+			// package manager installed it".
+			npmManaged := update.IsNPMManaged(deps.getenv, deps.executable, deps.evalSymlinks)
+			if npmManaged && !checkOnly {
+				return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeNPMManagedError))
 			}
 
 			// A leftover comrade.exe.old from a prior Windows self-update
@@ -96,9 +135,12 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 				if err != nil {
 					return translateUpgradeFetchError(cmd, tr, "upgrade --check", err)
 				}
-				return printUpgradeCheckResult(cmd, tr, result)
+				return printUpgradeCheckResult(cmd, tr, result, npmManaged)
 			}
 
+			// npmManaged is guaranteed false past this point: the guard
+			// above already returned for the (npmManaged && !checkOnly)
+			// case, and checkOnly's own branch just returned too.
 			result, binary, err := u.Apply(cmd.Context(), deps.version)
 			if err != nil {
 				return translateUpgradeFetchError(cmd, tr, "upgrade", err)
@@ -208,14 +250,24 @@ func translateUpgradeFetchError(cmd *cobra.Command, tr i18n.Translator, prefix s
 	return fmt.Errorf("%s: %w", prefix, err)
 }
 
-// printUpgradeCheckResult renders `comrade upgrade --check`'s one-line
-// report: either the up-to-date message or the newer-version-available
-// message, matching the exact two outcomes update.Updater.Check reports.
-func printUpgradeCheckResult(cmd *cobra.Command, tr i18n.Translator, result update.Result) error {
+// printUpgradeCheckResult renders `comrade upgrade --check`'s report:
+// the up-to-date message, or the newer-version-available message —
+// matching the two outcomes update.Updater.Check reports — with
+// MsgUpgradeCheckNPMManagedNotice appended when npmManaged is true and a
+// newer version exists (MEDIUM-5, PR #37 review): --check never refuses,
+// so this is how it still tells an npm/pnpm/yarn/bun-managed install
+// what actually works instead of `comrade upgrade`.
+func printUpgradeCheckResult(cmd *cobra.Command, tr i18n.Translator, result update.Result, npmManaged bool) error {
 	if !result.UpdateAvailable {
 		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgUpgradeUpToDate, result.CurrentVersion))
 		return err
 	}
-	_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgUpgradeNewerAvailable, result.LatestVersion, result.CurrentVersion, result.ReleaseURL))
-	return err
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgUpgradeNewerAvailable, result.LatestVersion, result.CurrentVersion, result.ReleaseURL)); err != nil {
+		return err
+	}
+	if npmManaged {
+		_, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgUpgradeCheckNPMManagedNotice))
+		return err
+	}
+	return nil
 }

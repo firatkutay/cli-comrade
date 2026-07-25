@@ -85,7 +85,14 @@ function resolveBinaryPath() {
  *   terminating the test runner.
  */
 function runBinary(binaryPath, argv) {
-  const result = spawnSync(binaryPath, argv, { stdio: 'inherit' });
+  // Extend a COPY of the current environment (never mutate
+  // process.env itself) with COMRADE_MANAGED_BY=npm -- the primary
+  // signal `comrade upgrade` uses (internal/update.IsNPMManaged) to
+  // refuse a self-update that would desync npm's own recorded
+  // installed version from what's actually on disk under
+  // node_modules.
+  const childEnv = { ...process.env, COMRADE_MANAGED_BY: 'npm' };
+  const result = spawnSync(binaryPath, argv, { stdio: 'inherit', env: childEnv });
 
   if (result.error) {
     console.error(`cli-comrade: failed to launch "${binaryPath}": ${result.error.message}`);

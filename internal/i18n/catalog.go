@@ -959,6 +959,40 @@ const (
 	// args.
 	MsgUpgradeSignatureInvalid MessageID = "upgrade_signature_invalid"
 
+	// MsgUpgradeNPMManagedError refuses a real `comrade upgrade` (the
+	// APPLY path only — never --check, see MsgUpgradeCheckNPMManagedNotice
+	// below; PR #37 review, MEDIUM-5) when update.IsNPMManaged detects
+	// this binary is running out of a Node package manager's install
+	// (either the npm/main/bin/comrade.js dispatcher's
+	// COMRADE_MANAGED_BY=npm env signal, or a node_modules path segment
+	// in the resolved running executable, as a fallback for a direct
+	// invocation that bypasses the dispatcher). A Go-side self-update in
+	// that case would overwrite the platform binary the package manager
+	// itself installed under node_modules without updating ITS OWN
+	// lockfile/manifest bookkeeping, so the two would desync — the next
+	// package-manager update would silently revert it.
+	//
+	// Deliberately generic ("your Node package manager") rather than
+	// npm-specific (PR #37 review, MEDIUM-4): pnpm/yarn/bun-managed
+	// installs run the exact same dispatcher and resolve under the exact
+	// same node_modules tree, so they are ALL detected here too — but
+	// `npm update -g cli-comrade` on a pnpm-managed install either fails
+	// outright or installs a second, npm-managed copy shadowing the
+	// first, which is the same desync class this message exists to
+	// prevent. No args: the fix is always "use whichever package manager
+	// installed it", with npm given as the one worked example.
+	MsgUpgradeNPMManagedError MessageID = "upgrade_npm_managed_error"
+
+	// MsgUpgradeCheckNPMManagedNotice is appended to `comrade upgrade
+	// --check`'s normal output (after MsgUpgradeNewerAvailable) when
+	// update.IsNPMManaged is true and a newer version exists (PR #37
+	// review, MEDIUM-5): --check itself downloads and mutates nothing,
+	// so unlike a real upgrade it is never refused — it still reports
+	// the newer-version-available result, with this note appended
+	// pointing at the package manager instead of `comrade upgrade`. No
+	// args.
+	MsgUpgradeCheckNPMManagedNotice MessageID = "upgrade_check_npm_managed_notice"
+
 	// -- per-flag --help descriptions (comrade upgrade) -------------------
 
 	// MsgFlagCheck is --check's --help description.
@@ -971,6 +1005,15 @@ const (
 	// newer release than the running build. Two args: the latest
 	// version, the current version.
 	MsgUpdateAvailableNotice MessageID = "update_available_notice"
+
+	// MsgUpdateAvailableNoticeNPM is MsgUpdateAvailableNotice's variant
+	// for a Node package manager-managed install (update.IsNPMManaged):
+	// it still reports the newer version (the notice itself is never
+	// suppressed), but points at using that package manager instead of
+	// `comrade upgrade`, since the latter is refused in that case (see
+	// MsgUpgradeNPMManagedError, including its "generic, not npm-specific"
+	// rationale). Two args: the latest version, the current version.
+	MsgUpdateAvailableNoticeNPM MessageID = "update_available_notice_npm"
 
 	// -- internal/tui ask-mode confirm prompt ----------------------------
 	//
@@ -1103,6 +1146,21 @@ const (
 	// MsgDoctorVersionBehind reports that a newer release is published.
 	// Two args: the latest version, the current (running) version.
 	MsgDoctorVersionBehind MessageID = "doctor_version_behind"
+	// MsgDoctorVersionBehindNodeManaged is MsgDoctorVersionBehind's
+	// variant used as Summary (not Fix — PR #37 review, P2) when
+	// npmManaged(deps) is true: `comrade doctor` must not merely swap
+	// Fix's command while leaving an un-translated "a newer version is
+	// available" Summary that then names a bare "comrade upgrade" Fix a
+	// Node-managed install can't run — the caveat belongs in the
+	// TRANSLATED line itself, immediately above the (still plain,
+	// copy-pasteable, per doctor.Result.Fix's own doc comment) `npm
+	// update -g cli-comrade` Fix VersionCheck sets alongside it.
+	// Deliberately generic ("a Node package manager") rather than
+	// npm-specific — see MsgUpgradeNPMManagedError's own doc comment:
+	// pnpm/yarn/bun-managed installs are detected identically. Two args:
+	// the latest version, the current (running) version — same shape as
+	// MsgDoctorVersionBehind.
+	MsgDoctorVersionBehindNodeManaged MessageID = "doctor_version_behind_node_managed"
 	// MsgDoctorVersionUpToDate reports that the running version is
 	// already the latest published release. One arg: the current
 	// version.
@@ -1602,6 +1660,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUpgradeSignatureNotConfigured: "cli-comrade: release signature verification is not configured; proceeding with checksum-only verification\n",
 	MsgUpgradeSignatureMissing:       "this release does not include a signature file; refusing to install it",
 	MsgUpgradeSignatureInvalid:       "this release's signature could not be verified; refusing to install it",
+	MsgUpgradeNPMManagedError:        "comrade was installed through a Node package manager (e.g. npm, pnpm, yarn, bun); self-update is disabled to keep its installed version in sync — update it with that package manager instead (e.g. `npm update -g cli-comrade` for npm)",
+	MsgUpgradeCheckNPMManagedNotice:  "note: comrade was installed through a Node package manager; update it with that package manager instead (e.g. `npm update -g cli-comrade` for npm) rather than running `comrade upgrade`\n",
 
 	MsgHelpShortUpgrade: "Check for or install a newer released version of comrade",
 	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
@@ -1624,7 +1684,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpLabelAdditionalHelpTopics: "Additional help topics:",
 	MsgHelpMoreInfo:                  `Use "{{.CommandPath}} [command] --help" for more information about a command.`,
 
-	MsgUpdateAvailableNotice: "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
+	MsgUpdateAvailableNotice:    "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
+	MsgUpdateAvailableNoticeNPM: "\ncomrade: a new version is available: %s (you have %s). Update it with your Node package manager instead (e.g. `npm update -g cli-comrade` for npm).\n",
 
 	MsgConfirmLegend:     "[y]es [n]o [e]dit [x]plain [a]ll: ",
 	MsgConfirmEditHeader: "Edit command (enter to confirm, esc to cancel):\n",
@@ -1648,10 +1709,11 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgDoctorBaseURLTitle:   "base_url sanity",
 	MsgDoctorConfigTitle:    "config & keychain",
 
-	MsgDoctorVersionDevSkip:    "dev build; version check skipped",
-	MsgDoctorVersionFetchError: "could not check for a newer version",
-	MsgDoctorVersionBehind:     "a newer version is available: %s (you have %s)",
-	MsgDoctorVersionUpToDate:   "up to date (%s)",
+	MsgDoctorVersionDevSkip:           "dev build; version check skipped",
+	MsgDoctorVersionFetchError:        "could not check for a newer version",
+	MsgDoctorVersionBehind:            "a newer version is available: %s (you have %s)",
+	MsgDoctorVersionBehindNodeManaged: "a newer version is available: %s (you have %s) — comrade was installed through a Node package manager (e.g. npm, pnpm, yarn, bun); update it with that package manager instead (npm shown below as the example)",
+	MsgDoctorVersionUpToDate:          "up to date (%s)",
 
 	MsgDoctorPathNotFound: "%q was not found on PATH",
 	MsgDoctorPathStale:    "PATH resolves to a different comrade binary than the one currently running (%s)",
@@ -1934,6 +1996,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUpgradeSignatureNotConfigured: "cli-comrade: sürüm imza doğrulaması yapılandırılmamış; yalnızca sağlama toplamı (checksum) ile doğrulamaya devam ediliyor\n",
 	MsgUpgradeSignatureMissing:       "bu sürüm bir imza dosyası içermiyor; kurulum reddediliyor",
 	MsgUpgradeSignatureInvalid:       "bu sürümün imzası doğrulanamadı; kurulum reddediliyor",
+	MsgUpgradeNPMManagedError:        "comrade bir Node paket yöneticisiyle (ör. npm, pnpm, yarn, bun) kuruldu; kurulu sürümle tutarlılığı korumak için kendi kendini güncelleme devre dışı — bunun yerine o paket yöneticisiyle güncelleyin (ör. npm için `npm update -g cli-comrade`)",
+	MsgUpgradeCheckNPMManagedNotice:  "not: comrade bir Node paket yöneticisiyle kuruldu; `comrade upgrade` çalıştırmak yerine o paket yöneticisiyle güncelleyin (ör. npm için `npm update -g cli-comrade`)\n",
 
 	MsgHelpShortUpgrade: "comrade'in daha yeni bir yayımlanmış sürümünü denetler veya kurar",
 	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",
@@ -1956,7 +2020,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpLabelAdditionalHelpTopics: "Ek yardım konuları:",
 	MsgHelpMoreInfo:                  `Bir komut hakkında daha fazla bilgi için "{{.CommandPath}} [command] --help" kullanın.`,
 
-	MsgUpdateAvailableNotice: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
+	MsgUpdateAvailableNotice:    "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
+	MsgUpdateAvailableNoticeNPM: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Node paket yöneticinizle güncelleyin (ör. npm için `npm update -g cli-comrade`).\n",
 
 	MsgConfirmLegend:     "[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: ",
 	MsgConfirmEditHeader: "Komutu düzenle (onaylamak için enter, iptal için esc):\n",
@@ -1980,10 +2045,11 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgDoctorBaseURLTitle:   "base_url tutarlılığı",
 	MsgDoctorConfigTitle:    "yapılandırma ve anahtarlık",
 
-	MsgDoctorVersionDevSkip:    "geliştirme sürümü; sürüm kontrolü atlandı",
-	MsgDoctorVersionFetchError: "daha yeni bir sürüm olup olmadığı kontrol edilemedi",
-	MsgDoctorVersionBehind:     "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s)",
-	MsgDoctorVersionUpToDate:   "güncel (%s)",
+	MsgDoctorVersionDevSkip:           "geliştirme sürümü; sürüm kontrolü atlandı",
+	MsgDoctorVersionFetchError:        "daha yeni bir sürüm olup olmadığı kontrol edilemedi",
+	MsgDoctorVersionBehind:            "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s)",
+	MsgDoctorVersionBehindNodeManaged: "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s) — comrade bir Node paket yöneticisiyle (ör. npm, pnpm, yarn, bun) kuruldu; bunun yerine o paket yöneticisiyle güncelleyin (örnek olarak npm gösterilmiştir)",
+	MsgDoctorVersionUpToDate:          "güncel (%s)",
 
 	MsgDoctorPathNotFound: "%q, PATH üzerinde bulunamadı",
 	MsgDoctorPathStale:    "PATH, şu anda çalışan comrade ikili dosyasından farklı bir kopyaya işaret ediyor (%s)",

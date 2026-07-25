@@ -131,6 +131,157 @@ func TestEvaluateEffectMayNotExecuteBodyStillEscalatesWithinItself(t *testing.T)
 	runEvalCases(t, engine, cases)
 }
 
+// --- Invalidation COMPOSITION across nested may-not-execute bodies: a
+// HIGH-severity follow-up the security audit found at depth >= 2, after
+// the depth-1 CRITICAL above was fixed. resolveMayNotExecute's own
+// invalidation loop originally iterated the CHILD's clone ("for name,
+// newVal := range clone"), which only ever sees a key the child ADDED or
+// MODIFIED — never one an INNER resolveMayNotExecute (deeper in the same
+// body) already DELETED from that intermediate clone as ambiguous. So a
+// TWO-level-deep ambiguity (an if/case/loop nested inside another
+// if/case/loop) went completely unnoticed by the OUTER level: the
+// deleted key is simply absent from the child's clone, not "changed",
+// and the old buggy loop only ever compared "changed" values, so the
+// outer level's own invalidation never re-ran and the outermost, stale
+// pre-construct value silently survived.
+//
+// The fix (now in resolveMayNotExecute) inverts the loop to iterate
+// r.env — the PARENT's keys — instead: "for name, oldVal := range r.env
+// { if newVal, stillPresent := clone[name]; !stillPresent || newVal !=
+// oldVal { delete(r.env, name) } }". A key MISSING from clone (deleted
+// at ANY inner depth) now triggers invalidation exactly like a CHANGED
+// one. This is what makes invalidation compose at ANY nesting depth, by
+// induction on the number of enclosing resolveMayNotExecute calls: each
+// level's invalidation pass only ever needs to compare ITS OWN immediate
+// child's clone against ITS OWN r.env, and "value differs OR is now
+// absent" treats an inner deletion identically to a same-level
+// modification — so the ambiguity signal (delete) propagates outward
+// through every enclosing level unchanged, one level at a time, all the
+// way to the top-level env, however many levels deep it originated. This
+// is exactly the property this test file pins: NOT "depth 2 is fixed",
+// but "composition holds at any depth" — see the depth-3+ cases below.
+func TestEvaluateEffectMayNotExecuteInvalidationComposesAcrossNesting(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"for wrapping if: the audit's exact depth-2 repro",
+			"R=echo; for i in 1; do if true; then R=rm; fi; done; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate",
+		},
+		{
+			"while wrapping if",
+			"R=echo; while true; do if true; then R=rm; fi; done; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate",
+		},
+		{
+			"case wrapping if",
+			"R=echo; case a in a) if true; then R=rm; fi ;; esac; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate",
+		},
+		{
+			"if wrapping if (the very first if's Then containing a nested if)",
+			"R=echo; if true; then if true; then R=rm; fi; fi; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate",
+		},
+		{
+			"for wrapping case",
+			"R=echo; for i in 1; do case a in a) R=rm ;; esac; done; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate",
+		},
+		{
+			"while wrapping case",
+			"R=echo; while true; do case a in a) R=rm ;; esac; done; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate",
+		},
+		{
+			"if wrapping for",
+			"R=echo; if true; then for i in 1; do R=rm; done; fi; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate",
+		},
+		{
+			"case wrapping while",
+			"R=echo; case a in a) while true; do R=rm; break; done ;; esac; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate",
+		},
+		// --- DEPTH 3+: three (and four) levels of may-not-execute
+		// nesting, not merely a depth-2 patch -- pins composition as a
+		// property, not a special case for exactly two levels.
+		{
+			"depth 3: for -> case -> if",
+			"R=echo; for i in 1; do case a in a) if true; then R=rm; fi ;; esac; done; $R -rf /",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"depth 3: while -> if -> case",
+			"R=echo; while true; do if true; then case a in a) R=rm ;; esac; fi; done; $R -rf /",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"depth 3: if -> for -> while",
+			"R=echo; if true; then for i in 1; do while true; do R=rm; break; done; done; fi; $R -rf /",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"depth 4: for -> while -> case -> if",
+			"R=echo; for i in 1; do while true; do case a in a) if true; then R=rm; fi ;; esac; break; done; done; $R -rf /",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectMayNotExecuteBodyStillEscalatesAcrossNestedLevels
+// re-affirms the intra-body escalation property (already pinned at depth
+// 1 by TestEvaluateEffectMayNotExecuteBodyStillEscalatesWithinItself)
+// still holds when the assignment-and-use pair sits INSIDE a nested
+// may-not-execute body: composing the invalidation fix outward must
+// never interfere with a body's own internal resolution of its own
+// clone, at any depth.
+func TestEvaluateEffectMayNotExecuteBodyStillEscalatesAcrossNestedLevels(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"for wrapping if, assignment and use both inside the innermost if",
+			"for i in 1; do if true; then R=rm; $R -rf /; fi; done", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"depth 3 (for -> case -> if), assignment and use both inside the innermost if",
+			"for i in 1; do case a in a) if true; then R=rm; $R -rf /; fi ;; esac; done", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectMayNotExecuteDoesNotOverInvalidateSameValue pins the
+// PRECISION direction the audit's mutation-testing pass flagged: making
+// the delete in resolveMayNotExecute's invalidation loop UNCONDITIONAL
+// (deleting every key the child clone still holds, regardless of whether
+// its value actually changed) would fail no other test in this suite,
+// yet would be a real precision regression — a variable a may-not-execute
+// body reassigns to the EXACT SAME value it already held is not
+// ambiguous at all (whichever branch runs, or doesn't, the value is
+// identical either way), so it must NOT be invalidated, and a
+// command-word reference to it afterward must still resolve with full
+// confidence.
+func TestEvaluateEffectMayNotExecuteDoesNotOverInvalidateSameValue(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"for i in 1; do R=rm; done reassigns R to the SAME value R already had -- not ambiguous, must stay resolved",
+			"R=rm; for i in 1; do R=rm; done; $R -rf /", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"while true; do R=rm; break; done reassigns R to the SAME value -- same precision pin",
+			"R=rm; while true; do R=rm; break; done; $R -rf /", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
 // --- Resource guard (memory-amplification DoS): a case statement forks
 // one clone PER ITEM, so nesting many-branch case/if/loop constructs
 // multiplies (not merely adds to) total clone volume with nesting depth

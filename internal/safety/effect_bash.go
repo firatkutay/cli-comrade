@@ -446,17 +446,49 @@ func (r *bashResolver) resolveScopedStmts(stmts []*syntax.Stmt) (text string, in
 //     escalates: the child resolver's own R=rm is visible when it
 //     resolves $R, exactly as within any other statement list).
 //  2. INVALIDATE, in r.env itself, every variable name whose value in the
-//     clone differs from (or is newly present versus) r.env: such a
-//     variable's value after the construct is genuinely ambiguous — the
-//     body may not have run at all (old value, if any, still stands), or
-//     it may have run and produced the new one — and this analyzer must
-//     never silently resolve to either. Invalidating means DELETING the
-//     key entirely, so a later STRICT (command-word/assignment-value)
-//     reference to it fails closed exactly like any other genuinely
-//     unknown variable, while a later ARGUMENT-position reference merely
-//     resolves to "" and stays inert (see resolveWord's non-strict
-//     default) — the ordinary shape of "loop variable used only as an
-//     argument" does not start over-prompting.
+//     clone differs from r.env's: such a variable's value after the
+//     construct is genuinely ambiguous — the body may not have run at all
+//     (old value, if any, still stands), or it may have run and produced
+//     the new one — and this analyzer must never silently resolve to
+//     either. Invalidating means DELETING the key entirely, so a later
+//     STRICT (command-word/assignment-value) reference to it fails closed
+//     exactly like any other genuinely unknown variable, while a later
+//     ARGUMENT-position reference merely resolves to "" and stays inert
+//     (see resolveWord's non-strict default) — the ordinary shape of
+//     "loop variable used only as an argument" does not start
+//     over-prompting.
+//
+// THIS STEP MUST ITERATE r.env (the PARENT's keys), NOT clone (the
+// child's) — a follow-up security audit found and fixed a HIGH-severity
+// composition failure here: iterating clone only ever sees a key the
+// child ADDED or MODIFIED, never one an INNER resolveMayNotExecute
+// (deeper in the same body) already DELETED from ITS OWN parent (this
+// child) as ambiguous. At nesting depth >= 2 — `R=echo; for i in 1; do
+// if true; then R=rm; fi; done; $R -rf /` — the inner if's Then
+// invalidates R inside the outer for-loop's clone (deleting it there),
+// but the outer loop's old (buggy) `for name, newVal := range clone`
+// loop would then simply never see "R" at all (it is absent from clone,
+// not merely changed), so the OUTER invalidation never reran, and
+// r.env's original, now-stale "R=echo" survived unchanged — silently
+// keeping the WRONG value even though the ambiguity is exactly as real
+// two levels up as one. Iterating r.env instead makes a MISSING key in
+// clone (deleted at any inner depth) trigger invalidation exactly like a
+// CHANGED one — deletion IS the signal "this name is ambiguous", and it
+// must propagate outward through every enclosing resolveMayNotExecute
+// call, however many levels deep it originated. This composes at ANY
+// nesting depth by induction: each level's own invalidation pass only
+// ever needs to look at ITS OWN immediate child's clone versus its own
+// r.env, and correctly treats "value differs OR is now absent" as
+// ambiguous either way — so an inner level's deletion is indistinguishable
+// from (and handled identically to) a same-level modification, one level
+// up, all the way to the top.
+//
+// (A key the body ADDS that r.env never had is a different case, already
+// handled correctly by "value differs": clone[name] is compared against
+// a zero-value "" read from r.env via the map's comma-ok form below, so a
+// brand-new name is naturally invalidated too — but it was never in
+// r.env to begin with, so there is nothing for a caller outside this
+// function to observe changing.)
 //
 // If the child resolution is itself indeterminate, that propagates
 // directly (no invalidation step needed — the whole command already
@@ -472,8 +504,8 @@ func (r *bashResolver) resolveMayNotExecute(stmts []*syntax.Stmt) (text string, 
 	if indeterminate {
 		return "", true, reason
 	}
-	for name, newVal := range clone {
-		if oldVal, existed := r.env[name]; !existed || oldVal != newVal {
+	for name, oldVal := range r.env {
+		if newVal, stillPresent := clone[name]; !stillPresent || newVal != oldVal {
 			delete(r.env, name)
 		}
 	}

@@ -122,6 +122,22 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   kalıbı artık onaysız atlatabilir. Kabul edilen, kasıtlı bir değiş tokuş:
   host'a bağımlı gerçek bir syscall'ı kaldırmanın dürüst sonucu budur, bir
   gözden kaçırma değil.
+- **May-not-execute gövdelerdeki (invalidation) çözümler artık `destructive`
+  değil `elevated` tavanına takılıyor** — `internal/safety/effect_bash.go`'nun
+  `resolveMayNotExecute`'u, bir `while`/`for` gövdesi, atlanan bir `elif`,
+  ya da bir `if`/`case` dalı (hepsi "çalışabilir de çalışmayabilir de")
+  bir değişkeni yeniden atadığında, o değişkeni ÇÖZÜLEMEZ olarak işaretler
+  (eski değeri sessizce korumak yerine) — bu, gövde hiç çalışmasa bile eski
+  tehlikeli değerin sessizce ezilmesini önleyen (kritik bir güvenlik açığını
+  kapatan) sağlam davranıştır, ama dürüst maliyeti şudur: önceden gövde
+  hiç MODELLENMEDİĞİ için (main, `if`/`while`/`for`/`case`'i hiç anlamıyordu)
+  değişken ÖNCEKİ atamasından `RiskDestructive`'e kadar çözülebiliyorken,
+  artık aynı komut için üst sınır her zaman `RiskElevated`'dir (örn.
+  `R=rm; while false; do R=echo; done; $R -rf /` main'de `destructive`,
+  artık `elevated`). Nihai `Action` (`confirm`) değişmiyor, ama tilde
+  bulgusundaki AYNI `--yolo` etkileşimi burada da geçerli — ve kapsamı çok
+  daha geniş (auditor'un korpuslarında 83 vaka). Kabul edilen, kasıtlı bir
+  değiş tokuş: bir CRITICAL false-Allow'u kapatmanın dürüst sonucu budur.
 
 ### CLI bayrağı — `--profile`, ham-argümanlı komutlarda çalışmıyor (issue #27)
 
@@ -286,6 +302,24 @@ validation, redaction coverage, and the destructive-command classifier
   Accepted as a deliberate trade-off: this is the honest consequence of
   removing a real, host-dependent syscall from this analyzer's resolution
   path, not an oversight.
+- **A may-not-execute body's invalidated resolution now tops out at
+  `elevated`, not `destructive`** — `internal/safety/effect_bash.go`'s
+  `resolveMayNotExecute` marks a variable a `while`/`for` body, a skipped
+  `elif`, or an `if`/`case` branch (all "may or may not actually run")
+  reassigns as UNRESOLVABLE rather than silently keeping its prior value —
+  the sound fix for a CRITICAL false-Allow (a body that never runs could
+  otherwise overwrite an already-dangerous value with a benign one). The
+  honest cost: since the body used to be completely unmodeled (main never
+  understood `if`/`while`/`for`/`case` at all), the variable's PRIOR
+  assignment could resolve all the way to `RiskDestructive`; now the same
+  command caps at `RiskElevated` (e.g. `R=rm; while false; do R=echo;
+  done; $R -rf /` was `destructive` on main, is now `elevated`). The
+  resulting `Action` (`confirm`) is unchanged, but the SAME `--yolo`
+  interaction documented for the tilde entry above applies here too — and
+  this class is far larger (83 cases across the audit's corpora, vs. the
+  tilde entry's narrower scope). Accepted as a deliberate trade-off: this
+  is the honest consequence of closing a CRITICAL false-Allow, not an
+  oversight.
 
 ### CLI flag — `--profile` doesn't work on raw-arg commands (issue #27)
 

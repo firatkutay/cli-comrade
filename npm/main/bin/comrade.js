@@ -8,7 +8,7 @@ const { lookupPlatformPackage, supportedPlatformList } = require('./platform-map
 
 const OTHER_INSTALL_CHANNELS = [
   '  - install script: curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh',
-  '  - Homebrew (macOS/Linux): brew install --cask firatkutay/tap/comrade',
+  '  - Homebrew (macOS/Linux): brew install firatkutay/tap/comrade',
   '  - Scoop (Windows):        scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket && scoop install comrade',
   '  - winget (Windows):       winget install cli.comrade',
   '  - .deb/.rpm packages:     https://github.com/firatkutay/cli-comrade/releases',

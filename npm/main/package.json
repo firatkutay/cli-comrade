@@ -1,0 +1,41 @@
+{
+  "name": "cli-comrade",
+  "version": "0.0.0-0",
+  "description": "Cross-platform AI CLI companion for the terminal (TR/EN) -- prebuilt `comrade` binary, no build toolchain required.",
+  "keywords": [
+    "cli",
+    "ai",
+    "assistant",
+    "terminal",
+    "shell",
+    "command-line",
+    "cross-platform",
+    "turkish",
+    "tr",
+    "en"
+  ],
+  "homepage": "https://github.com/firatkutay/cli-comrade",
+  "bugs": "https://github.com/firatkutay/cli-comrade/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firatkutay/cli-comrade.git"
+  },
+  "license": "MIT",
+  "author": "Fırat Kutay",
+  "bin": {
+    "comrade": "bin/comrade.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "optionalDependencies": {
+    "@firatkutay/comrade-linux-x64": "0.0.0-0",
+    "@firatkutay/comrade-linux-arm64": "0.0.0-0",
+    "@firatkutay/comrade-darwin-x64": "0.0.0-0",
+    "@firatkutay/comrade-darwin-arm64": "0.0.0-0",
+    "@firatkutay/comrade-win32-x64": "0.0.0-0"
+  }
+}

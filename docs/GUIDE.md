@@ -54,6 +54,16 @@ scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
 scoop install comrade
 ```
 
+Node.js/npm zaten kuruluysa (⏳ beklemede — henüz yayınlanmadı, bkz.
+[docs/INSTALL.md](INSTALL.md)):
+
+```sh
+npm install -g cli-comrade
+```
+
+Bu, önceden derlenmiş binary'yi kurar — derleme araç zinciri gerekmez ve
+`npm ci --ignore-scripts` ile de çalışır.
+
 Script'ler indirdiği paketi kurmadan **önce** checksum'a karşı doğrular;
 kurulum dizini `PATH`'inizde değilse otomatik olarak ekler (yeni bir
 terminal gerekir). Diğer kanallar (.deb/.rpm, ham arşivler, kaynaktan
@@ -349,6 +359,16 @@ brew install firatkutay/tap/comrade
 scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
 scoop install comrade
 ```
+
+Already have Node.js/npm (⏳ pending — not published yet, see
+[docs/INSTALL.md](INSTALL.md)):
+
+```sh
+npm install -g cli-comrade
+```
+
+This installs a prebuilt binary — no build toolchain required, and it
+works with `npm ci --ignore-scripts` too.
 
 The scripts verify the downloaded package against its checksum **before**
 installing anything, and add the install directory to your `PATH`

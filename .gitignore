@@ -3,6 +3,14 @@
 /comrade.exe
 /dist/
 
+# npm distribution: assembled, ready-to-publish package directories are a
+# build artifact of scripts/build-npm-packages.sh (from goreleaser's
+# dist/ output + a version) -- never hand-edited, never committed. Any
+# node_modules would only ever appear here transiently during ad-hoc
+# local testing -- the committed npm/ tree has no dependencies of its own.
+/npm/packages/
+node_modules/
+
 # CI-generated SBOMs (release.yml's anchore/sbom-action step writes its
 # output to $RUNNER_TEMP, outside this workspace, specifically to avoid
 # this — but this pattern is a belt-and-suspenders guard: if that step's

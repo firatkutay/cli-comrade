@@ -35,6 +35,62 @@ func TestFormatUSDFourDecimalPlaces(t *testing.T) {
 	assert.Equal(t, "$12.3457", formatUSD(12.34567))
 }
 
+// TestNewUsageObserverFeedsBothSessionAndTurnTallies proves runChat's
+// extracted dual-tally observer (chat.go's own inline closure before this
+// extraction) records every event into BOTH tallies — this is the PTY-free
+// unit test the previous inline closure could not get, since it was only
+// ever reachable through a real bubbletea program.
+func TestNewUsageObserverFeedsBothSessionAndTurnTallies(t *testing.T) {
+	session := newUsageTally()
+	turn := newUsageTally()
+	observer := newUsageObserver(session, turn)
+
+	observer(llm.UsageEvent{Provider: "anthropic", Model: "claude-haiku-4-5", Usage: llm.Usage{InputTokens: 100, OutputTokens: 50}})
+
+	sessionSnap := session.snapshot()
+	turnSnap := turn.snapshot()
+	assert.Equal(t, 1, sessionSnap.requests)
+	assert.Equal(t, 100, sessionSnap.inTok)
+	assert.Equal(t, 1, turnSnap.requests)
+	assert.Equal(t, 100, turnSnap.inTok)
+}
+
+// TestNewUsageObserverSessionAccumulatesAcrossTurnResets proves the
+// per-turn/session-total split runChat relies on: turn is reset between
+// dispatches (chatController.turnTally's own doc comment) while session
+// keeps accumulating — so a later turn's snapshot reflects ONLY that
+// turn's events, but session's snapshot still reflects every event ever
+// recorded through this same observer.
+func TestNewUsageObserverSessionAccumulatesAcrossTurnResets(t *testing.T) {
+	session := newUsageTally()
+	turn := newUsageTally()
+	observer := newUsageObserver(session, turn)
+
+	observer(llm.UsageEvent{Provider: "anthropic", Model: "claude-haiku-4-5", Usage: llm.Usage{InputTokens: 100, OutputTokens: 50}})
+	turn.reset() // simulates chatdispatch.go resetting turnTally before the next line
+	observer(llm.UsageEvent{Provider: "anthropic", Model: "claude-haiku-4-5", Usage: llm.Usage{InputTokens: 10, OutputTokens: 5}})
+
+	sessionSnap := session.snapshot()
+	turnSnap := turn.snapshot()
+	assert.Equal(t, 2, sessionSnap.requests, "session must accumulate across both turns")
+	assert.Equal(t, 110, sessionSnap.inTok)
+	assert.Equal(t, 1, turnSnap.requests, "turn must reflect only the events since its last reset")
+	assert.Equal(t, 10, turnSnap.inTok)
+}
+
+// TestNewUsageObserverNoUsageLeavesBothTalliesAtZero proves the no-usage
+// case: an observer that is never invoked (e.g. a run that never reached
+// the LLM) leaves both tallies at their zero-request state, matching
+// printUsageSummary's own "zero requests is a no-op" contract.
+func TestNewUsageObserverNoUsageLeavesBothTalliesAtZero(t *testing.T) {
+	session := newUsageTally()
+	turn := newUsageTally()
+	_ = newUsageObserver(session, turn)
+
+	assert.Equal(t, 0, session.snapshot().requests)
+	assert.Equal(t, 0, turn.snapshot().requests)
+}
+
 func TestUsageTallyRecordSumsAcrossMultipleEvents(t *testing.T) {
 	tally := newUsageTally()
 	tally.record(llm.UsageEvent{Provider: "anthropic", Model: "claude-haiku-4-5", Usage: llm.Usage{InputTokens: 100, OutputTokens: 50}})

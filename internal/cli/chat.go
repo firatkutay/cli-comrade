@@ -183,10 +183,7 @@ func runChat(cmd *cobra.Command, newLoader loaderFactory, isTerminal isTerminalF
 	turnTally := newUsageTally()
 	showUsage := cfg.General.ShowUsage || usageFlag
 
-	client, err := buildLLMClient(cmd, cfg, tr, func(ev llm.UsageEvent) {
-		sessionTally.record(ev)
-		turnTally.record(ev)
-	})
+	client, err := buildLLMClient(cmd, cfg, tr, newUsageObserver(sessionTally, turnTally))
 	if err != nil {
 		return fmt.Errorf("comrade chat: %w", err)
 	}

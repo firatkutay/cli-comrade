@@ -18,7 +18,7 @@ import (
 func KeyCheck(ctx context.Context, deps Deps) Result {
 	provider := deps.Cfg.LLM.Provider
 	if deps.ConfigErr != nil || provider == "" {
-		return Result{Severity: SeveritySkip}
+		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorSkipConfigUnavailable}
 	}
 	if provider == "ollama" {
 		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorKeySkipOllama}
@@ -29,7 +29,7 @@ func KeyCheck(ctx context.Context, deps Deps) Result {
 			return Result{Severity: SeverityOK, Summary: i18n.MsgDoctorKeyFound, SummaryArgs: []any{provider, string(source)}}
 		}
 	}
-	if envVar, ok := firstSetEnvVar(deps.Getenv, provider); ok {
+	if envVar, ok := FirstSetEnvVar(deps.Getenv, provider); ok {
 		return Result{Severity: SeverityOK, Summary: i18n.MsgDoctorKeyFound, SummaryArgs: []any{provider, envVar}}
 	}
 
@@ -41,13 +41,21 @@ func KeyCheck(ctx context.Context, deps Deps) Result {
 	}
 }
 
-// firstSetEnvVar returns the first of provider's known environment
+// FirstSetEnvVar returns the first of provider's known environment
 // variables (llm.ProviderEnvVars, in llm.ResolveEnvKey's own priority
-// order) that is actually set, per deps' own injectable getenv — never
-// the value itself. Mirrors internal/cli/auth.go's firstSetEnvVar exactly
+// order) that is actually set, per getenv — never the value itself.
+// Mirrors internal/cli/auth.go's own unexported firstSetEnvVar exactly
 // (kept as its own small copy for the same import-cycle reason
-// check_shellhook.go's readFileOrEmpty documents).
-func firstSetEnvVar(getenv func(string) string, provider string) (string, bool) {
+// check_shellhook.go's ReadFileOrEmpty documents: internal/cli imports
+// internal/doctor for the check registry, so internal/doctor cannot
+// import internal/cli back). Exported (unlike this package's other
+// small helpers) SOLELY so internal/cli's own
+// TestFirstSetEnvVarMatchesDoctorMirror (doctor_mirror_test.go) can call
+// both copies side by side and fail CI the moment either one's behavior
+// diverges from the other — see that test's own doc comment for why a
+// behavioral-equivalence test, not a shared package, is this pair's
+// chosen drift guard.
+func FirstSetEnvVar(getenv func(string) string, provider string) (string, bool) {
 	if getenv == nil {
 		return "", false
 	}

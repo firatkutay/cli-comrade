@@ -19,6 +19,10 @@ func TestKeyCheckSkipsOllama(t *testing.T) {
 	assert.Equal(t, i18n.MsgDoctorKeySkipOllama, result.Summary)
 }
 
+// TestKeyCheckSkipsWhenConfigFailedToLoad proves the config-load-failure
+// path renders a real, translatable Summary — not the blank-looking
+// zero-value Result a bare Result{Severity: SeveritySkip} previously
+// produced (issue #16 follow-up).
 func TestKeyCheckSkipsWhenConfigFailedToLoad(t *testing.T) {
 	deps := baseDeps()
 	deps.Cfg.LLM.Provider = "anthropic"
@@ -27,6 +31,22 @@ func TestKeyCheckSkipsWhenConfigFailedToLoad(t *testing.T) {
 	result := KeyCheck(context.Background(), deps)
 
 	assert.Equal(t, SeveritySkip, result.Severity)
+	assert.Equal(t, i18n.MsgDoctorSkipConfigUnavailable, result.Summary)
+}
+
+// TestKeyCheckSkipsWithMessageWhenProviderUnresolved proves the SAME
+// generic "config unavailable" Summary fires when Cfg.LLM.Provider is
+// empty even without a non-nil ConfigErr (the zero-value config.Config a
+// config-load failure leaves Deps.Cfg at — see internal/cli/doctor.go's
+// own doc comment on why this branch checks both).
+func TestKeyCheckSkipsWithMessageWhenProviderUnresolved(t *testing.T) {
+	deps := baseDeps()
+	deps.Cfg.LLM.Provider = ""
+
+	result := KeyCheck(context.Background(), deps)
+
+	assert.Equal(t, SeveritySkip, result.Severity)
+	assert.Equal(t, i18n.MsgDoctorSkipConfigUnavailable, result.Summary)
 }
 
 func TestKeyCheckOKWhenStoreHasKey(t *testing.T) {

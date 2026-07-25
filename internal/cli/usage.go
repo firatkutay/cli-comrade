@@ -51,6 +51,24 @@ func newUsageTally() *usageTally {
 	return &usageTally{}
 }
 
+// newUsageObserver returns an llm.UsageEvent observer that records every
+// event into BOTH session and turn, in that order — extracted out of
+// runChat's own inline closure (chat.go) into this named, standalone
+// function purely so it is unit-testable PTY-free: chat's dual-tally
+// wiring is otherwise only reachable through a real bubbletea program,
+// which chat_test.go deliberately never constructs (see
+// requireInteractiveTTY's guard). Callers reset turn between dispatches
+// (chatController.turnTally's own doc comment) so a per-turn snapshot
+// reflects only that turn's events while session keeps accumulating
+// across the whole run — this function itself is agnostic to that reset
+// timing, it only ever forwards ev to both tallies unconditionally.
+func newUsageObserver(session, turn *usageTally) func(llm.UsageEvent) {
+	return func(ev llm.UsageEvent) {
+		session.record(ev)
+		turn.record(ev)
+	}
+}
+
 // record is usageTally's llm.UsageEvent observer — pass t.record
 // directly to llm.WithUsageObserver. See usage.go's package doc comment
 // (WithUsageObserver) for why this must stay cheap and non-blocking: it
@@ -65,7 +83,7 @@ func (t *usageTally) record(ev llm.UsageEvent) {
 	t.provider = ev.Provider
 	t.model = ev.Model
 
-	cost, ok := llm.EstimateUSD(ev.Provider, ev.Model, ev.Usage)
+	cost, ok := llm.EstimateUSD(ev.Provider, ev.Model, ev.BaseURL, ev.Usage)
 	if t.requests == 1 {
 		t.costKnown = ok
 	} else if !ok {

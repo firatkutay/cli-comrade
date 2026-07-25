@@ -131,6 +131,17 @@ type Deps struct {
 	// Store is the credential store the key/reach/baseurl checks read
 	// from — nil is treated as "no stored credential", never a panic.
 	Store secrets.Store
+	// KeychainAvailable probes whether a real, reachable OS keychain
+	// backend is available — ConfigCheck's sole use of it. Normally
+	// secrets.KeychainAvailable itself, injected here (like every other
+	// OS/network touchpoint on this struct) rather than ConfigCheck
+	// calling that package-level function directly, so its test can fake
+	// "keychain available"/"keychain unavailable" without going through
+	// secrets' own global keyring.MockInit/MockInitWithError test seam.
+	// nil falls back to secrets.KeychainAvailable itself (ConfigCheck's
+	// own defensive default), matching every other nil-is-safe seam on
+	// this struct (Store, Run, LivePing).
+	KeychainAvailable func() bool
 	// Getenv, LookPath, Executable, GOOS mirror
 	// context.Collector/shellinit.RCPath's own injectable OS-environment
 	// seams, so every check is tests without depending on the real

@@ -208,6 +208,37 @@ func TestNewWithUsageObserverFiresThroughRealBuiltClient(t *testing.T) {
 	assert.Equal(t, "qwen-max", events[0].Model)
 	assert.Equal(t, 9, events[0].Usage.InputTokens)
 	assert.Equal(t, 4, events[0].Usage.OutputTokens)
+	assert.Equal(t, server.URL, events[0].BaseURL, "UsageEvent.BaseURL must carry the exact endpoint this openai_compat attempt was built against")
+}
+
+// TestNewClientAttemptBaseURLEmptyForNonOpenAICompatProvider proves
+// clientAttempt.baseURL (and therefore UsageEvent.BaseURL, via fireUsage)
+// stays empty for every provider other than openai_compat — there is no
+// equivalent endpoint ambiguity for anthropic/google/ollama, so
+// EstimateUSD's base_url gate must never accidentally fire for them.
+func TestNewClientAttemptBaseURLEmptyForNonOpenAICompatProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.LLM.Provider = "anthropic"
+
+	client, err := New(cfg, WithKeyResolver(func(string) (string, error) { return "sk-test", nil }))
+	require.NoError(t, err)
+	require.Len(t, client.attempts, 1)
+	assert.Empty(t, client.attempts[0].baseURL, "anthropic attempts must never populate baseURL")
+}
+
+// TestNewClientAttemptBaseURLPopulatedForOpenAICompat proves New()
+// records cfg.LLM.OpenAICompat.BaseURL onto the openai_compat attempt
+// itself — the source fireUsage copies onto every UsageEvent it fires
+// for that attempt.
+func TestNewClientAttemptBaseURLPopulatedForOpenAICompat(t *testing.T) {
+	cfg := config.Default()
+	cfg.LLM.Provider = "openai_compat"
+	cfg.LLM.OpenAICompat.BaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+	client, err := New(cfg, WithKeyResolver(func(string) (string, error) { return "sk-test", nil }))
+	require.NoError(t, err)
+	require.Len(t, client.attempts, 1)
+	assert.Equal(t, "https://dashscope.aliyuncs.com/compatible-mode/v1", client.attempts[0].baseURL)
 }
 
 // TestNewWithUsageObserverNilOptionIsSafe mirrors

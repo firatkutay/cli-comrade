@@ -26,6 +26,12 @@ type clientAttempt struct {
 	providerName string
 	provider     Provider
 	model        string
+	// baseURL is the endpoint this attempt's connector was built against
+	// — populated only for openai_compat (empty for every other
+	// provider), and carried through to fireUsage's UsageEvent.BaseURL
+	// purely for EstimateUSD's base_url pricing gate (pricing.go); no
+	// other consumer needs it.
+	baseURL string
 }
 
 // Client is the single public entry point into this package's connectors.
@@ -134,7 +140,11 @@ func New(cfg config.Config, opts ...Option) (*Client, error) {
 		if err != nil {
 			return nil, err
 		}
-		attempts = append(attempts, clientAttempt{providerName: providerName, provider: provider, model: resolvedModel})
+		attempt := clientAttempt{providerName: providerName, provider: provider, model: resolvedModel}
+		if providerName == "openai_compat" {
+			attempt.baseURL = cfg.LLM.OpenAICompat.BaseURL
+		}
+		attempts = append(attempts, attempt)
 	}
 
 	return &Client{
@@ -344,6 +354,7 @@ func (c *Client) fireUsage(attempt clientAttempt, resp CompletionResponse, laten
 	c.usageObserver(UsageEvent{
 		Provider: attempt.providerName,
 		Model:    model,
+		BaseURL:  attempt.baseURL,
 		Usage:    resp.Usage,
 		Latency:  latency,
 	})

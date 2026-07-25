@@ -49,7 +49,7 @@ func ShellHookCheck(ctx context.Context, deps Deps) Result {
 		}
 	}
 
-	existing, err := readFileOrEmpty(path)
+	existing, err := ReadFileOrEmpty(path)
 	if err != nil {
 		return Result{Severity: SeverityWarn, Summary: i18n.MsgDoctorShellHookUnresolved, SummaryArgs: []any{shellName}, Detail: err.Error()}
 	}
@@ -70,12 +70,20 @@ func ShellHookCheck(ctx context.Context, deps Deps) Result {
 	}
 }
 
-// readFileOrEmpty reads path's content, treating a missing file as empty
+// ReadFileOrEmpty reads path's content, treating a missing file as empty
 // content rather than an error — mirrors internal/cli/init.go's own
-// readFileOrEmpty exactly (kept as a small, separate copy here rather
-// than an internal/cli import, which would create an import cycle:
-// internal/cli already imports internal/doctor for the check registry).
-func readFileOrEmpty(path string) (string, error) {
+// unexported readFileOrEmpty exactly (kept as a small, separate copy
+// here rather than an internal/cli import, which would create an import
+// cycle: internal/cli already imports internal/doctor for the check
+// registry). Exported (unlike this package's other small helpers) SOLELY
+// so internal/cli's own TestReadFileOrEmptyMatchesDoctorMirror
+// (doctor_mirror_test.go) can call both copies side by side and fail CI
+// the moment either one's behavior diverges from the other — a
+// same-package "shared home" is not possible here without recreating the
+// exact import cycle this duplication exists to avoid, so a
+// behavioral-equivalence pinning test is this pair's chosen drift guard
+// instead (see that test file's own doc comment).
+func ReadFileOrEmpty(path string) (string, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is a well-known shell rc/profile location resolved by shellinit.RCPath, not attacker-controlled input
 	if err != nil {
 		if os.IsNotExist(err) {

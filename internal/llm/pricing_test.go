@@ -32,25 +32,25 @@ func TestPricingTableEntriesAreValid(t *testing.T) {
 }
 
 func TestEstimateUSDOllamaIsAlwaysZeroKnown(t *testing.T) {
-	cost, ok := EstimateUSD("ollama", "llama3.1", Usage{InputTokens: 10_000_000, OutputTokens: 10_000_000})
+	cost, ok := EstimateUSD("ollama", "llama3.1", "", Usage{InputTokens: 10_000_000, OutputTokens: 10_000_000})
 	assert.True(t, ok)
 	assert.Equal(t, 0.0, cost)
 }
 
 func TestEstimateUSDUnknownProviderIsUnknown(t *testing.T) {
-	cost, ok := EstimateUSD("openai_compat", "some-unpriced-local-model", Usage{InputTokens: 1000, OutputTokens: 1000})
+	cost, ok := EstimateUSD("openai_compat", "some-unpriced-local-model", config.Default().LLM.OpenAICompat.BaseURL, Usage{InputTokens: 1000, OutputTokens: 1000})
 	assert.False(t, ok)
 	assert.Equal(t, 0.0, cost)
 }
 
 func TestEstimateUSDUnknownModelUnderKnownProviderIsUnknown(t *testing.T) {
-	_, ok := EstimateUSD("anthropic", "some-future-model-no-row-covers", Usage{InputTokens: 100, OutputTokens: 100})
+	_, ok := EstimateUSD("anthropic", "some-future-model-no-row-covers", "", Usage{InputTokens: 100, OutputTokens: 100})
 	assert.False(t, ok)
 }
 
 func TestEstimateUSDExactPriceForKnownModel(t *testing.T) {
 	// claude-haiku-4-5: $1/MTok in, $5/MTok out.
-	cost, ok := EstimateUSD("anthropic", "claude-haiku-4-5", Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000})
+	cost, ok := EstimateUSD("anthropic", "claude-haiku-4-5", "", Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000})
 	assert.True(t, ok)
 	assert.InDelta(t, 6.0, cost, 1e-9)
 }
@@ -59,7 +59,7 @@ func TestEstimateUSDLongestPrefixWinsOverShorterOne(t *testing.T) {
 	// "claude-opus-4-8" ($5/$25) must be matched, not any hypothetical
 	// shorter "claude-opus-4" prefix — bestPriceMatch always prefers the
 	// longest matching modelPrefix.
-	cost, ok := EstimateUSD("anthropic", "claude-opus-4-8", Usage{InputTokens: 1_000_000, OutputTokens: 0})
+	cost, ok := EstimateUSD("anthropic", "claude-opus-4-8", "", Usage{InputTokens: 1_000_000, OutputTokens: 0})
 	assert.True(t, ok)
 	assert.InDelta(t, 5.0, cost, 1e-9)
 }
@@ -68,13 +68,36 @@ func TestEstimateUSDMatchesVersionedSuffixByPrefix(t *testing.T) {
 	// A dated/versioned wire model name (e.g. a future
 	// "claude-haiku-4-5-20260901"-shaped alias) must still match its base
 	// row by prefix, not require an exact string match.
-	cost, ok := EstimateUSD("anthropic", "claude-haiku-4-5-20260901", Usage{InputTokens: 1_000_000, OutputTokens: 0})
+	cost, ok := EstimateUSD("anthropic", "claude-haiku-4-5-20260901", "", Usage{InputTokens: 1_000_000, OutputTokens: 0})
 	assert.True(t, ok)
 	assert.InDelta(t, 1.0, cost, 1e-9)
 }
 
 func TestEstimateUSDZeroUsageIsZeroCostButKnown(t *testing.T) {
-	cost, ok := EstimateUSD("google", "gemini-3.5-flash", Usage{})
+	cost, ok := EstimateUSD("google", "gemini-3.5-flash", "", Usage{})
 	assert.True(t, ok)
+	assert.Equal(t, 0.0, cost)
+}
+
+// TestEstimateUSDOpenAICompatPricedWhenBaseURLIsOpenAIDefault proves the
+// happy path of the base_url pricing gate: openai_compat's default model,
+// served through the shipped OpenAI default base_url, is priced from
+// pricingTable exactly as before this gate was added.
+func TestEstimateUSDOpenAICompatPricedWhenBaseURLIsOpenAIDefault(t *testing.T) {
+	cost, ok := EstimateUSD("openai_compat", "gpt-5.4-mini", config.Default().LLM.OpenAICompat.BaseURL, Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000})
+	assert.True(t, ok)
+	assert.InDelta(t, 5.25, cost, 1e-9)
+}
+
+// TestEstimateUSDOpenAICompatUnknownWhenBaseURLIsNonOpenAI is this
+// follow-up's load-bearing regression test: a NON-OpenAI gateway (e.g. a
+// Qwen-style endpoint) serving a model whose name happens to start with
+// "gpt-5.4-mini" must NOT be priced from OpenAI's own rate — a wrong
+// number is worse than no number, so this must report cost-unknown even
+// though the model name alone would otherwise match pricingTable's
+// openai_compat row.
+func TestEstimateUSDOpenAICompatUnknownWhenBaseURLIsNonOpenAI(t *testing.T) {
+	cost, ok := EstimateUSD("openai_compat", "gpt-5.4-mini", "https://dashscope.aliyuncs.com/compatible-mode/v1", Usage{InputTokens: 1_000_000, OutputTokens: 1_000_000})
+	assert.False(t, ok)
 	assert.Equal(t, 0.0, cost)
 }

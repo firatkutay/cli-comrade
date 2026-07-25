@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -311,6 +313,83 @@ func TestNewAllowsPublicHTTPSBaseURLForActiveProvider(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, client.attempts, 1)
+}
+
+// TestNewRejectsMetadataBaseURLFromHandEditedActiveProfile is GitHub issue
+// #19 item 2's end-to-end pin: a hand-edited ACTIVE profile carrying a
+// reject-class base_url — bypassing `comrade config profile set`'s own
+// ValidateProfileKey entirely (see
+// config.TestValidateProfileKeyEnforcesBaseURLRulesInsideProfile), exactly
+// like a hand-edited top-level value bypasses `comrade config set`'s
+// Validate — must still never reach a working provider. The protection
+// already exists structurally: buildProvider's CheckBaseURL call reads
+// the fully RESOLVED cfg (profile overlay already applied by
+// config.Loader.Load), not the file's own top-level value. This test
+// proves the whole chain end to end: hand-edited file -> profile overlay
+// -> resolved cfg -> llm.New refuses — the same chain
+// TestLoaderWarnsOnMetadataBaseURLForActiveProvider (internal/config)
+// proves only warns at Load() time for the file's own top-level value.
+func TestNewRejectsMetadataBaseURLFromHandEditedActiveProfile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	toml := "[general]\n" +
+		"profile = \"work\"\n\n" +
+		"[llm]\n" +
+		"provider = \"anthropic\"\n\n" +
+		"[profiles.work]\n" +
+		"llm.provider = \"openai_compat\"\n\n" +
+		"[profiles.work.llm.openai_compat]\n" +
+		"base_url = \"http://169.254.169.254/latest/meta-data/\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0o600))
+
+	loader, err := config.NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err, "Load() must never fail on a bad profile-scoped base_url either — see validateLoadedConfig")
+	require.Equal(t, "openai_compat", cfg.LLM.Provider, "precondition: the profile overlay must have activated openai_compat")
+	require.Equal(t, "http://169.254.169.254/latest/meta-data/", cfg.LLM.OpenAICompat.BaseURL, "precondition: the profile's base_url must have overlaid the file's clean top-level value")
+
+	_, err = New(*cfg)
+
+	require.Error(t, err)
+	var invalid *config.InvalidValueError
+	require.ErrorAs(t, err, &invalid)
+	assert.Equal(t, config.ReasonMetadataOrLinkLocal, invalid.Reason)
+	assert.Equal(t, "llm.openai_compat.base_url", invalid.Key)
+}
+
+// TestNewRejectsMetadataBaseURLFromEnvActivatedProfile is
+// TestNewRejectsMetadataBaseURLFromHandEditedActiveProfile's cheap
+// env-activated variant: the profile is defined in the file but never
+// named by the file's own general.profile — COMRADE_GENERAL_PROFILE alone
+// activates it (GitHub issue #19's real bug) — and the SAME reject-class
+// base_url inside it must still refuse Client construction end to end.
+func TestNewRejectsMetadataBaseURLFromEnvActivatedProfile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	toml := "[llm]\n" +
+		"provider = \"anthropic\"\n\n" +
+		"[profiles.work]\n" +
+		"llm.provider = \"openai_compat\"\n\n" +
+		"[profiles.work.llm.openai_compat]\n" +
+		"base_url = \"http://169.254.169.254/latest/meta-data/\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0o600))
+	t.Setenv("COMRADE_GENERAL_PROFILE", "work")
+
+	loader, err := config.NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err, "Load() must never fail on a bad profile-scoped base_url either — see validateLoadedConfig")
+	require.Equal(t, "openai_compat", cfg.LLM.Provider, "precondition: COMRADE_GENERAL_PROFILE must have activated the overlay")
+	require.Equal(t, "work", cfg.General.Profile, "precondition: cfg.General.Profile must agree the overlay came from \"work\"")
+
+	_, err = New(*cfg)
+
+	require.Error(t, err)
+	var invalid *config.InvalidValueError
+	require.ErrorAs(t, err, &invalid)
+	assert.Equal(t, config.ReasonMetadataOrLinkLocal, invalid.Reason)
+	assert.Equal(t, "llm.openai_compat.base_url", invalid.Key)
 }
 
 // TestNewOpenAICompatCompleteHitsConfiguredBaseURLNotOpenAI locks the

@@ -184,6 +184,78 @@ func TestConfigProfileEnvOverridesActiveProfile(t *testing.T) {
 	assert.Equal(t, "openai_compat", strings.TrimSpace(stdout))
 }
 
+// TestConfigProfileGenericEnvOverridesActiveProfile is
+// TestConfigProfileEnvOverridesActiveProfile's counterpart via the generic
+// COMRADE_GENERAL_PROFILE form instead of the canonical COMRADE_PROFILE —
+// GitHub issue #19's real bug, at the actual command surface.
+func TestConfigProfileGenericEnvOverridesActiveProfile(t *testing.T) {
+	withIsolatedConfigDir(t)
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "set", "work", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	t.Setenv("COMRADE_GENERAL_PROFILE", "work")
+
+	stdout, _, err := execRootSplit(t, "dev", "config", "get", "llm.provider")
+	require.NoError(t, err)
+	assert.Equal(t, "openai_compat", strings.TrimSpace(stdout))
+}
+
+// TestConfigProfileShowWithFlagTargetsAndWarnsForTheForcedActiveProfile is
+// the independent review's Finding 6 pinned at the actual command surface:
+// `profile show` (no name arg) must target the profile ACTUALLY in force
+// for this invocation — including a --profile flag override, not just the
+// persisted general.profile — and fire (or withhold) the mandatory P-5
+// safety-override warning for that SAME profile. Before the fix,
+// cfg.General.Profile ignored l.profileOverride entirely, so this
+// incorrectly targeted/warned about the persisted "personal" profile
+// instead of the flag-forced "work" one.
+func TestConfigProfileShowWithFlagTargetsAndWarnsForTheForcedActiveProfile(t *testing.T) {
+	withIsolatedConfigDir(t)
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "personal")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "set", "work", "safety.confirm_destructive", "false")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "use", "personal")
+	require.NoError(t, err)
+
+	// --profile work must target "work" (the profile in force for this
+	// invocation), not the persisted "personal", and must warn on work's
+	// own safety.confirm_destructive override.
+	stdout, stderr, err := execRootSplit(t, "dev", "--profile", "work", "config", "profile", "show")
+	require.NoError(t, err)
+	assert.Contains(t, stdout, `profile "work" (active)`)
+	assert.Contains(t, stderr, "safety.confirm_destructive")
+
+	// Without the flag, the persisted "personal" is still targeted, and
+	// must NOT warn — it overrides no safety.* key at all.
+	stdout, stderr, err = execRootSplit(t, "dev", "config", "profile", "show")
+	require.NoError(t, err)
+	assert.Contains(t, stdout, `profile "personal" (active)`)
+	assert.Empty(t, stderr)
+}
+
+// TestConfigProfileListMarksFlagActivatedProfile is
+// TestConfigProfileListMarksActiveProfileOnly's counterpart with a
+// --profile override in play: `profile list`'s "*" marker must follow the
+// profile actually in force, not the persisted general.profile.
+func TestConfigProfileListMarksFlagActivatedProfile(t *testing.T) {
+	withIsolatedConfigDir(t)
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "personal")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "use", "personal")
+	require.NoError(t, err)
+
+	stdout, _, err := execRootSplit(t, "dev", "--profile", "work", "config", "profile", "list")
+	require.NoError(t, err)
+	assertProfileListRow(t, stdout, "work", "*", 0)
+	assertProfileListRow(t, stdout, "personal", "", 0)
+}
+
 // TestConfigProfileUseWarnsOnSafetyOverride is P-5's pinned regression
 // proof: `profile use` must print a highlighted warning whenever the
 // activated profile overrides any safety.* key.

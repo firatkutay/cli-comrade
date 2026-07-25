@@ -1,0 +1,28 @@
+{
+  "name": "@firatkutay/comrade-PLATFORM",
+  "version": "0.0.0-0",
+  "description": "Prebuilt `comrade` binary for PLATFORM. Installed automatically as an optionalDependency of `cli-comrade` -- do not install this package directly.",
+  "homepage": "https://github.com/firatkutay/cli-comrade",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firatkutay/cli-comrade.git"
+  },
+  "license": "MIT",
+  "author": "Fırat Kutay",
+  "publishConfig": {
+    "access": "public"
+  },
+  "os": [
+    "PLATFORM_OS"
+  ],
+  "cpu": [
+    "PLATFORM_CPU"
+  ],
+  "bin": {
+    "comrade": "bin/PLATFORM_BIN"
+  },
+  "files": [
+    "bin/",
+    "LICENSE"
+  ]
+}

@@ -4,10 +4,17 @@ GOPATH_BIN             := $(shell go env GOPATH)/bin
 GOLANGCI_LINT          := $(GOPATH_BIN)/golangci-lint
 GORELEASER             := $(GOPATH_BIN)/goreleaser
 
-BINARY   := comrade
-VERSION  ?= dev
-LDFLAGS  := -X main.version=$(VERSION)
-DIST_DIR := dist
+BINARY      := comrade
+VERSION     ?= dev
+LDFLAGS     := -X main.version=$(VERSION)
+DIST_DIR    := dist
+NPM_OUT_DIR := npm/packages
+
+# NPM_VERSION deliberately does NOT default to $(VERSION) ("dev" is not a
+# valid semver and scripts/build-npm-packages.sh rejects it on purpose —
+# npm packages must never be silently assembled under a guessed version).
+# Pass it explicitly: `make npm-package NPM_VERSION=0.4.2`.
+NPM_VERSION ?=
 
 CROSS_TARGETS := \
 	linux/amd64 \
@@ -16,7 +23,8 @@ CROSS_TARGETS := \
 	darwin/arm64 \
 	windows/amd64
 
-.PHONY: build test lint vet cross tools clean release-check release-snapshot coverage-check
+.PHONY: build test lint vet cross tools clean release-check release-snapshot coverage-check \
+	npm-test npm-package npm-dry-run npm-smoke
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o ./$(BINARY) ./cmd/comrade
@@ -76,3 +84,49 @@ cross:
 clean:
 	rm -f ./$(BINARY) ./$(BINARY).exe
 	rm -rf $(DIST_DIR)
+
+# --- npm distribution (stage 1: packaging + dispatcher + assembly only —
+# see docs/PACKAGING.md; nothing here ever runs `npm publish` for real) ---
+
+# npm-test runs the dispatcher/platform-map Node assertion scripts, the
+# assembly script's own failure-mode tests (bad version, missing binary,
+# version/metadata mismatch, dangerous out-dir), the git-index exec-bit
+# guard (npm/test/test-script-permissions.sh), the npm-vs-goreleaser
+# platform-matrix consistency guard (a Go test, internal/cli/
+# npm_platform_matrix_test.go — runs as part of `go test ./...`, not
+# listed here), and the repo-wide line-broken-inline-code-span guard
+# (npm/test/test-markdown-code-spans.js). No npm dependencies are
+# installed for any of these — see npm/main/package.json's "engines"
+# floor; everything here uses only Node/Go built-ins.
+npm-test:
+	bash npm/test/run-node-tests.sh
+	bash npm/test/test-assemble.sh
+	bash npm/test/test-script-permissions.sh
+	node npm/test/test-markdown-code-spans.js
+
+# npm-package assembles the 6 ready-to-publish package directories from an
+# existing goreleaser dist/ (run `make release-snapshot` first) into
+# $(NPM_OUT_DIR). NPM_VERSION must be the git tag WITHOUT its leading "v".
+npm-package:
+	bash scripts/build-npm-packages.sh "$(NPM_VERSION)" "$(DIST_DIR)" "$(NPM_OUT_DIR)"
+
+# npm-dry-run assembles the packages, then runs `npm publish --dry-run`
+# against every one of them — shows the exact tarball file lists/sizes
+# without ever contacting the registry to actually publish.
+npm-dry-run: npm-package
+	@for pkg in $(NPM_OUT_DIR)/*/; do \
+		echo "--- npm publish --dry-run: $$pkg ---"; \
+		npm publish --dry-run "$$pkg" || exit 1; \
+	done
+
+# npm-smoke assembles a fresh copy of the packages, publishes all 6 to a
+# throwaway, dependency-free local registry (npm/test/local-registry.js --
+# stdlib node:http only, no uplink/proxy of any kind, so it can never
+# touch the real npm registry), then runs a real `npm install -g
+# cli-comrade` (cli-comrade as the ONLY direct install target, so its
+# optionalDependency resolves transitively) and asserts the installed bin
+# shim actually resolves to the dispatcher — Linux only (see
+# npm/test/test-smoke.sh). NPM_VERSION may be left unset here:
+# test-smoke.sh falls back to the nearest git tag.
+npm-smoke:
+	bash npm/test/test-smoke.sh "$(DIST_DIR)" "$(NPM_VERSION)"

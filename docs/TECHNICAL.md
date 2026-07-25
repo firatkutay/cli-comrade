@@ -44,8 +44,7 @@ fed from the injected `i18n.Translator`; catalog messages
 | Explain | `a` (açıkla) | `x` (explain) | Show a detailed explanation for this step, then re-prompt |
 | All | `t` (tümü) | `a` (all) | Approve this step and every remaining read/write/network step without asking again — destructive/elevated steps still prompt individually |
 
-Rendered legends, verbatim: TR `[e]vet [h]ayır [d]üzenle [a]çıkla
-[t]ümü: `, EN `[y]es [n]o [e]dit [x]plain [a]ll: `. `mapKey` resolves
+Rendered legends, verbatim: TR `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: `, EN `[y]es [n]o [e]dit [x]plain [a]ll: `. `mapKey` resolves
 the accepted keypress **strictly by the active language — never as a
 union of both key sets**: `e` and `a` collide across TR/EN with
 dangerous inversions (TR `e`=Yes vs. EN `e`=Edit; TR `a`=Explain vs. EN
@@ -162,9 +161,7 @@ flowchart TD
    of escalation rules that can only raise, never lower, the effective
    risk class. See §8 for the concrete rule set.
 7. **Mode-based execution loop** (`internal/engine`, `internal/executor`)
-   — dispatches per §1's mode table. Execution itself runs `sh -c
-   <command>` on non-Windows and `powershell -NoProfile -Command
-   <command>` on Windows (`internal/executor/executor.go`,
+   — dispatches per §1's mode table. Execution itself runs `sh -c <command>` on non-Windows and `powershell -NoProfile -Command <command>` on Windows (`internal/executor/executor.go`,
    `buildCommand`), selected by `runtime.GOOS` at construction time
    (`New`) rather than a build tag, so all three platforms' logic is
    testable from one binary (per CLAUDE.md's platform-branching rule).
@@ -227,8 +224,7 @@ Upstream `atotto/clipboard` v0.1.4's Unix build runs up to five
 sequential `exec.LookPath` PATH scans **unconditionally in a
 package-level `init()`** — paid by every `comrade` invocation that
 imports `bubbles/v2/textinput` (i.e. essentially every invocation,
-including `--version`/`--help`), since the confirm prompt and `comrade
-chat` both pull it in transitively. On a PATH with many entries (100+
+including `--version`/`--help`), since the confirm prompt and `comrade chat` both pull it in transitively. On a PATH with many entries (100+
 observed on a WSL2 shell) this cost hundreds of milliseconds per
 invocation. The vendored fork's only change defers that same probe from
 `init()` to a `sync.Once` triggered by first *actual* clipboard use — see
@@ -294,16 +290,14 @@ lipgloss's live-terminal-query-based adaptive color, to avoid paying a
 blocking terminal query on every `--help`/`--version` (the same
 cold-start concern §13 covers for the vendored clipboard fork).
 
-**Color is decided in exactly one place**: `internal/cli.
-resolveColorEnabled` (`internal/cli/color.go`). `general.color=false`
+**Color is decided in exactly one place**: `internal/cli.resolveColorEnabled` (`internal/cli/color.go`). `general.color=false`
 is always the final word — an explicit opt-out. Otherwise,
 `colorprofile.Detect` on the target writer decides per-invocation:
 plain output by default for a non-TTY/piped run, honoring
 [NO_COLOR](https://no-color.org) (unconditionally disables) and
 [CLICOLOR_FORCE=1](https://bixense.com/clicolors/) (forces color on
 even when not a TTY — what non-interactive `--help` output checks
-use). On Windows, when color resolves on, `lipgloss.
-EnableLegacyWindowsANSI` opts the console into
+use). On Windows, when color resolves on, `lipgloss.EnableLegacyWindowsANSI` opts the console into
 `ENABLE_VIRTUAL_TERMINAL_PROCESSING` so legacy `conhost.exe` (still
 what Windows PowerShell 5.1 typically runs in) actually interprets the
 ANSI it's given — a no-op elsewhere, including when already inside
@@ -332,8 +326,7 @@ value is deliberately **duplicated** as `tui.PromptYellow` rather than
 shared through a color package (`internal/tui` cannot import
 `internal/cli` — the dependency arrow only runs the other way), guarded
 against drift by `internal/cli/color_test.go`'s
-`TestPromptYellowMatchesTUIPackage`, which asserts `paletteYellow ==
-tui.PromptYellow` and fails the moment either changes independently.
+`TestPromptYellowMatchesTUIPackage`, which asserts `paletteYellow == tui.PromptYellow` and fails the moment either changes independently.
 **Open item**: the virtual cursor's own reverse-video rendering
 (`\x1b[7;37m`) on both of these textinputs is still unconditional —
 deliberately out of this round's scope, tracked in
@@ -419,8 +412,7 @@ or with exactly `-h`/`--help`, it shows this command's help
 otherwise, it returns an i18n'd usage error
 (`MsgExplainUsageError`) rather than cobra's generic English
 `MinimumNArgs` message. To literally explain a command string that is
-itself exactly `-h` or `--help`, use the escape hatch `comrade explain
--- -h` — the leading `--` is stripped by `explain` itself (cobra never
+itself exactly `-h` or `--help`, use the escape hatch `comrade explain -- -h` — the leading `--` is stripped by `explain` itself (cobra never
 strips it here, since `DisableFlagParsing` leaves argument tokens
 untouched) and everything after it is explained literally, no matter
 what it looks like.
@@ -436,8 +428,7 @@ of its own beyond `-h`.
 
 **Requires an interactive TTY.** bubbletea itself requires a real
 terminal and otherwise hangs on non-TTY stdin; `comrade chat` now
-checks this up front (`requireInteractiveTTY`, `internal/cli/
-runtime.go`) and returns a friendly i18n'd error
+checks this up front (`requireInteractiveTTY`, `internal/cli/runtime.go`) and returns a friendly i18n'd error
 (`MsgChatRequiresTTY`) instead of hanging when stdin is piped or
 redirected.
 
@@ -450,8 +441,7 @@ commands — see `chat_help`'s catalog entry for the authoritative list):
 mode switching, clearing context, saving the transcript, and issuing a
 `do`-style request without leaving the session.
 
-**The transcript is styled when color is enabled** (`internal/cli/
-color.go`'s named palette constants, `internal/cli/chatmodel.go`).
+**The transcript is styled when color is enabled** (`internal/cli/color.go`'s named palette constants, `internal/cli/chatmodel.go`).
 The user's own echoed transcript lines render pastel gray (ANSI256
 `245`); `/help`'s rendered slash-command list colors its leading
 `/xxx` tokens pastel blue (`111`); the input prompt's `>` renders
@@ -496,8 +486,7 @@ the real API with a 400).
 so its own `translatedUnknownSubcommand` `Args` validator ever runs at
 all (cobra's `execute()` returns `flag.ErrHelp` for any invocation of a
 non-Runnable command before `Args` is checked); the honest side effect
-is that `comrade config --help` now also shows a `comrade config
-[flags]` "Usage:" line it didn't before (cobra's template renders one
+is that `comrade config --help` now also shows a `comrade config [flags]` "Usage:" line it didn't before (cobra's template renders one
 for any Runnable command — cosmetic, not a behavior change). The
 functional win: `comrade config bogus` used to silently print help and
 exit `0`; it now returns a translated, actionable
@@ -506,8 +495,7 @@ from `cmd.Commands()`) with a non-zero exit code. See §10's "Translated
 arg-count and unknown-subcommand usage errors" for the full mechanism.
 
 `config set`, like `explain`, sets `DisableFlagParsing: true` (a value
-can itself look like a flag, e.g. `comrade config set safety.
-denylist_extra --foo`) and so likewise handles `-h`/`--help` and a
+can itself look like a flag, e.g. `comrade config set safety.denylist_extra --foo`) and so likewise handles `-h`/`--help` and a
 wrong argument count itself — an i18n'd usage error
 (`MsgConfigSetUsageError`) rather than cobra's raw English
 `ExactArgs(2)` message. **Known limitation**: `config set` rewrites
@@ -894,8 +882,7 @@ sent — never command content (CLAUDE.md security rule #5).
 ## 9. Shell integration
 
 `comrade init [bash|zsh|fish|powershell]` installs a per-shell hook that,
-after every command, execs `comrade hook record --shell <name> --exit
-<code> --command <text>` — rather than hand-assembling
+after every command, execs `comrade hook record --shell <name> --exit <code> --command <text>` — rather than hand-assembling
 `last_command.json`'s JSON inside shell script, which would need
 different, unsafe escaping per shell for arbitrary command text (quotes,
 unicode, newlines). Encoding is delegated to the compiled binary
@@ -1026,8 +1013,7 @@ Every registration line defers to `comrade completion <shell>` at
 binary is on `PATH`, with no need to re-run `comrade init` after every
 upgrade.
 
-**Hidden `completion` command.** The underlying `comrade completion
-<shell>` command (cobra's own auto-generated one) stays hidden from
+**Hidden `completion` command.** The underlying `comrade completion <shell>` command (cobra's own auto-generated one) stays hidden from
 `--help` (`root.CompletionOptions.HiddenDefaultCmd = true`) — several KB
 of cobra-generated, untranslated help text with no i18n hook, judged not
 worth exposing to this project's non-technical target audience (QA
@@ -1049,8 +1035,7 @@ Alongside Tab-completion, `comrade init <shell>` also wires a
 space-triggered next-word hint on the shells that support it —
 zsh (inline ghost text) and PowerShell (auto-opened completion list).
 Like completions, this is new content added inside the same managed
-block; an existing install needs the same one-time `comrade init
-<shell>` re-run described above.
+block; an existing install needs the same one-time `comrade init <shell>` re-run described above.
 
 **`comrade __hint` contract** (`internal/cli/hint.go`). A hidden,
 `DisableFlagParsing` command invoked once per keystroke by the shell
@@ -1083,8 +1068,7 @@ widgets below, so it must stay as close to instantaneous as cobra's own
 **zsh widget** (`internal/shellinit/snippets/zsh.sh`), gated on
 `[[ -o interactive ]] && zmodload zsh/zle`:
 
-- Hooked via `add-zle-hook-widget line-pre-redraw
-  __comrade_hint_widget` — a per-redraw hook, not a keybinding, so it
+- Hooked via `add-zle-hook-widget line-pre-redraw __comrade_hint_widget` — a per-redraw hook, not a keybinding, so it
   never claims a key zsh or a user plugin might already own.
 - Fires only when the buffer is `comrade\ *` and ends in a trailing
   space; tokenizes the buffer with `"${(@z)BUFFER}"` — the quoted,
@@ -1111,8 +1095,7 @@ widgets below, so it must stay as close to instantaneous as cobra's own
 - Installed only if no existing, non-`SelfInsert` Spacebar
   `PSReadLineKeyHandler` is already registered — a custom user binding
   on space is left completely untouched.
-- The handler inserts the space itself (`PSConsoleReadLine::Insert('
-  ')`), reads the buffer back via `GetBufferState`, and — only when the
+- The handler inserts the space itself (`PSConsoleReadLine::Insert(' ')`), reads the buffer back via `GetBufferState`, and — only when the
   buffer matches `^\s*comrade(\.exe)?(\s+[\w-]+)*\s$` — calls
   `PSConsoleReadLine::PossibleCompletions()`, which renders PSReadLine's
   own completion list below the line. This is a list render, not inline
@@ -1228,8 +1211,7 @@ A subsequent change closed one of those five in full (arg-count/
 unknown-subcommand messages, formerly item 2 below) — see "Translated
 arg-count and unknown-subcommand usage errors" below — leaving four:
 
-1. pflag's own flag-parse errors (`"unknown flag: --x"`, `"unknown
-   shorthand flag"`) — pflag exposes no structured error type/sentinel
+1. pflag's own flag-parse errors (`"unknown flag: --x"`, `"unknown shorthand flag"`) — pflag exposes no structured error type/sentinel
    for these, only raw English `fmt.Errorf` text; reliably translating
    them would mean regex/string-matching that raw text, fragile across
    pflag version bumps and against this project's own stance against
@@ -1318,8 +1300,7 @@ architecture already follows elsewhere (§2).
 covers `internal/llm`'s own structured errors: `classifyLLMError`/
 `translateLLMError` (`internal/cli/runtime.go`) re-render a
 `*llm.KeyMissingError` — currently the one case this classifies — as
-a friendly i18n'd "no API key found — run `comrade auth login
-<provider>`" message, again via `errors.As` rather than parsing
+a friendly i18n'd "no API key found — run `comrade auth login <provider>`" message, again via `errors.As` rather than parsing
 `internal/llm`'s own English error text. `do`/`fix`/`explain` all
 call `translateLLMError` directly; chat's equivalent,
 `renderChatLLMError` (`internal/cli/chatdispatch.go`), calls the same
@@ -1334,9 +1315,7 @@ fetch-failure message (§5) already established.
 notice (§8) now follows the identical `internal/config`-error pattern
 — `internal/secrets.NewStoreWithWarning` takes the already-rendered
 warning text as a parameter rather than owning any wording itself, so
-`internal/secrets` stays completely i18n-free; `internal/cli/
-secretsstore.go` supplies it by resolving `i18n.
-MsgSecretsFileFallbackWarning` before calling in. The wording itself
+`internal/secrets` stays completely i18n-free; `internal/cli/secretsstore.go` supplies it by resolving `i18n.MsgSecretsFileFallbackWarning` before calling in. The wording itself
 was also softened while being translated ("no system keychain found,
 so API keys are being saved to a local file instead" rather than the
 previous, blunter "no OS keychain available on this machine").
@@ -1449,8 +1428,7 @@ any one of the four changing alone.
   `ubuntu-latest`/`macos-latest`/`windows-latest`, plus a separate
   `govulncheck` job.
 - **Local gate**: `make vet` (`go vet ./...`), `make lint`
-  (`golangci-lint run`, tool pinned to `v2.12.2` in `Makefile`), `make
-  test` (`go test ./...`) must all be clean.
+  (`golangci-lint run`, tool pinned to `v2.12.2` in `Makefile`), `make test` (`go test ./...`) must all be clean.
 
 `golangci-lint` is **GPL-3.0-licensed** — it is invoked only as an
 external development/CI tool (installed via `go install .../cmd/golangci-lint@<pinned version>`

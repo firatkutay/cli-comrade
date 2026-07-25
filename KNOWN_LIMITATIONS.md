@@ -143,8 +143,7 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   bu turun işi tarafından İNTRODUCE EDİLMEMİŞ, önceden var olan bir
   boşluk) — `internal/safety/resolveMayNotExecute`, bir `for`/`while`
   gövdesini KENDİ İÇİNDE tutarlı tek bir sıralı geçişle çözer (döngünün
-  gerçekte kaç kez çalışacağını bilmediği için); bu, `for i in 1; do
-  R=rm; $R -rf /; done` gibi TEK-İTERASYONLUK bir ataması-ve-kullanımı
+  gerçekte kaç kez çalışacağını bilmediği için); bu, `for i in 1; do R=rm; $R -rf /; done` gibi TEK-İTERASYONLUK bir ataması-ve-kullanımı
   doğru yakalar, ama İKİNCİ (veya sonraki) iterasyonda farklı bir değer
   üreten bir zincir kaçar:
   ```
@@ -153,8 +152,7 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   Bu analiz geçişi 1. iterasyonu hesaplar (`X=echo`, döngü-öncesi değerle
   AYNI olduğu için "değişmemiş" sayılır ve dokunulmaz), ama gerçek bash'te
   2. iterasyon `R`yi zaten `rm`e çevirmiş olduğundan `X` de `rm` olur ve
-  komut gerçekten `rm -rf /` çalıştırır (`bash -c 'X=echo; R=echo; for i
-  in 1 2; do X=$R; R=rm; done; echo "$X"'` → `rm` doğrular). İmza/denylist
+  komut gerçekten `rm -rf /` çalıştırır (`bash -c 'X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; echo "$X"'` → `rm` doğrular). İmza/denylist
   katmanı da bunu yakalamaz — hiçbir katman döngüyü birden fazla kez
   "çalıştırmaz". Dar bir kalıp: sadece SINK değişkenin döngü-öncesi
   ÖNCEDEN-TOHUMLANMIŞ değeri, 1. geçişin ürettiği değerle TAM OLARAK
@@ -337,8 +335,7 @@ validation, redaction coverage, and the destructive-command classifier
   honest cost: since the body used to be completely unmodeled (main never
   understood `if`/`while`/`for`/`case` at all), the variable's PRIOR
   assignment could resolve all the way to `RiskDestructive`; now the same
-  command caps at `RiskElevated` (e.g. `R=rm; while false; do R=echo;
-  done; $R -rf /` was `destructive` on main, is now `elevated`). The
+  command caps at `RiskElevated` (e.g. `R=rm; while false; do R=echo; done; $R -rf /` was `destructive` on main, is now `elevated`). The
   resulting `Action` (`confirm`) is unchanged, but the SAME `--yolo`
   interaction documented for the tilde entry above applies here too — and
   this class is far larger (83 cases across the audit's corpora, vs. the
@@ -351,8 +348,7 @@ validation, redaction coverage, and the destructive-command classifier
   fix above) — `internal/safety/resolveMayNotExecute` resolves a `for`/
   `while` body with one internally-consistent sequential pass (it has no
   way to know how many times the loop actually runs), which correctly
-  catches a SINGLE-iteration assignment-and-use (`for i in 1; do R=rm;
-  $R -rf /; done`), but misses a chain that only produces a different
+  catches a SINGLE-iteration assignment-and-use (`for i in 1; do R=rm; $R -rf /; done`), but misses a chain that only produces a different
   value on the SECOND (or later) iteration:
   ```
   X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /
@@ -361,8 +357,7 @@ validation, redaction coverage, and the destructive-command classifier
   pre-loop value, so treated as "unchanged" and left alone), but real
   bash's second iteration has already turned `R` into `rm`, so `X`
   becomes `rm` too, and the command genuinely runs `rm -rf /` (confirmed:
-  `bash -c 'X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; echo
-  "$X"'` → `rm`). The signature/denylist layer does not catch this either
+  `bash -c 'X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; echo "$X"'` → `rm`). The signature/denylist layer does not catch this either
   — neither layer ever runs the loop more than once. Narrow in practice:
   it only manifests when the SINK variable's pre-loop seeded value
   happens to EXACTLY MATCH what pass 1 computes (so invalidation is

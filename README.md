@@ -151,6 +151,7 @@ Full setup (remote Ollama hosts, fallback-chain syntax) and the
 | Homebrew | `brew install firatkutay/tap/comrade` | ✅ live |
 | Scoop | `scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket`<br>`scoop install comrade` | ✅ live |
 | .deb / .rpm / raw archives | [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases) | ✅ live |
+| npm | `npm install -g cli-comrade` | ⏳ pending — packaging done, not yet published (no npm account/token yet); installs a prebuilt binary, no build toolchain needed, `npm ci --ignore-scripts` safe |
 | winget | `winget install cli.comrade` | ⏳ pending — PR open against `microsoft/winget-pkgs`, awaiting moderator review |
 | Snap | `sudo snap install cli-comrade --classic` | ⏳ pending — awaiting Snap Store registration + classic-confinement approval |
 
@@ -402,6 +403,7 @@ Tam kurulum (uzak Ollama sunucuları, fallback-zinciri sözdizimi) ve
 | Homebrew | `brew install firatkutay/tap/comrade` | ✅ canlı |
 | Scoop | `scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket`<br>`scoop install comrade` | ✅ canlı |
 | .deb / .rpm / ham arşivler | [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases) | ✅ canlı |
+| npm | `npm install -g cli-comrade` | ⏳ beklemede — paketleme tamam, henüz yayınlanmadı (npm hesabı/token'ı yok); önceden derlenmiş binary kurar, derleme araç zinciri gerekmez, `npm ci --ignore-scripts` güvenli |
 | winget | `winget install cli.comrade` | ⏳ beklemede — `microsoft/winget-pkgs`'e açılan PR, moderatör incelemesi bekliyor |
 | Snap | `sudo snap install cli-comrade --classic` | ⏳ beklemede — Snap Store kaydı + classic-confinement onayı bekliyor |
 

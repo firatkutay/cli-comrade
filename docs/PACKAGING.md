@@ -12,8 +12,7 @@ Every channel below is wired so that **a missing credential degrades
 that one channel to "skip, log why, keep going" — it never fails the
 whole `goreleaser release` run.** homebrew_casks/scoops/winget each carry
 their own `skip_upload: "{{ not (isEnvSet \"...\") }}"`; the Snap channel
-is a wholly separate GitHub Actions workflow (`.github/workflows/
-snap.yml`) that no-ops when its secret is absent, so it can never even
+is a wholly separate GitHub Actions workflow (`.github/workflows/snap.yml`) that no-ops when its secret is absent, so it can never even
 touch the main release job. See the comments in `.goreleaser.yaml` and
 `.github/workflows/release.yml` for the exact mechanism if you're
 debugging why a channel didn't publish — it is almost always "the
@@ -197,6 +196,53 @@ snap install cli-comrade --classic
 
 ---
 
+## 5. npm (`npm install -g cli-comrade`) — ⏳ STAGE 1 DONE (packaging only, not wired into release.yml)
+
+**Not wired into `release.yml` at all yet** -- this is deliberately a
+separate, later step. What exists today: `npm/` (the main dispatcher
+package template + the shared platform-package template) and
+`scripts/build-npm-packages.sh`, which assembles the 6 ready-to-publish
+package directories (1 main + 5 platform: linux-x64/arm64,
+darwin-x64/arm64, win32-x64 -- mirrors `.goreleaser.yaml`'s build matrix
+exactly) from goreleaser's `dist/` output. Verified so far via
+`npm publish --dry-run`, `npm pack`, and a local, dependency-free
+throwaway registry (`npm/test/local-registry.js` -- stdlib `node:http`
+only, no uplink/proxy of any kind) -- see `npm/test/test-smoke.sh`.
+Nothing has ever been published to the real npm registry.
+
+**Package names:** main `cli-comrade` (name verified available on the
+public registry via a 404 lookup at the time this was built -- npm has no
+package-name *reservation* mechanism, so this is "nobody has claimed it
+yet," not a hold; claim it for real as early as possible in stage 2 to
+close that race). Platform packages: `@firatkutay/comrade-<os>-<cpu>`,
+scoped under the `@firatkutay` npm org/user (not yet created).
+
+**To wire stage 2:**
+1. Create/verify the `@firatkutay` npm org or user account.
+2. Decide the publish auth mechanism -- a classic automation token
+   (`NPM_TOKEN` secret) or npm's registry-side OIDC "trusted publishing"
+   (check current npm docs at adoption time; this option didn't exist
+   when several of this repo's other channels were wired, so it's worth
+   a fresh look rather than assuming the classic-token pattern is still
+   the best available).
+3. Add a step to `.github/workflows/release.yml` that runs
+   `scripts/build-npm-packages.sh` against the just-built `dist/` and
+   `npm publish`'s all 6 assembled packages, gated the same
+   never-break-the-release way as Homebrew/Scoop/winget above (skip this
+   channel cleanly when the token secret is absent, rather than failing
+   the whole release).
+4. Decide `comrade upgrade`'s behavior for npm-managed installs (it
+   should almost certainly become a no-op pointing at `npm update -g cli-comrade` rather than attempting its own binary replacement inside
+   `node_modules` -- npm owns that install's lifecycle). Not yet decided
+   or implemented.
+
+**End-user install command (once live):**
+```sh
+npm install -g cli-comrade
+```
+
+---
+
 ## Summary table
 
 | Channel | Status | Secret name | What it needs first | Lead time once secret is set |
@@ -205,13 +251,13 @@ snap install cli-comrade --classic
 | Scoop | ✅ shipped (since v0.1.3) | `SCOOP_BUCKET_TOKEN` | Nothing (bucket repo already exists) | Instant, next tag |
 | winget | ⏳ pending | `WINGET_TOKEN` | Fork `microsoft/winget-pkgs` to your account | Hours–days (MS moderator merges the auto-opened PR; commit now passes the CLA gate, see above) |
 | Snap | ⏳ pending | `SNAPCRAFT_STORE_CREDENTIALS` | `snapcraft register cli-comrade` + a passed classic-confinement `store-requests` forum review | Multi-week (Canonical manual review), then instant per-release after |
+| npm | ⏳ stage 1 done, not wired | (none yet -- `NPM_TOKEN` or OIDC, TBD) | Packaging exists (`npm/`, `scripts/build-npm-packages.sh`); `release.yml` wiring, account creation, and auth mechanism all still pending | Not yet wired -- see "5. npm" above |
 | Cosign signing | ✅ shipped (v0.3.0) | `COSIGN_PRIVATE_KEY` + `COSIGN_PASSWORD` | Key pair generated, public half committed at `internal/update/cosign.pub` (already done) | Instant, next tag — but **fails the whole release** if the secrets are missing, unlike the four channels above |
 
 The four package-manager channels above are **not** required for
 `firatkutay/cli-comrade`'s next tagged release to succeed — each
 degrades to "skip this channel" when its secret is absent, verified by
-running `goreleaser check` and `goreleaser release --snapshot --clean
---skip=publish` with none of the four secrets set (see the
+running `goreleaser check` and `goreleaser release --snapshot --clean --skip=publish` with none of the four secrets set (see the
 release-engineering handoff notes for that run's output). Cosign
 signing is the one exception to that pattern — see "Supply-chain
 signing (cosign)" above.

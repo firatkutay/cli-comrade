@@ -19,6 +19,12 @@ imzalanmış/checksum'lı arşivlerden ve paketlerden üretilir (bkz.
 curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
+`curl` yoksa, script `wget` ile de aynı şekilde çalışır:
+
+```sh
+wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
 Bu script:
 
 1. `curl` veya `wget`'ten hangisi varsa onu kullanır (ikisi de yoksa
@@ -196,6 +202,12 @@ below).
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
+No `curl`? The script works identically with `wget`:
+
+```sh
+wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
 This script:

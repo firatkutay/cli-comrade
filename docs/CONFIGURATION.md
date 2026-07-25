@@ -17,9 +17,12 @@ Yolu görmek için: `comrade config path`. Görüntülemek için:
 ### Etkin değer önceliği
 
 Her anahtar şu sırayla çözülür (yüksekten düşüğe): **ortam değişkeni**
-(`COMRADE_...`) > **dosyadaki değer** > **yerleşik varsayılan**.
-`comrade config list` her anahtarın kaynağını (`env`/`file`/`default`)
-gösterir.
+(`COMRADE_...`) > **dosyadaki değer** > **yerleşik varsayılan** (bir profil
+etkinse araya bir katman daha girer — bkz. aşağıdaki "Config profilleri").
+`comrade config list` her anahtarın kaynağını gösterir: `env`, `profile`
+(değer aktif profilden geliyorsa), `file`, ya da `default` — `general.profile`
+anahtarının kendisi ayrıca `flag` da gösterebilir (`--profile` bayrağı
+verildiğinde; bkz. aşağıdaki "Config profilleri").
 
 ### Tüm anahtarlar
 
@@ -30,7 +33,7 @@ gösterir.
 | `general.color` | `true` | Renkli/lipgloss çıktı | `COMRADE_GENERAL_COLOR` |
 | `general.update_check` | `true` | GitHub Releases'ı haftada en fazla bir kez kontrol et | `COMRADE_GENERAL_UPDATE_CHECK` |
 | `general.show_usage` | `false` | Her çalıştırma sonrası token/maliyet özet satırı yaz (bkz. `--usage`) | `COMRADE_GENERAL_SHOW_USAGE` |
-| `general.profile` | *(boş)* | Etkin config profili adı (bkz. aşağıdaki "Config profilleri") | `COMRADE_PROFILE` |
+| `general.profile` | *(boş)* | Etkin config profili adı (bkz. aşağıdaki "Config profilleri") | `COMRADE_PROFILE`, `COMRADE_GENERAL_PROFILE` |
 | `llm.provider` | `anthropic` | `anthropic`/`openai_compat`/`google`/`ollama` | `COMRADE_PROVIDER` |
 | `llm.model` | *(boş)* | Boşsa sağlayıcının kendi varsayılanı | `COMRADE_MODEL` |
 | `llm.fallback` | `[]` | Yedek sağlayıcı/model listesi (virgülle ayrılmış) | `COMRADE_LLM_FALLBACK` |
@@ -213,7 +216,27 @@ varsayılanlar < dosya [general]/[llm]/... < dosya [profiles.<etkin>] < COMRADE_
 ```
 
 **Etkin profil önceliği:** `--profile` bayrağı > `COMRADE_PROFILE` ortam
-değişkeni > dosyadaki `general.profile` değeri > hiçbiri.
+değişkeni > `COMRADE_GENERAL_PROFILE` ortam değişkeni (her anahtarın kendiliğinden
+sahip olduğu genel `COMRADE_<BÖLÜM>_<ANAHTAR>` biçimi) > dosyadaki
+`general.profile` değeri > hiçbiri.
+
+`COMRADE_PROFILE` VE `COMRADE_GENERAL_PROFILE` aynı anda FARKLI iki profile
+ayarlanırsa, kanonik `COMRADE_PROFILE` kazanır — hem hangi profil katmanının
+(overlay) uygulandığı hem de `general.profile`'ın ne okuduğu için. Bu,
+yukarıdaki "Tüm anahtarlar" bölümünün sonundaki genel `COMRADE_<BÖLÜM>_<ANAHTAR>`
+kuralının kasıtlı bir istisnasıdır.
+
+`--profile` bayrağı, `general.profile`'ın bu ÇALIŞTIRMA için ne okuduğunu da
+değiştirir — ama hiçbir zaman KALICI hale gelmez. Etkilediği yerler:
+`comrade config get general.profile`'ın döndürdüğü değer, `comrade config list`
+(kaynak sütunu bu durumda `flag` gösterir), `comrade config profile list`'in `*`
+işareti, ve `comrade config profile show`'un varsayılan hedefi + tetiklediği
+`safety.*` geçersiz-kılma uyarısı. Bir profili KALICI olarak etkinleştirmenin tek
+yolu hâlâ `comrade config profile use <ad>`'dır.
+
+Herhangi bir katmandan tanımsız bir profil adı verilirse, stderr'e bir uyarı
+yazılır ve o ad yine de etkin profil olarak raporlanır; config'in geri kalanı
+normal şekilde yüklenir (bkz. aşağıdaki "Sınırlamalar").
 
 **Komutlar:**
 
@@ -263,8 +286,11 @@ its path with `comrade config path`; view it with
 
 Every key resolves in this order (highest to lowest): **environment
 variable** (`COMRADE_...`) > **value in the file** > **built-in
-default**. `comrade config list` shows each key's actual source
-(`env`/`file`/`default`).
+default** (one more layer slots in when a profile is active — see "Config
+profiles" below). `comrade config list` shows each key's actual source:
+`env`, `profile` (when the value comes from the active profile), `file`, or
+`default` — the `general.profile` key itself can additionally show `flag`
+(when the `--profile` flag was given; see "Config profiles" below).
 
 ### All keys
 
@@ -275,7 +301,7 @@ default**. `comrade config list` shows each key's actual source
 | `general.color` | `true` | Colored/lipgloss output | `COMRADE_GENERAL_COLOR` |
 | `general.update_check` | `true` | Check GitHub Releases at most once/week | `COMRADE_GENERAL_UPDATE_CHECK` |
 | `general.show_usage` | `false` | Print a per-run token/cost summary line (see `--usage`) | `COMRADE_GENERAL_SHOW_USAGE` |
-| `general.profile` | *(empty)* | Active config profile name (see "Config profiles" below) | `COMRADE_PROFILE` |
+| `general.profile` | *(empty)* | Active config profile name (see "Config profiles" below) | `COMRADE_PROFILE`, `COMRADE_GENERAL_PROFILE` |
 | `llm.provider` | `anthropic` | `anthropic`/`openai_compat`/`google`/`ollama` | `COMRADE_PROVIDER` |
 | `llm.model` | *(empty)* | Empty means the provider's own default | `COMRADE_MODEL` |
 | `llm.fallback` | `[]` | Fallback provider/model chain (comma-separated) | `COMRADE_LLM_FALLBACK` |
@@ -452,7 +478,26 @@ defaults < file [general]/[llm]/... < file [profiles.<active>] < COMRADE_* env
 ```
 
 **Active-profile precedence:** `--profile` flag > `COMRADE_PROFILE` env >
-the file's own `general.profile` value > none.
+`COMRADE_GENERAL_PROFILE` env (the generic `COMRADE_<SECTION>_<KEY>` form every
+key gets for free) > the file's own `general.profile` value > none.
+
+If `COMRADE_PROFILE` AND `COMRADE_GENERAL_PROFILE` are both set to different
+profiles at once, the canonical `COMRADE_PROFILE` wins — for both which profile
+overlay gets applied and what `general.profile` reads as. This is a deliberate
+exception to the generic `COMRADE_<SECTION>_<KEY>` rule at the end of the "All
+keys" section above.
+
+The `--profile` flag also changes what `general.profile` reads as **for that
+invocation** — but it is never persisted. It drives: what
+`comrade config get general.profile` returns, `comrade config list` (whose
+source column then shows `flag`), `comrade config profile list`'s `*` marker,
+and `comrade config profile show`'s default target plus the `safety.*`
+override warning it may trigger. `comrade config profile use <name>` remains
+the only way to persist an active profile.
+
+Naming an undefined profile through any of these rungs never fails the config
+load — it prints a warning to stderr and still reports that name as the active
+profile; the rest of the config loads normally (see "Boundaries" below).
 
 **Commands:**
 

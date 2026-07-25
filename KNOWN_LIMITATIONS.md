@@ -107,6 +107,26 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   eşleşmediği için maskelenmeden kalabilir. Standart biçimli DSN'ler
   etkilenmez.
 
+### CLI bayrağı — `--profile`, ham-argümanlı komutlarda çalışmıyor (issue #27)
+
+- **`--profile <ad>`, `config set`/`config profile set`/`explain` üzerinde
+  görmezden gelinir ya da hataya yol açar**: `--profile` kalıcı (persistent)
+  bir bayraktır (`internal/cli/root.go:105-106`), ama üç leaf komut kendi
+  konumsal argümanlarının (`-` ile başlayabilen) olduğu gibi geçmesi için
+  `DisableFlagParsing: true` ayarlar — `config set`
+  (`internal/cli/config.go:172`), `config profile set`
+  (`internal/cli/configprofile.go:342`), ve `explain`
+  (`internal/cli/explain.go:52`). cobra'nın `DisableFlagParsing: true`'su
+  yalnızca o leaf'in kendi bayraklarını değil, root'un kalıcı bayrak
+  ayrıştırmasını da atlar; bu üç komutta `--profile` pflag'e hiç ulaşmaz.
+  `config set`/`config profile set`'te `--profile`/`<ad>` token'ları ham
+  argüman olarak kalır, arity kontrolü başarısız olur ve komut kendi
+  kullanım hatasıyla döner. `explain`'de arity kontrolü yoktur, bu yüzden
+  bayrak SESSİZCE açıklanan komut metnine karışır ve istek varsayılan
+  profille sessizce çalışır — hiçbir hata/uyarı yoktur. Geçici çözüm: bu
+  üç komut için `--profile` yerine `COMRADE_PROFILE=<ad>` kullanın. Bkz.
+  [issue #27](https://github.com/firatkutay/cli-comrade/issues/27).
+
 ### Tasarım gereği sınırlar (bilinçli seçimler, hata değil)
 
 - **`anthropic`/`google` model listeleri statik bir anlık görüntüdür**
@@ -232,6 +252,28 @@ validation, redaction coverage, and the destructive-command classifier
   password that itself contains an unescaped `/` or `@` (already a
   malformed DSN) won't match through to the terminating `@` and can be
   left unmasked. Standard-shaped DSNs are unaffected.
+
+### CLI flag — `--profile` doesn't work on raw-arg commands (issue #27)
+
+- **`--profile <name>` is ignored or errors on three raw-arg commands**:
+  `--profile` is a persistent flag (`internal/cli/root.go:105-106`), but
+  `config set` (`internal/cli/config.go:172`),
+  `config profile set` (`internal/cli/configprofile.go:342`), and
+  `explain` (`internal/cli/explain.go:52`) each set
+  `DisableFlagParsing: true` so their own positional arguments (which may
+  legitimately start with `-`) pass through untouched. cobra's
+  `DisableFlagParsing: true` disables flag parsing for the whole
+  invocation, not just that leaf's own flags — it skips root's
+  persistent-flag parsing too, so `--profile` never reaches pflag on
+  these three commands. On `config set` and `config profile set`, the
+  literal `--profile`/`<name>` tokens land in `args`, the arity check
+  fails, and the command errors with its own usage message. On
+  `explain`, there is no arity check, so the flag is silently folded
+  into the text being explained and the request silently runs under the
+  default profile instead — no error, no indication the flag did
+  nothing. Workaround: use `COMRADE_PROFILE=<name>` instead of
+  `--profile` for these three commands. See
+  [issue #27](https://github.com/firatkutay/cli-comrade/issues/27).
 
 ### Limits by design (deliberate choices, not bugs)
 

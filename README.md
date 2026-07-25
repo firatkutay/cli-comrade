@@ -146,7 +146,7 @@ Full setup (remote Ollama hosts, fallback-chain syntax) and the
 
 | Channel | Command | Status |
 |---|---|---|
-| Install script (macOS/Linux) | `curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh \| sh` | ✅ live |
+| Install script (macOS/Linux) | `curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh \| sh`<br>no curl? `wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh \| sh` | ✅ live |
 | Install script (Windows) | `irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 \| iex` | ✅ live |
 | Homebrew | `brew install firatkutay/tap/comrade` | ✅ live |
 | Scoop | `scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket`<br>`scoop install comrade` | ✅ live |
@@ -394,7 +394,7 @@ Tam kurulum (uzak Ollama sunucuları, fallback-zinciri sözdizimi) ve
 
 | Kanal | Komut | Durum |
 |---|---|---|
-| Kurulum script'i (macOS/Linux) | `curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh \| sh` | ✅ canlı |
+| Kurulum script'i (macOS/Linux) | `curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh \| sh`<br>curl yok mu? `wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh \| sh` | ✅ canlı |
 | Kurulum script'i (Windows) | `irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 \| iex` | ✅ canlı |
 | Homebrew | `brew install firatkutay/tap/comrade` | ✅ canlı |
 | Scoop | `scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket`<br>`scoop install comrade` | ✅ canlı |

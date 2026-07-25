@@ -90,15 +90,19 @@ clean:
 
 # npm-test runs the dispatcher/platform-map Node assertion scripts, the
 # assembly script's own failure-mode tests (bad version, missing binary,
-# version/metadata mismatch, dangerous out-dir), and the git-index exec-bit
-# guard (recurrence guard — see npm/test/test-script-permissions.sh). No
-# npm dependencies are installed for the first two — see
-# npm/main/package.json's "engines" floor; those tests use only Node
-# built-ins.
+# version/metadata mismatch, dangerous out-dir), the git-index exec-bit
+# guard (npm/test/test-script-permissions.sh), the npm-vs-goreleaser
+# platform-matrix consistency guard (a Go test, internal/cli/
+# npm_platform_matrix_test.go — runs as part of `go test ./...`, not
+# listed here), and the repo-wide line-broken-inline-code-span guard
+# (npm/test/test-markdown-code-spans.js). No npm dependencies are
+# installed for any of these — see npm/main/package.json's "engines"
+# floor; everything here uses only Node/Go built-ins.
 npm-test:
 	bash npm/test/run-node-tests.sh
 	bash npm/test/test-assemble.sh
 	bash npm/test/test-script-permissions.sh
+	node npm/test/test-markdown-code-spans.js
 
 # npm-package assembles the 6 ready-to-publish package directories from an
 # existing goreleaser dist/ (run `make release-snapshot` first) into
@@ -116,8 +120,9 @@ npm-dry-run: npm-package
 	done
 
 # npm-smoke assembles a fresh copy of the packages, publishes all 6 to a
-# throwaway local-only registry (verdaccio, uplinks disabled — never
-# touches the real npm registry), then runs a real `npm install -g
+# throwaway, dependency-free local registry (npm/test/local-registry.js --
+# stdlib node:http only, no uplink/proxy of any kind, so it can never
+# touch the real npm registry), then runs a real `npm install -g
 # cli-comrade` (cli-comrade as the ONLY direct install target, so its
 # optionalDependency resolves transitively) and asserts the installed bin
 # shim actually resolves to the dispatcher — Linux only (see

@@ -79,23 +79,30 @@ jobs:
         run: make npm-test
 
       # npm end-to-end install smoke test: this is deliberately a real
-      # integration check (real goreleaser snapshot dist/, a real `npm
-      # install -g cli-comrade`, a real dispatcher launch) gated on every
-      # PR rather than demoted to nightly — a prior review round found a
+      # integration check (real goreleaser dist/, a real `npm install -g
+      # cli-comrade`, a real dispatcher launch) gated on every PR rather
+      # than demoted to nightly — a prior review round found a
       # dispatcher-bypass bug that ONLY this kind of end-to-end check
       # catches (npm/test/test-smoke.sh's own header has the full story).
-      # It costs a real, if bounded, amount of CI time: a goreleaser
-      # snapshot cross-compiles all 5 npm-distribution targets from
-      # scratch. Reads the version to stamp from dist/metadata.json's own
-      # "tag" (rather than a git-tag lookup) so this works correctly
-      # regardless of this job's checkout depth/tag visibility.
+      # It costs a real, if bounded, amount of CI time: cross-compiling
+      # all 5 npm-distribution targets from scratch. Uses `goreleaser
+      # build` (not `release`) deliberately: the smoke test only ever
+      # reads the per-target binary dirs and metadata.json, both of which
+      # `build` emits identically to `release` -- `release` additionally
+      # produces archives, .deb/.rpm packages, checksums, and three
+      # package-manager manifests that nothing on this path reads, and
+      # measured ~40% slower for it (no signing either, since `build`
+      # never invokes the `signs:` pipe -- there is nothing to `--skip`).
+      # Reads the version to stamp from dist/metadata.json's own "tag"
+      # (rather than a git-tag lookup) so this works correctly regardless
+      # of this job's checkout depth/tag visibility.
       - name: Install goreleaser (for the npm smoke test's dist/ input)
         if: matrix.os == 'ubuntu-latest'
         run: make tools
 
       - name: Build a snapshot dist/ for the npm smoke test
         if: matrix.os == 'ubuntu-latest'
-        run: goreleaser release --snapshot --clean --skip=sign
+        run: goreleaser build --snapshot --clean
 
       - name: npm end-to-end install smoke test
         if: matrix.os == 'ubuntu-latest'

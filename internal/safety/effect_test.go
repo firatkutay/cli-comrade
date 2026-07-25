@@ -57,8 +57,207 @@ func TestEvaluateEffectVariableIndirectionEvasions(t *testing.T) {
 			"a=r b=f; rm -${a}${b} /", RiskRead, Confirm, RiskDestructive, "effect:",
 		},
 		{
-			"per-invocation assign (FOO=bar cmd) must not leak into a later statement's env",
-			"FOO=rm; echo unrelated; $UNSET_VAR -rf /", RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+			// This is the real cloneEnv per-invocation-isolation
+			// regression the correctness review asked for (GitHub issue
+			// #15): "FOO=rm true" is a PER-INVOCATION assign (scoped only
+			// to that one call, per resolveCallExpr's own doc comment on
+			// cloneEnv) — not a persistent "FOO=rm" assignment-only
+			// statement — so it must NOT leak into r.env for the later
+			// "$FOO -rf /" statement to see. If cloneEnv were broken (the
+			// per-invocation assign mutating r.env directly instead of a
+			// clone), $FOO would resolve to "rm" and this case would
+			// instead escalate to RiskDestructive via the denylist-reuse
+			// path (see TestEvaluateEffectControlStructureIndirectionEvasions's
+			// "effect: resolved argv matches denylist signature" cases) —
+			// so this assertion's exact RiskElevated/"effect:
+			// indeterminate" pin is load-bearing, not merely "some
+			// escalation happened".
+			"FOO=rm true (per-invocation assign) must not leak into a later statement's env",
+			"FOO=rm true; $FOO -rf /", RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectControlStructureIndirectionEvasions is the regression
+// test for GitHub issue #15's control-structure residual: variable
+// indirection that is both ASSIGNED and USED inside a construct
+// resolveCommand did not used to walk (if/while/for/case/subshell/`{ }`/
+// declare) used to Allow entirely, since the assignment was never added
+// to this analyzer's env at all. Every case below must now escalate via
+// the SAME denylist-signature-reuse path a top-level `R=rm; $R -rf /`
+// already used (see analyzeBashEffect) — proven here by the "effect:
+// resolved argv matches denylist signature" MatchedRule substring, not
+// merely "some escalation happened", so a regression that made these fall
+// back to the (also-Confirm, but less precise) "effect: indeterminate"
+// path would still fail this test.
+func TestEvaluateEffectControlStructureIndirectionEvasions(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"if true; then R=rm; $R -rf /; fi -- the RFC's exact control-structure example",
+			"if true; then R=rm; $R -rf /; fi", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"while true; do R=rm; $R -rf /; done -- same indirection inside a while body",
+			"while true; do R=rm; $R -rf /; done", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"for i in 1; do R=rm; $R -rf /; done -- same indirection inside a for body",
+			"for i in 1; do R=rm; $R -rf /; done", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"case x in a) R=rm; $R -rf / ;; esac -- same indirection inside a matched case item",
+			"case x in a) R=rm; $R -rf / ;; esac", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"( R=rm; $R -rf / ) -- same indirection inside a subshell",
+			"( R=rm; $R -rf / )", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"{ R=rm; $R -rf /; } -- same indirection inside a `{ }` block",
+			"{ R=rm; $R -rf /; }", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"declare R=rm; $R -rf / -- same indirection via a declare assignment",
+			"declare R=rm; $R -rf /", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+		{
+			"if false; then :; else R=rm; $R -rf /; fi -- same indirection inside an else branch",
+			"if false; then :; else R=rm; $R -rf /; fi", RiskRead, Confirm, RiskDestructive,
+			"effect: resolved argv matches denylist signature",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectControlStructureBranchIsolation pins the deliberate
+// scoping limit resolveIfClause/resolveCaseClause document: mutually
+// exclusive branches are resolved against independent CLONES of the env,
+// never chained into one another. A variable assigned ONLY in a branch
+// that is not the one referencing it must stay unresolved (fail closed),
+// never silently pick up the OTHER branch's value.
+func TestEvaluateEffectControlStructureBranchIsolation(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"R assigned only in the if-branch must not leak to code after the if statement",
+			"if true; then R=rm; fi; $R -rf /", RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"R assigned only in one case item must not leak to a later, sibling item",
+			"case x in a) R=rm ;; b) $R -rf / ;; esac", RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"R assigned only inside a subshell must not leak to the surrounding scope",
+			"( R=rm ); $R -rf /", RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectControlStructureSafeCorpusNotEscalated is the false-
+// positive guard the security audit explicitly called for alongside the
+// control-structure walk: ordinary, everyday one-liners that merely
+// CONTAIN a control structure — with no dangerous indirection inside it —
+// must stay exactly Allow, never escalated just because resolveCommand
+// now walks into if/while/for/case/subshell/`{ }`/declare.
+func TestEvaluateEffectControlStructureSafeCorpusNotEscalated(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	commands := []string{
+		"if [ -f x ]; then cat x; fi",
+		"for f in *.go; do gofmt -l $f; done",
+		"while read -r line; do echo $line; done < file.txt",
+		"case $1 in start) systemctl start foo ;; stop) systemctl stop foo ;; esac",
+		"( cd /tmp && ls )",
+		"{ echo start; ls -la; echo done; }",
+		"declare -r FOO=bar; echo $FOO",
+		"if true; then echo ok; else echo no; fi",
+	}
+	for _, cmd := range commands {
+		t.Run(cmd, func(t *testing.T) {
+			got := engine.Evaluate(cmd, RiskRead)
+			assert.Equal(t, Allow, got.Action, "command %q must stay Allow", cmd)
+			assert.Equal(t, RiskRead, got.EffectiveRisk, "command %q must stay RiskRead", cmd)
+		})
+	}
+}
+
+// TestEvaluateEffectLeadingTildeFailsClosed is the regression test for
+// GitHub issue #15's tilde-host-I/O residual: a leading unescaped tilde in
+// STRICT (command-word or assignment-value) position must fail closed
+// without ever invoking os/user.Lookup, exactly like any other strictly-
+// unresolvable construct — see wordHasLeadingUnescapedTilde's doc comment.
+// "nonexistentuser12345" is deliberately a name os/user.Lookup would fail
+// to resolve on any real host, so if this analyzer's gate ever regressed
+// back to calling expand.Literal on these words, the test would still
+// pass (Lookup errors resolve to ("", false) too) — the REAL point these
+// cases pin is the audit reason: "unresolved tilde expansion" is only
+// produced by the NEW gate firing BEFORE expand.Literal/os/user.Lookup is
+// ever reached, never by Lookup's own error path (which resolveWord turns
+// into a bare ("", false) with no classified reason at all).
+func TestEvaluateEffectLeadingTildeFailsClosed(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"~nonexistentuser12345 as the command word -- named-user tilde in command-word position",
+			"~nonexistentuser12345 -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate (unresolved tilde expansion in command-word position",
+		},
+		{
+			"~ alone as the command word -- bare tilde in command-word position",
+			"~ -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate (unresolved tilde expansion in command-word position",
+		},
+		{
+			// Deliberately NOT "~/bin/rm": that command word's OWN basename
+			// is "rm", which the pre-existing SIGNATURE denylist
+			// (isRmRootDelete, denylist.go) already Blocks via path.Base
+			// regardless of the AST layer -- this case uses an arbitrary,
+			// unrecognized tool name so the assertion below pins the AST
+			// tilde gate specifically, not a signature-layer coincidence.
+			"~/bin/mytool as the command word -- tilde-relative path in command-word position",
+			"~/bin/mytool -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate (unresolved tilde expansion in command-word position",
+		},
+		{
+			"R=~nonexistentuser12345; $R -- named-user tilde in assignment-value position",
+			"R=~nonexistentuser12345; $R -rf /", RiskRead, Confirm, RiskElevated,
+			"effect: indeterminate (unresolved tilde expansion assigned to R",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectQuotedOrEscapedTildeStillResolves pins the negative
+// side of wordHasLeadingUnescapedTilde: a QUOTED or BACKSLASH-escaped
+// leading tilde is inert literal text to a real shell (no expansion at
+// all), and must keep resolving normally — never fail closed just because
+// a "~" character appears at the front of the word. Uses an arbitrary,
+// unrecognized command name ("~foo", not "~rm") so the assertion pins the
+// tilde gate specifically, not an unrelated escalation-regex coincidence
+// (a resolved word like "~rm -rf /" independently matches the pre-existing
+// "rm -r/-f" escalation regex, since its `\brm\b` only requires a
+// word-boundary before "rm" — true of a leading "~" or "!" or "." alike —
+// not "rm" as its own whole token; that is pre-existing signature-layer
+// behavior, unrelated to and unaffected by this tilde fix).
+func TestEvaluateEffectQuotedOrEscapedTildeStillResolves(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			`R='~foo'; $R --bar -- single-quoted leading tilde is inert text, resolves to the literal command word "~foo"`,
+			`R='~foo'; $R --bar`, RiskRead, Allow, RiskRead, "",
+		},
+		{
+			`R=\~foo; $R --bar -- backslash-escaped leading tilde is inert text too`,
+			`R=\~foo; $R --bar`, RiskRead, Allow, RiskRead, "",
 		},
 	}
 	runEvalCases(t, engine, cases)

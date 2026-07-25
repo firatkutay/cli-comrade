@@ -106,6 +106,63 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   (yani zaten hatalı biçimlendirilmiş) bir DSN parolası, `@`'ye kadar
   eşleşmediği için maskelenmeden kalabilir. Standart biçimli DSN'ler
   etkilenmez.
+- **STRICT konumdaki `~kullanıcı` çözümlemesi artık `destructive` değil
+  `elevated` seviyesine çıkıyor** — `internal/safety/effect_bash.go`'nun
+  `wordHasLeadingUnescapedTilde` kapısı, gerçek `os/user.Lookup` host
+  çağrısını (saf-fonksiyon iddiasını bozan bir yan etki) STRICT
+  (komut-sözcüğü/atama-değeri) konumundan tamamen kaldırdı — artık
+  çözülemez (`indeterminate`) sayılıp `RiskElevated`'e düşüyor, önceden
+  gerçek `os/user.Lookup` sonucuna göre `RiskDestructive`'e kadar
+  çıkabiliyordu (örn. `R=~root/bin/rm; $R -rf /`). Nihai `Action`
+  (`confirm`) değişmiyor, ama `RiskElevated` ve `RiskDestructive`
+  `internal/engine/runner.go`'da FARKLI `--yolo` bypass bayraklarıyla
+  (`safety.confirm_elevated=false` / `safety.confirm_destructive=false`)
+  kapatılıyor — yani sadece `confirm_elevated=false` + `--yolo` açık bir
+  kurulum, önceden main'de `confirm_destructive=false` GEREKTİREN bu dar
+  kalıbı artık onaysız atlatabilir. Kabul edilen, kasıtlı bir değiş tokuş:
+  host'a bağımlı gerçek bir syscall'ı kaldırmanın dürüst sonucu budur, bir
+  gözden kaçırma değil.
+- **May-not-execute gövdelerdeki (invalidation) çözümler artık `destructive`
+  değil `elevated` tavanına takılıyor** — `internal/safety/effect_bash.go`'nun
+  `resolveMayNotExecute`'u, bir `while`/`for` gövdesi, atlanan bir `elif`,
+  ya da bir `if`/`case` dalı (hepsi "çalışabilir de çalışmayabilir de")
+  bir değişkeni yeniden atadığında, o değişkeni ÇÖZÜLEMEZ olarak işaretler
+  (eski değeri sessizce korumak yerine) — bu, gövde hiç çalışmasa bile eski
+  tehlikeli değerin sessizce ezilmesini önleyen (kritik bir güvenlik açığını
+  kapatan) sağlam davranıştır, ama dürüst maliyeti şudur: önceden gövde
+  hiç MODELLENMEDİĞİ için (main, `if`/`while`/`for`/`case`'i hiç anlamıyordu)
+  değişken ÖNCEKİ atamasından `RiskDestructive`'e kadar çözülebiliyorken,
+  artık aynı komut için üst sınır her zaman `RiskElevated`'dir (örn.
+  `R=rm; while false; do R=echo; done; $R -rf /` main'de `destructive`,
+  artık `elevated`). Nihai `Action` (`confirm`) değişmiyor, ama tilde
+  bulgusundaki AYNI `--yolo` etkileşimi burada da geçerli — ve kapsamı çok
+  daha geniş (auditor'un korpuslarında 83 vaka). Kabul edilen, kasıtlı bir
+  değiş tokuş: bir CRITICAL false-Allow'u kapatmanın dürüst sonucu budur.
+- **Bir döngü gövdesi TEK GEÇİŞTE çözülür — 2. veya sonraki iterasyonda
+  tehlikeli hale gelen bir değişken görünmez kalır** (main'de de AYNI,
+  bu turun işi tarafından İNTRODUCE EDİLMEMİŞ, önceden var olan bir
+  boşluk) — `internal/safety/resolveMayNotExecute`, bir `for`/`while`
+  gövdesini KENDİ İÇİNDE tutarlı tek bir sıralı geçişle çözer (döngünün
+  gerçekte kaç kez çalışacağını bilmediği için); bu, `for i in 1; do
+  R=rm; $R -rf /; done` gibi TEK-İTERASYONLUK bir ataması-ve-kullanımı
+  doğru yakalar, ama İKİNCİ (veya sonraki) iterasyonda farklı bir değer
+  üreten bir zincir kaçar:
+  ```
+  X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /
+  ```
+  Bu analiz geçişi 1. iterasyonu hesaplar (`X=echo`, döngü-öncesi değerle
+  AYNI olduğu için "değişmemiş" sayılır ve dokunulmaz), ama gerçek bash'te
+  2. iterasyon `R`yi zaten `rm`e çevirmiş olduğundan `X` de `rm` olur ve
+  komut gerçekten `rm -rf /` çalıştırır (`bash -c 'X=echo; R=echo; for i
+  in 1 2; do X=$R; R=rm; done; echo "$X"'` → `rm` doğrular). İmza/denylist
+  katmanı da bunu yakalamaz — hiçbir katman döngüyü birden fazla kez
+  "çalıştırmaz". Dar bir kalıp: sadece SINK değişkenin döngü-öncesi
+  ÖNCEDEN-TOHUMLANMIŞ değeri, 1. geçişin ürettiği değerle TAM OLARAK
+  ÇAKIŞTIĞINDA (böylece "değişmemiş" sayılıp invalidation'ı atlattığında)
+  ortaya çıkar — rastgele bir önceki değer bu çakışmayı neredeyse hiç
+  yaşamaz. Literal tehlikeli kalıplar için (örn. döngü içinde doğrudan
+  `rm -rf /` yazan bir literal) imza/denylist tabanı hâlâ geçerlidir; bu
+  boşluk yalnızca DOLAYLI, İTERASYONA-BAĞIMLI değer akışını etkiler.
 
 ### CLI bayrağı — `--profile`, ham-argümanlı komutlarda çalışmıyor (issue #27)
 
@@ -253,6 +310,67 @@ validation, redaction coverage, and the destructive-command classifier
   password that itself contains an unescaped `/` or `@` (already a
   malformed DSN) won't match through to the terminating `@` and can be
   left unmasked. Standard-shaped DSNs are unaffected.
+- **A STRICT-position `~username` resolution now tops out at `elevated`,
+  not `destructive`** — `internal/safety/effect_bash.go`'s
+  `wordHasLeadingUnescapedTilde` gate removes the real `os/user.Lookup`
+  host call (a side effect that broke the analyzer's pure-function claim)
+  from STRICT (command-word/assignment-value) position entirely; such a
+  word is now treated as unresolved (`indeterminate`) and caps out at
+  `RiskElevated`, where it previously could reach `RiskDestructive` via
+  the real Lookup result (e.g. `R=~root/bin/rm; $R -rf /`). The resulting
+  `Action` (`confirm`) is unchanged, but `RiskElevated` and
+  `RiskDestructive` are gated by DIFFERENT `--yolo` bypass flags in
+  `internal/engine/runner.go` (`safety.confirm_elevated=false` vs.
+  `safety.confirm_destructive=false`) — so a setup with only
+  `confirm_elevated=false` + `--yolo` can now bypass unprompted a narrow
+  shape that previously required `confirm_destructive=false` on main.
+  Accepted as a deliberate trade-off: this is the honest consequence of
+  removing a real, host-dependent syscall from this analyzer's resolution
+  path, not an oversight.
+- **A may-not-execute body's invalidated resolution now tops out at
+  `elevated`, not `destructive`** — `internal/safety/effect_bash.go`'s
+  `resolveMayNotExecute` marks a variable a `while`/`for` body, a skipped
+  `elif`, or an `if`/`case` branch (all "may or may not actually run")
+  reassigns as UNRESOLVABLE rather than silently keeping its prior value —
+  the sound fix for a CRITICAL false-Allow (a body that never runs could
+  otherwise overwrite an already-dangerous value with a benign one). The
+  honest cost: since the body used to be completely unmodeled (main never
+  understood `if`/`while`/`for`/`case` at all), the variable's PRIOR
+  assignment could resolve all the way to `RiskDestructive`; now the same
+  command caps at `RiskElevated` (e.g. `R=rm; while false; do R=echo;
+  done; $R -rf /` was `destructive` on main, is now `elevated`). The
+  resulting `Action` (`confirm`) is unchanged, but the SAME `--yolo`
+  interaction documented for the tilde entry above applies here too — and
+  this class is far larger (83 cases across the audit's corpora, vs. the
+  tilde entry's narrower scope). Accepted as a deliberate trade-off: this
+  is the honest consequence of closing a CRITICAL false-Allow, not an
+  oversight.
+- **A loop body is resolved in a SINGLE PASS — a variable that only
+  becomes dangerous on iteration >= 2 is invisible** (pre-existing on
+  `origin/main` too — this class was NOT introduced by the may-not-execute
+  fix above) — `internal/safety/resolveMayNotExecute` resolves a `for`/
+  `while` body with one internally-consistent sequential pass (it has no
+  way to know how many times the loop actually runs), which correctly
+  catches a SINGLE-iteration assignment-and-use (`for i in 1; do R=rm;
+  $R -rf /; done`), but misses a chain that only produces a different
+  value on the SECOND (or later) iteration:
+  ```
+  X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /
+  ```
+  This analysis pass computes iteration 1 (`X=echo`, identical to the
+  pre-loop value, so treated as "unchanged" and left alone), but real
+  bash's second iteration has already turned `R` into `rm`, so `X`
+  becomes `rm` too, and the command genuinely runs `rm -rf /` (confirmed:
+  `bash -c 'X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; echo
+  "$X"'` → `rm`). The signature/denylist layer does not catch this either
+  — neither layer ever runs the loop more than once. Narrow in practice:
+  it only manifests when the SINK variable's pre-loop seeded value
+  happens to EXACTLY MATCH what pass 1 computes (so invalidation is
+  skipped) — an arbitrary prior value almost never collides this way.
+  Literal dangerous shapes (a literal `rm -rf /` written directly inside
+  the loop body) are still caught by the signature/denylist floor
+  regardless; this gap is specific to INDIRECT, iteration-dependent value
+  flow.
 
 ### CLI flag — `--profile` doesn't work on raw-arg commands (issue #27)
 

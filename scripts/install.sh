@@ -14,6 +14,13 @@
 #                         from appending a PATH export to your shell rc file
 #                         when the install dir isn't already on PATH (default:
 #                         unset — the rc file is edited automatically)
+#
+# Requirements on PATH:
+#   - curl or wget (download)
+#   - one SHA-256 checksum tool: sha256sum (GNU/most Linux distros),
+#     shasum (macOS/BSD), or openssl (fallback) — checksum verification
+#     is mandatory and never skipped
+#   - tar and gzip (archive extraction)
 set -eu
 
 REPO="firatkutay/cli-comrade"
@@ -47,6 +54,78 @@ require_downloader() {
     DOWNLOADER=wget
   else
     echo "install.sh: neither curl nor wget was found on PATH; install one of them and re-run this script." >&2
+    exit 1
+  fi
+}
+
+# require_checksum_verifier picks a SHA-256 verifier and sets
+# CHECKSUM_VERIFIER to "gnu", "bsd", or "openssl" — resolved once, then
+# dispatched on by verify_checksum() at the call site, the same
+# resolver/wrapper split as require_downloader/fetch_url_to_file above.
+#
+# Preference order: sha256sum (GNU coreutils; most Linux distros) >
+# shasum -a 256 (BSD/macOS — stock macOS has no sha256sum at all, only
+# shasum and openssl) > openssl dgst -sha256 (near-universal fallback).
+# Verification is never weakened or skipped: if none of the three is on
+# PATH, abort non-zero with an actionable message instead of continuing
+# without verifying the download.
+require_checksum_verifier() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    CHECKSUM_VERIFIER=gnu
+  elif command -v shasum >/dev/null 2>&1; then
+    CHECKSUM_VERIFIER=bsd
+  elif command -v openssl >/dev/null 2>&1; then
+    CHECKSUM_VERIFIER=openssl
+  else
+    echo "install.sh: no SHA-256 checksum tool found on PATH (checked sha256sum, shasum, openssl); install one of them (e.g. 'sha256sum' is in GNU coreutils, 'shasum' ships with macOS/Perl, or install openssl) and re-run this script." >&2
+    exit 1
+  fi
+}
+
+# verify_checksum checks archive file $1 against checksums.txt line $2
+# ("<hash>  <filename>", the format sha256sum/shasum -c both expect),
+# using whichever verifier require_checksum_verifier resolved into
+# CHECKSUM_VERIFIER. Must be called with $1 in the current directory.
+#
+# A hash MISMATCH always aborts non-zero with a clear message — this is
+# never downgraded to a warning, on any of the three verifier paths.
+verify_checksum() {
+  file="$1"
+  checksum_line="$2"
+
+  case "$CHECKSUM_VERIFIER" in
+    gnu)
+      printf '%s\n' "$checksum_line" >checksum.line
+      sha256sum -c checksum.line
+      ;;
+    bsd)
+      printf '%s\n' "$checksum_line" >checksum.line
+      shasum -a 256 -c checksum.line
+      ;;
+    openssl)
+      # `openssl dgst` has no built-in -c/--check mode and a different
+      # output format ("SHA256(file)= <hash>"), so the expected/actual
+      # hashes are extracted and compared here, case-insensitively (some
+      # checksums.txt generators and openssl builds differ in case).
+      expected_hash="$(printf '%s\n' "$checksum_line" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+      actual_hash="$(openssl dgst -sha256 "$file" | awk '{print $NF}' | tr '[:upper:]' '[:lower:]')"
+      if [ -z "$expected_hash" ] || [ -z "$actual_hash" ] || [ "$expected_hash" != "$actual_hash" ]; then
+        echo "install.sh: checksum mismatch for ${file} (expected ${expected_hash}, got ${actual_hash})" >&2
+        exit 1
+      fi
+      echo "${file}: OK"
+      ;;
+  esac
+}
+
+# require_gzip aborts with an actionable message if gzip is missing.
+# `tar -xzf` shells out to a child gzip process; on minimal images that
+# ship tar but not gzip this otherwise fails deep inside tar with a
+# cryptic "tar (child): gzip: Cannot exec: No such file or directory"
+# instead of a clear, actionable message.
+require_gzip() {
+  if ! command -v gzip >/dev/null 2>&1; then
+    echo "install.sh: gzip was not found on PATH; tar needs it to extract the release archive. Install gzip and re-run this script." >&2
     exit 1
   fi
 }
@@ -166,6 +245,8 @@ configure_path_in_rc() {
 
 main() {
   require_downloader
+  require_checksum_verifier
+  require_gzip
   os="$(detect_os)"
   arch="$(detect_arch)"
   base_url="$(resolve_base_url)"
@@ -198,8 +279,7 @@ main() {
   echo "install.sh: verifying checksum..."
   (
     cd "$workdir"
-    printf '%s\n' "$checksum_line" > checksum.line
-    sha256sum -c checksum.line
+    verify_checksum "$archive" "$checksum_line"
   )
 
   tar -xzf "${workdir}/${archive}" -C "$workdir" "${BIN_NAME}"

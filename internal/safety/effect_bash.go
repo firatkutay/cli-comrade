@@ -125,38 +125,94 @@ var errUnexpectedProcSubst = errors.New("safety: unexpected process substitution
 // command-word-position rule above — "not modeled" degrades to
 // "indeterminate", never to "silently resolved wrong".
 //
-// Two narrower, deliberate limits inside the now-walked constructs, kept
-// intentionally simple rather than modeling full control-flow:
+// MAY-NOT-EXECUTE bodies — the correctness-critical part of this design,
+// tightened after a follow-up security audit found a CRITICAL false-Allow
+// regression in an earlier version of this walk. A while/until body may
+// run zero iterations (`while false; do R=echo; done` never runs Do at
+// all); a for-loop's Items may resolve to an empty list at runtime
+// (`for i in $UNSET`, `for i in $(false)`); an "elif" is only reached if
+// every earlier Cond in the chain was false; an if/elif/else's Then/Else,
+// and each case item's Stmts, are mutually exclusive alternatives where
+// at most one (possibly none) actually runs. None of these facts is
+// something this single-pass, non-executing analyzer can determine — it
+// never evaluates whether a Cond is true, whether an Items list is
+// non-empty, or which branch "really" runs.
 //
-//  1. An if/elif/else's Then/Else branches, and each case item's Stmts,
-//     are mutually exclusive at runtime — at most one of them actually
-//     executes — so each is resolved against its OWN CLONE of the env as
-//     of entering the construct (resolveScopedStmts), never chained
-//     sequentially into one another and never leaked back to the
-//     surrounding scope. This is what keeps two mutually exclusive
-//     branches assigning the SAME variable to DIFFERENT literal values
-//     from silently picking whichever branch happened to be visited last
-//     as if it were the only one that could run (a real false-negative
-//     risk a naive shared-env walk would introduce), while still letting
-//     `if true; then R=rm; $R -rf /; fi` resolve correctly: the
-//     assignment and its use are both inside the SAME branch's own clone.
-//     A subshell (`( )`) is forked the same way, since it always runs in
-//     its own child environment and never leaks assignments back out —
-//     real bash semantics, not just a conservative approximation. An
-//     if/while's own Cond, and a while/for's own Do body, are NOT forked
-//     (plain r.resolveStmts): they are not mutually-exclusive
-//     alternatives, they always run in the CURRENT scope in real bash,
-//     exactly like a top-level statement list.
-//  2. A for-loop's own iteration variable (*syntax.WordIter's Name) is
-//     deliberately NEVER added to env: its real value is whichever of
-//     the loop's Items is bound on a given iteration, which this
-//     single-pass analyzer cannot enumerate. Leaving it absent from env
-//     means a reference to it in ARGUMENT position (the common,
-//     idiomatic shape — `for f in *.go; do gofmt -l $f; done`) resolves
-//     to "" and stays inert (safe, see the ARGUMENT-position discussion
-//     below), while a reference to it in COMMAND-WORD position fails
-//     closed via the same unresolved-command-word rule as any other
-//     unknown variable — never silently resolved to a guessed item.
+// Given that, a variable such a body assigns is genuinely AMBIGUOUS
+// afterward: its real value is either whatever it was before (if the
+// body never ran) or the newly assigned one (if it did) — and BOTH of
+// the naive alternatives are unsound:
+//
+//   - Sharing r.env directly with the body (this analyzer's ORIGINAL,
+//     regressed behavior) treats the body as ALWAYS having run: `R=rm;
+//     while false; do R=echo; done; $R -rf /` would silently overwrite
+//     the already-known-dangerous R=rm with R=echo, then resolve `$R` to
+//     the WRONG, safe-looking value — a false Allow on a command that
+//     genuinely runs `rm -rf /` in real bash, since the while body never
+//     executes at all.
+//   - Discarding the body's assignment entirely (this analyzer's
+//     Subshell treatment — correct THERE, because a real subshell's
+//     assignments provably never leak, full stop) is the MIRROR false
+//     negative here: `R=echo; for i in 1; do R=rm; done; $R -rf /` DOES
+//     run its body (Items is the literal, non-empty list `1`), so `$R`
+//     really is `rm` afterward — silently keeping the stale R=echo would
+//     resolve `$R -rf /` to a safe-looking value again.
+//
+// The sound fix (resolveMayNotExecute, below) is two steps: resolve the
+// body against a FRESH CLONE of the env (so an assignment-and-use INSIDE
+// the SAME body, e.g. `for i in 1; do R=rm; $R -rf /; done`, still
+// escalates correctly — this is issue #15's original ask), then
+// INVALIDATE (delete) every variable name the clone's value disagrees
+// with, back in the PARENT env. A later COMMAND-WORD/assignment-VALUE
+// reference to an invalidated name is therefore genuinely
+// strictly-unresolvable — fails closed to Confirm, never silently
+// resolves to either the stale OR the new value. A later ARGUMENT-position
+// reference resolves to "" and stays inert (see the ARGUMENT-position
+// discussion below), so this costs essentially no false-positive rate on
+// the ordinary, non-security-relevant shape of "loop variable read only
+// as an argument after the loop".
+//
+// Exactly which parts of each construct are "always runs" (shared,
+// plain r.resolveStmts) versus "may not execute" (resolveMayNotExecute):
+// the very FIRST if's Cond and a while/until's own Cond always run at
+// least once when control reaches the statement at all, so both stay
+// shared; a for/while/until's Do body, an "elif"'s own Cond, an
+// if/elif/else's Then/Else, and each case item's Stmts are all
+// may-not-execute. A subshell (`( )`) keeps its own, DIFFERENT treatment
+// (resolveScopedStmts: clone, then unconditionally discard, no
+// invalidation) — a subshell's assignments are not "ambiguous", they are
+// UNCONDITIONALLY isolated by real bash semantics, so there is nothing to
+// invalidate.
+//
+// This does mean two mutually exclusive branches assigning the SAME
+// variable to DIFFERENT literal values can never both be resolved with
+// confidence afterward — correct: no static analysis of this kind can
+// know which one ran, so the honest answer is "unknown", not "whichever
+// was visited last" (a real false-negative risk the ORIGINAL if/case
+// implementation carried too, before this fix: it left a pre-existing
+// value in place unchanged rather than invalidating it, which is unsound
+// in the same direction as the Subshell-discard mirror case above, for
+// any if/elif/else Then/Else or case item that is actually guaranteed to
+// run).
+//
+// Resource guard: every scope-forking clone this may-not-execute
+// treatment (and Subshell) requires goes through safeCloneEnv, which
+// fails closed once a shared, whole-analysis resolverBudget is exhausted
+// or an env grows past maxEnvSize — see resolverBudget's doc comment for
+// the memory-amplification concern this closes (nested/many-branch
+// constructs fork one clone per branch per level, which multiplies, not
+// merely adds, with nesting depth).
+//
+// A for-loop's own iteration variable (*syntax.WordIter's Name) is,
+// separately, deliberately NEVER added to env at all (not merely
+// invalidated after the fact): its real value is whichever of the loop's
+// Items is bound on a given iteration, which this analyzer cannot
+// enumerate. Leaving it absent from env means a reference to it in
+// ARGUMENT position (the common, idiomatic shape — `for f in *.go; do
+// gofmt -l $f; done`) resolves to "" and stays inert, while a reference
+// to it in COMMAND-WORD position fails closed via the same
+// unresolved-command-word rule as any other unknown variable — never
+// silently resolved to a guessed item.
 func analyzeBashEffect(command string) effectVerdict {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(command), "")
@@ -164,7 +220,7 @@ func analyzeBashEffect(command string) effectVerdict {
 		return indeterminateVerdict("parse error: " + err.Error())
 	}
 
-	resolver := &bashResolver{env: map[string]string{}}
+	resolver := &bashResolver{env: map[string]string{}, budget: &resolverBudget{forksRemaining: maxScopeForks}}
 	text, indeterminate, reason := resolver.resolveStmts(file.Stmts)
 	if indeterminate {
 		return indeterminateVerdict(reason)
@@ -202,10 +258,80 @@ func analyzeBashEffect(command string) effectVerdict {
 // see analyzeBashEffect's doc comment for what it deliberately does and
 // does not model. findings accumulates structural results
 // (checkFetcherPipeline) discovered along the way that resolved-text
-// signature reuse cannot express as a regex.
+// signature reuse cannot express as a regex. budget is shared BY POINTER
+// with every child resolver spawned from the same analyzeBashEffect call
+// (resolveMayNotExecute, resolveScopedStmts) — see resolverBudget's doc
+// comment.
 type bashResolver struct {
 	env      map[string]string
 	findings []effectVerdict
+	budget   *resolverBudget
+}
+
+// resolverBudget bounds the TOTAL number of scope-forking clones
+// (safeCloneEnv) a single analyzeBashEffect call may perform, shared BY
+// POINTER across every bashResolver spawned from that one call (the root
+// resolver in analyzeBashEffect creates it; every may-not-execute/
+// subshell child carries the SAME pointer forward, never a fresh one).
+//
+// A per-node NESTING-DEPTH cap alone would under-bound this: a case
+// statement forks one clone PER ITEM, and each of those items can itself
+// nest further constructs, so nesting several many-branch case/if/loop
+// constructs MULTIPLIES the total clone count with depth rather than
+// merely adding to it. A follow-up security audit measured a ~19x/494MB
+// memory blow-up (vs ~26MB on origin/main) from a single ~48KB crafted
+// input exploiting exactly this fan-out-times-depth shape — a realistic
+// threat, since this analyzer parses LLM-generated, untrusted text, not
+// hand-vetted scripts. Capping the CUMULATIVE fork count instead bounds
+// worst-case memory/CPU to maxScopeForks*maxEnvSize map entries
+// regardless of whether the blow-up comes from deep nesting, wide
+// branching, or both at once.
+type resolverBudget struct {
+	forksRemaining int
+}
+
+const (
+	// maxScopeForks is the total number of scope-forking clones a single
+	// analyzeBashEffect call may perform before failing closed — see
+	// resolverBudget's doc comment. Chosen generously above anything a
+	// legitimate one-liner would ever need (even an elaborately nested
+	// real script rarely forks more than a handful of scopes), while
+	// still bounding worst-case total clone volume to a small, fixed
+	// multiple of maxEnvSize.
+	maxScopeForks = 512
+
+	// maxEnvSize caps how many distinct variable names a single env map
+	// may hold before this analyzer refuses to clone it any further.
+	// Combined with maxScopeForks, this bounds the absolute worst-case
+	// total clone volume across an entire analyzeBashEffect call to
+	// maxScopeForks*maxEnvSize map entries, however the input is shaped.
+	maxEnvSize = 256
+)
+
+// scopeGuardReason is the fail-closed audit reason safeCloneEnv reports
+// when either guard fires. Deliberately generic (not "too deep" vs "too
+// many variables") — every caller already folds it into an "effect:
+// indeterminate (...)" verdict via indeterminateVerdict (RiskElevated,
+// Confirm), and both thresholds exist for the identical reason (bounding
+// total clone memory/CPU), so no caller has any use for telling the two
+// apart.
+const scopeGuardReason = "control-structure nesting/branching exceeds this analyzer's resource guard"
+
+// safeCloneEnv clones env, or refuses (nil, false) if budget is
+// exhausted or env already holds more than maxEnvSize entries — the
+// SINGLE choke point every scope-forking clone in this file goes through
+// (resolveMayNotExecute, resolveScopedStmts, and resolveCallExpr's
+// per-invocation-assign clone), so the guard cannot be bypassed by a new
+// call site added later. A successful clone decrements
+// budget.forksRemaining, since budget is shared by pointer across every
+// resolver spawned from the same analyzeBashEffect call — see
+// resolverBudget's doc comment.
+func safeCloneEnv(env map[string]string, budget *resolverBudget) (map[string]string, bool) {
+	if budget.forksRemaining <= 0 || len(env) > maxEnvSize {
+		return nil, false
+	}
+	budget.forksRemaining--
+	return cloneEnv(env), true
 }
 
 // resolveStmts resolves a statement list in order, joining each
@@ -244,12 +370,10 @@ func (r *bashResolver) resolveStmt(stmt *syntax.Stmt) (text string, indeterminat
 }
 
 // resolveCommand dispatches on the Command's concrete node type — see
-// analyzeBashEffect's "Scope boundary" doc-comment section for exactly
-// which shapes are walked, which are deliberately left unmodeled (and why
-// that degrades safely to indeterminate rather than to a silently wrong
-// resolution), and the two narrower documented limits within the walked
-// set (mutually-exclusive-branch scoping, the for-loop iteration
-// variable).
+// analyzeBashEffect's doc comment for exactly which shapes are walked,
+// which are deliberately left unmodeled, and the MAY-NOT-EXECUTE
+// clone+invalidate treatment resolveMayNotExecute implements for every
+// construct below whose body is not guaranteed to run.
 func (r *bashResolver) resolveCommand(cmd syntax.Command) (text string, indeterminate bool, reason string) {
 	switch c := cmd.(type) {
 	case *syntax.CallExpr:
@@ -272,10 +396,7 @@ func (r *bashResolver) resolveCommand(cmd syntax.Command) (text string, indeterm
 	case *syntax.WhileClause:
 		return r.resolveWhileClause(c)
 	case *syntax.ForClause:
-		// The loop body always runs in the CURRENT scope in real bash (no
-		// subshell fork) — see analyzeBashEffect's doc comment on why the
-		// iteration variable itself is deliberately never added to env.
-		return r.resolveStmts(c.Do)
+		return r.resolveForClause(c)
 	case *syntax.CaseClause:
 		return r.resolveCaseClause(c)
 	case *syntax.Block:
@@ -283,7 +404,7 @@ func (r *bashResolver) resolveCommand(cmd syntax.Command) (text string, indeterm
 		// subshell — so a plain same-resolver resolveStmts is correct.
 		return r.resolveStmts(c.Stmts)
 	case *syntax.Subshell:
-		return r.resolveScopedStmts(cloneEnv(r.env), c.Stmts)
+		return r.resolveScopedStmts(c.Stmts)
 	case *syntax.DeclClause:
 		return r.resolveDeclClause(c)
 	default:
@@ -291,48 +412,122 @@ func (r *bashResolver) resolveCommand(cmd syntax.Command) (text string, indeterm
 	}
 }
 
-// resolveScopedStmts resolves stmts against env — which may be r.env
-// itself (a same-scope construct: an if/while's Cond, a while/for's Do
-// body, or a `{ }` block, none of which fork in real bash) or a fresh
-// clone (a construct that forks its own scope: a subshell, or one
-// mutually-exclusive branch of an if/elif/else or case, where at most one
-// of several alternatives actually runs and none may leak an assignment
-// into a sibling alternative or the surrounding scope) — merging any
-// findings (checkFetcherPipeline) the nested resolution accumulates back
-// into r, since those are always worth surfacing regardless of which
-// scope discovered them.
-func (r *bashResolver) resolveScopedStmts(env map[string]string, stmts []*syntax.Stmt) (text string, indeterminate bool, reason string) {
-	child := &bashResolver{env: env}
+// resolveScopedStmts resolves stmts (a SUBSHELL's own statement list)
+// against a fresh clone of r.env, then UNCONDITIONALLY DISCARDS that
+// clone once resolution completes — never invalidating anything in
+// r.env, unlike resolveMayNotExecute. A subshell forks a real child
+// process in bash, so its assignments never propagate back to the parent
+// shell: not "ambiguous", not "may or may not have happened" — provably,
+// unconditionally isolated on real bash semantics. There is therefore
+// nothing to invalidate: r.env already correctly has no idea the
+// subshell's assignments ever happened, which is exactly right regardless
+// of whether the subshell "actually" ran. Findings (checkFetcherPipeline)
+// the nested resolution accumulates are still merged back into r, since
+// those are always worth surfacing regardless of which scope discovered
+// them.
+func (r *bashResolver) resolveScopedStmts(stmts []*syntax.Stmt) (text string, indeterminate bool, reason string) {
+	clone, ok := safeCloneEnv(r.env, r.budget)
+	if !ok {
+		return "", true, scopeGuardReason
+	}
+	child := &bashResolver{env: clone, budget: r.budget}
 	text, indeterminate, reason = child.resolveStmts(stmts)
 	r.findings = append(r.findings, child.findings...)
 	return text, indeterminate, reason
 }
 
-// resolveIfClause resolves one if/elif/else chain: Cond always runs in
-// the CURRENT scope (a real if condition is not a mutually-exclusive
-// alternative — it unconditionally executes when control reaches it), so
-// its own assignments persist into r.env directly via plain
-// r.resolveStmts; Then is resolved against a FRESH CLONE of r.env (see
-// resolveScopedStmts) since at most one of Then/Else ever actually runs.
-// c.Else (either a further "elif" with its own Cond, or a plain "else"
-// with Cond empty) is recursed into with the SAME base r.env — not
-// chained through Then's own clone — so an "elif"/"else" branch forks
-// from the state as of entering the WHOLE chain, never from a sibling
-// branch that (at runtime) would never have run alongside it.
+// resolveMayNotExecute resolves stmts as a MAY-NOT-EXECUTE body — see
+// analyzeBashEffect's doc comment for the full false-Allow/false-negative
+// analysis this fixes. Two steps:
+//
+//  1. Resolve stmts against a FRESH CLONE of r.env (safeCloneEnv), via a
+//     child resolver. This still correctly catches an assignment-and-use
+//     INSIDE the same body (`for i in 1; do R=rm; $R -rf /; done` still
+//     escalates: the child resolver's own R=rm is visible when it
+//     resolves $R, exactly as within any other statement list).
+//  2. INVALIDATE, in r.env itself, every variable name whose value in the
+//     clone differs from (or is newly present versus) r.env: such a
+//     variable's value after the construct is genuinely ambiguous — the
+//     body may not have run at all (old value, if any, still stands), or
+//     it may have run and produced the new one — and this analyzer must
+//     never silently resolve to either. Invalidating means DELETING the
+//     key entirely, so a later STRICT (command-word/assignment-value)
+//     reference to it fails closed exactly like any other genuinely
+//     unknown variable, while a later ARGUMENT-position reference merely
+//     resolves to "" and stays inert (see resolveWord's non-strict
+//     default) — the ordinary shape of "loop variable used only as an
+//     argument" does not start over-prompting.
+//
+// If the child resolution is itself indeterminate, that propagates
+// directly (no invalidation step needed — the whole command already
+// fails closed).
+func (r *bashResolver) resolveMayNotExecute(stmts []*syntax.Stmt) (text string, indeterminate bool, reason string) {
+	clone, ok := safeCloneEnv(r.env, r.budget)
+	if !ok {
+		return "", true, scopeGuardReason
+	}
+	child := &bashResolver{env: clone, budget: r.budget}
+	text, indeterminate, reason = child.resolveStmts(stmts)
+	r.findings = append(r.findings, child.findings...)
+	if indeterminate {
+		return "", true, reason
+	}
+	for name, newVal := range clone {
+		if oldVal, existed := r.env[name]; !existed || oldVal != newVal {
+			delete(r.env, name)
+		}
+	}
+	return text, false, ""
+}
+
+// resolveIfClause resolves a TOP-LEVEL if/elif/else chain: this is
+// analyzeBashEffect's only entry point into an *syntax.IfClause, and it
+// always starts resolveIfClauseChain with condAlwaysRuns=true for c's OWN
+// Cond — see resolveIfClauseChain's doc comment for why that is true only
+// for this very first Cond, never for a chained "elif"'s.
 func (r *bashResolver) resolveIfClause(c *syntax.IfClause) (text string, indeterminate bool, reason string) {
-	condText, indet, why := r.resolveStmts(c.Cond)
+	return r.resolveIfClauseChain(c, true)
+}
+
+// resolveIfClauseChain resolves one link of an if/elif/else chain.
+// condAlwaysRuns is true ONLY for the very first "if": reaching the if
+// statement at all guarantees at least that first condition test runs,
+// so its own assignments persist directly into r.env via plain
+// r.resolveStmts — exactly like a while/until's own Cond. Every
+// SUBSEQUENT "elif" in the chain is reached ONLY if every earlier Cond
+// was false — itself a may-not-execute body from this analyzer's
+// perspective (it never evaluates whether a Cond is true or false), so an
+// elif's own Cond is resolved via resolveMayNotExecute exactly like a
+// loop body (this is the audit's "recursive elif Cond" fix). c's Then —
+// and, transitively, every later elif's Then — is ALWAYS a
+// may-not-execute body: an if/elif/else chain is a set of mutually
+// exclusive alternatives, and this analyzer cannot determine which one
+// (if any) actually runs. A plain "else" is represented as a further
+// IfClause with Cond empty, so resolveMayNotExecute(nil) trivially
+// contributes nothing and invalidates nothing.
+func (r *bashResolver) resolveIfClauseChain(c *syntax.IfClause, condAlwaysRuns bool) (text string, indeterminate bool, reason string) {
+	var condText string
+	var indet bool
+	var why string
+	if condAlwaysRuns {
+		condText, indet, why = r.resolveStmts(c.Cond)
+	} else {
+		condText, indet, why = r.resolveMayNotExecute(c.Cond)
+	}
 	if indet {
 		return "", true, why
 	}
-	thenText, indet, why := r.resolveScopedStmts(cloneEnv(r.env), c.Then)
+
+	thenText, indet, why := r.resolveMayNotExecute(c.Then)
 	if indet {
 		return "", true, why
 	}
+
 	var parts []string
 	parts = appendNonEmpty(parts, condText)
 	parts = appendNonEmpty(parts, thenText)
 	if c.Else != nil {
-		elseText, indet, why := r.resolveIfClause(c.Else)
+		elseText, indet, why := r.resolveIfClauseChain(c.Else, false)
 		if indet {
 			return "", true, why
 		}
@@ -341,17 +536,20 @@ func (r *bashResolver) resolveIfClause(c *syntax.IfClause) (text string, indeter
 	return strings.Join(parts, " ; "), false, ""
 }
 
-// resolveWhileClause resolves one while/until clause: neither Cond nor Do
-// forks a new scope in real bash (the loop body may run zero or more
-// times, but it is the SAME code path each time, not a mutually-exclusive
-// alternative the way an if/case branch is), so both are resolved via
-// plain r.resolveStmts against the shared, persistent env.
+// resolveWhileClause resolves one while/until clause: Cond ALWAYS runs at
+// least once when control reaches the while statement at all (the first
+// test), so it is resolved via plain r.resolveStmts against the shared,
+// persistent env — exactly like the very first "if"'s Cond. Do is a
+// MAY-NOT-EXECUTE body: the loop may run zero iterations (the audit's
+// exact repro — `while false; do R=echo; done` never runs Do at all), so
+// it is resolved via resolveMayNotExecute exactly like a for-loop body or
+// an if/case branch.
 func (r *bashResolver) resolveWhileClause(w *syntax.WhileClause) (text string, indeterminate bool, reason string) {
 	condText, indet, why := r.resolveStmts(w.Cond)
 	if indet {
 		return "", true, why
 	}
-	doText, indet, why := r.resolveStmts(w.Do)
+	doText, indet, why := r.resolveMayNotExecute(w.Do)
 	if indet {
 		return "", true, why
 	}
@@ -361,16 +559,29 @@ func (r *bashResolver) resolveWhileClause(w *syntax.WhileClause) (text string, i
 	return strings.Join(parts, " ; "), false, ""
 }
 
+// resolveForClause resolves a for/select clause's Do body as a
+// MAY-NOT-EXECUTE construct: the loop may run zero iterations (an empty,
+// unset, or dynamically-empty Items list — `for i in $UNSET`,
+// `for i in $(false)` — the audit's exact repro), so Do is resolved via
+// resolveMayNotExecute exactly like a while/until body. See
+// analyzeBashEffect's doc comment for why the iteration variable itself
+// (*syntax.WordIter's Name) is separately, deliberately never added to
+// env at all — a different, narrower limitation from the
+// may-not-execute treatment of the body as a whole.
+func (r *bashResolver) resolveForClause(f *syntax.ForClause) (text string, indeterminate bool, reason string) {
+	return r.resolveMayNotExecute(f.Do)
+}
+
 // resolveCaseClause resolves a case/switch clause: exactly one CaseItem's
-// Stmts actually runs at runtime, so — exactly like resolveIfClause's
-// Then/Else — each item is resolved against its OWN fresh clone of the
-// env as of entering the whole case statement (resolveScopedStmts), never
-// chained from one item into the next and never leaked back to the
-// surrounding scope.
+// Stmts actually runs at runtime (or possibly none, if no pattern
+// matches), so each item is resolved as its own MAY-NOT-EXECUTE body
+// (resolveMayNotExecute) — never chained from one item into the next, and
+// any variable an item assigns is invalidated in the surrounding scope
+// rather than either leaked into a sibling item or silently discarded.
 func (r *bashResolver) resolveCaseClause(c *syntax.CaseClause) (text string, indeterminate bool, reason string) {
 	var parts []string
 	for _, item := range c.Items {
-		t, indet, why := r.resolveScopedStmts(cloneEnv(r.env), item.Stmts)
+		t, indet, why := r.resolveMayNotExecute(item.Stmts)
 		if indet {
 			return "", true, why
 		}
@@ -448,7 +659,11 @@ func (r *bashResolver) resolveCallExpr(c *syntax.CallExpr) (text string, indeter
 	// directly) is what keeps the two cases apart.
 	workEnv := r.env
 	if len(c.Args) > 0 && len(c.Assigns) > 0 {
-		workEnv = cloneEnv(r.env)
+		clone, ok := safeCloneEnv(r.env, r.budget)
+		if !ok {
+			return "", true, scopeGuardReason
+		}
+		workEnv = clone
 	}
 
 	var assignTexts []string
@@ -685,17 +900,35 @@ func isSimpleParamExp(p *syntax.ParamExp) bool {
 // mvdan.cc/sh/v3/expand/expand.go): a bare/current-user tilde ("~",
 // "~/foo") reads the "HOME" entry of whatever expand.Environ it is given,
 // and a named-user tilde ("~name") additionally calls os/user.Lookup — a
-// real host syscall/NSS lookup this package's own resolution has no
-// business making, since analyzeBashEffect's whole contract is being a
-// PURE function of (command, dialect), never of what accounts happen to
-// exist on the machine currently running comrade. Rejecting every leading
-// unescaped tilde in strict position — not only the "~name" spelling that
-// triggers the Lookup — keeps this gate simple (one rule, not "~name only
-// but ~ and ~/foo are fine") and entirely removes the host-dependent
-// branch from the strict path: resolveWord's strict gate is checked
-// BEFORE expand.Literal is ever invoked, so os/user.Lookup is never
-// reached in strict position at all, "dropping the lookup" outright
-// rather than merely tolerating its result.
+// real host syscall/NSS lookup that makes this resolution depend on which
+// accounts exist on the machine currently running comrade, not merely on
+// (command, dialect).
+//
+// This function closes that host dependency in STRICT
+// (command-word/assignment-value) position ENTIRELY — the one place a
+// correctness review flagged it — by rejecting every leading unescaped
+// tilde BEFORE expand.Literal is ever invoked there (resolveWord's strict
+// gate checks wordIsStrictlyResolvable, which delegates to
+// strictUnresolvableReason, which calls this function, first): so
+// os/user.Lookup is never reached in strict position at all, "dropping
+// the lookup" outright rather than merely tolerating its result.
+// Rejecting EVERY leading unescaped tilde — not only the "~name" spelling
+// that triggers the Lookup — keeps the rule simple (one gate, not "~name
+// only, but ~ and ~/foo are fine").
+//
+// This function is called ONLY from strictUnresolvableReason, which is
+// itself consulted ONLY by resolveWord's STRICT branch — so it has no
+// effect on, and makes no claim about, ARGUMENT (non-strict) position:
+// resolveWord's non-strict branch (redirect targets, every argument after
+// Args[0]) calls expand.Literal directly with no pre-check at all, so a
+// leading unescaped tilde THERE still reaches real tilde expansion and
+// can still trigger a genuine os/user.Lookup host call. That is a known,
+// accepted, narrower residual gap, not an oversight: the tilde-host-I/O
+// fix this function implements was explicitly scoped to strict position
+// only (the fix a security review specifically asked for), the same way
+// analyzeBashEffect's own doc comment explains why an ordinary argument's
+// unresolved substitution is otherwise safe to default to "" — see
+// KNOWN_LIMITATIONS.md for this residual documented for users.
 //
 // A QUOTED leading tilde ('~name', "~name") parses to a
 // *syntax.SglQuoted/*syntax.DblQuoted node instead of *syntax.Lit and so
@@ -705,10 +938,7 @@ func isSimpleParamExp(p *syntax.ParamExp) bool {
 // own Value ("\~name"), which does not have a "~" PREFIX, so
 // expand.Literal's own strings.CutPrefix check already leaves it
 // unexpanded — this function's prefix check agrees with that, rather than
-// fighting it. Deliberately scoped to non-strict (argument) position:
-// item 3's fix is explicitly the STRICT path only — see
-// analyzeBashEffect's doc comment on why an ordinary argument's
-// unresolved substitution is safe to default to "".
+// fighting it.
 func wordHasLeadingUnescapedTilde(w *syntax.Word) bool {
 	if len(w.Parts) == 0 {
 		return false

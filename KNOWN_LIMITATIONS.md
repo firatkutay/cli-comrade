@@ -106,6 +106,22 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   (yani zaten hatalı biçimlendirilmiş) bir DSN parolası, `@`'ye kadar
   eşleşmediği için maskelenmeden kalabilir. Standart biçimli DSN'ler
   etkilenmez.
+- **STRICT konumdaki `~kullanıcı` çözümlemesi artık `destructive` değil
+  `elevated` seviyesine çıkıyor** — `internal/safety/effect_bash.go`'nun
+  `wordHasLeadingUnescapedTilde` kapısı, gerçek `os/user.Lookup` host
+  çağrısını (saf-fonksiyon iddiasını bozan bir yan etki) STRICT
+  (komut-sözcüğü/atama-değeri) konumundan tamamen kaldırdı — artık
+  çözülemez (`indeterminate`) sayılıp `RiskElevated`'e düşüyor, önceden
+  gerçek `os/user.Lookup` sonucuna göre `RiskDestructive`'e kadar
+  çıkabiliyordu (örn. `R=~root/bin/rm; $R -rf /`). Nihai `Action`
+  (`confirm`) değişmiyor, ama `RiskElevated` ve `RiskDestructive`
+  `internal/engine/runner.go`'da FARKLI `--yolo` bypass bayraklarıyla
+  (`safety.confirm_elevated=false` / `safety.confirm_destructive=false`)
+  kapatılıyor — yani sadece `confirm_elevated=false` + `--yolo` açık bir
+  kurulum, önceden main'de `confirm_destructive=false` GEREKTİREN bu dar
+  kalıbı artık onaysız atlatabilir. Kabul edilen, kasıtlı bir değiş tokuş:
+  host'a bağımlı gerçek bir syscall'ı kaldırmanın dürüst sonucu budur, bir
+  gözden kaçırma değil.
 
 ### CLI bayrağı — `--profile`, ham-argümanlı komutlarda çalışmıyor (issue #27)
 
@@ -253,6 +269,23 @@ validation, redaction coverage, and the destructive-command classifier
   password that itself contains an unescaped `/` or `@` (already a
   malformed DSN) won't match through to the terminating `@` and can be
   left unmasked. Standard-shaped DSNs are unaffected.
+- **A STRICT-position `~username` resolution now tops out at `elevated`,
+  not `destructive`** — `internal/safety/effect_bash.go`'s
+  `wordHasLeadingUnescapedTilde` gate removes the real `os/user.Lookup`
+  host call (a side effect that broke the analyzer's pure-function claim)
+  from STRICT (command-word/assignment-value) position entirely; such a
+  word is now treated as unresolved (`indeterminate`) and caps out at
+  `RiskElevated`, where it previously could reach `RiskDestructive` via
+  the real Lookup result (e.g. `R=~root/bin/rm; $R -rf /`). The resulting
+  `Action` (`confirm`) is unchanged, but `RiskElevated` and
+  `RiskDestructive` are gated by DIFFERENT `--yolo` bypass flags in
+  `internal/engine/runner.go` (`safety.confirm_elevated=false` vs.
+  `safety.confirm_destructive=false`) — so a setup with only
+  `confirm_elevated=false` + `--yolo` can now bypass unprompted a narrow
+  shape that previously required `confirm_destructive=false` on main.
+  Accepted as a deliberate trade-off: this is the honest consequence of
+  removing a real, host-dependent syscall from this analyzer's resolution
+  path, not an oversight.
 
 ### CLI flag — `--profile` doesn't work on raw-arg commands (issue #27)
 

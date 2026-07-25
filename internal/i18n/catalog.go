@@ -1050,6 +1050,30 @@ const (
 	// itself (see that package's own doc comment) — only a MessageID and
 	// args, resolved here.
 
+	// MsgDoctorSkipConfigUnavailable is the generic Skip summary shared by
+	// every check that cannot run because internal/cli/doctor.go's own
+	// config load failed (doctor.Deps.ConfigErr != nil) or resolved no
+	// active provider before Deps was built — KeyCheck and ReachCheck's
+	// identical early guard clause both return this MessageID instead of
+	// a bare zero-value Result{Severity: SeveritySkip}, which previously
+	// rendered as a blank-looking row (a Result's Summary is never
+	// pre-rendered text — see internal/doctor's own package doc comment —
+	// so an empty MessageID resolves to literally nothing via
+	// i18n.Translator.T). No args.
+	MsgDoctorSkipConfigUnavailable MessageID = "doctor_skip_config_unavailable"
+	// MsgDoctorSkipDependencyUnavailable is the generic Skip summary
+	// shared by every check's defensive "a Deps seam this check needs
+	// wasn't wired at all" guard (PathCheck's deps.LookPath == nil,
+	// ShellHookCheck's deps.Getenv == nil, ReachCheck's deps.HTTP == nil)
+	// — should never happen in production (defaultDoctorDeps always
+	// wires every seam), but a hand-built Deps in a test, or a future
+	// caller that forgets one, must still render a real row instead of a
+	// blank-looking one. Distinct from MsgDoctorSkipConfigUnavailable:
+	// that one means "we don't know enough about config/the active
+	// provider to check"; this one means "the check itself has no way to
+	// even ask the question, regardless of config". No args.
+	MsgDoctorSkipDependencyUnavailable MessageID = "doctor_skip_dependency_unavailable"
+
 	// MsgDoctorVersionTitle is the "version" check's row title.
 	MsgDoctorVersionTitle MessageID = "doctor_version_title"
 	// MsgDoctorPathTitle is the "path" check's row title.
@@ -1613,6 +1637,9 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUsageCostLocal:        " · local",
 	MsgChatUsageSessionTotal: "session total — %s",
 
+	MsgDoctorSkipConfigUnavailable:     "skipped (config unavailable)",
+	MsgDoctorSkipDependencyUnavailable: "skipped (dependency unavailable)",
+
 	MsgDoctorVersionTitle:   "version",
 	MsgDoctorPathTitle:      "PATH",
 	MsgDoctorShellHookTitle: "shell integration",
@@ -1941,6 +1968,9 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUsageCostEstimate:     " · tah. %s",
 	MsgUsageCostLocal:        " · yerel",
 	MsgChatUsageSessionTotal: "oturum toplamı — %s",
+
+	MsgDoctorSkipConfigUnavailable:     "atlandı (yapılandırma kullanılamıyor)",
+	MsgDoctorSkipDependencyUnavailable: "atlandı (bağımlılık kullanılamıyor)",
 
 	MsgDoctorVersionTitle:   "sürüm",
 	MsgDoctorPathTitle:      "PATH",

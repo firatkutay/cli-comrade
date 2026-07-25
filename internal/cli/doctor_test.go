@@ -31,15 +31,16 @@ var errDoctorTestLookPathNotFound = errors.New("not found")
 // established shape in upgrade_test.go.
 func testDoctorDeps() doctorDeps {
 	return doctorDeps{
-		version:    "v1.0.0",
-		goos:       "linux",
-		getenv:     func(string) string { return "" },
-		lookPath:   func(string) (string, error) { return "", errDoctorTestLookPathNotFound },
-		executable: func() (string, error) { return "", errDoctorTestLookPathNotFound },
-		run:        nil,
-		fetcher:    fakeReleaseFetcher{release: update.Release{TagName: "v1.0.0"}},
-		httpClient: &http.Client{Timeout: 2 * time.Second},
-		now:        func() time.Time { return time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC) },
+		version:           "v1.0.0",
+		goos:              "linux",
+		getenv:            func(string) string { return "" },
+		lookPath:          func(string) (string, error) { return "", errDoctorTestLookPathNotFound },
+		executable:        func() (string, error) { return "", errDoctorTestLookPathNotFound },
+		run:               nil,
+		fetcher:           fakeReleaseFetcher{release: update.Release{TagName: "v1.0.0"}},
+		httpClient:        &http.Client{Timeout: 2 * time.Second},
+		now:               func() time.Time { return time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC) },
+		keychainAvailable: func() bool { return true },
 		livePing: func(context.Context, config.Config, string, string) (llm.CompletionResponse, time.Duration, error) {
 			return llm.CompletionResponse{}, 0, nil
 		},

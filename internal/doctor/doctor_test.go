@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/firatkutay/cli-comrade/internal/config"
 )
 
 func TestSeverityStringIsStableLowercaseVocabulary(t *testing.T) {
@@ -64,6 +66,41 @@ func TestRunnerRunSetsResultIDFromCheckRegardlessOfWhatCheckItselfSet(t *testing
 
 	require.Len(t, results, 1)
 	assert.Equal(t, "real-id", results[0].ID)
+}
+
+// TestRunnerRunEverySkipResultHasNonEmptySummary is the standing guard
+// issue #16's review round asked for: every registered check's
+// SeveritySkip Result must carry a real, translatable Summary — never a
+// blank-looking row (this package's Result.Summary is never
+// pre-rendered text; an empty MessageID resolves to literally nothing —
+// see Result's own doc comment). This Deps deliberately sets a
+// non-empty, non-ollama provider (so KeyCheck/ReachCheck's
+// config-unavailable branch is NOT what's under test here) while
+// leaving Getenv/LookPath/HTTP nil, so PathCheck, ShellHookCheck, and
+// ReachCheck's own defensive "this seam was never wired at all" Skip
+// branches are exactly the ones exercised — a FUTURE bare
+// Result{Severity: SeveritySkip} anywhere in this package's registry
+// fails this test immediately instead of shipping unnoticed.
+func TestRunnerRunEverySkipResultHasNonEmptySummary(t *testing.T) {
+	deps := Deps{
+		// Version is deliberately left "" (zero value) so VersionCheck
+		// takes its OWN dev-build Skip branch (a real Summary already,
+		// unaffected by this test) rather than reaching deps.Fetcher,
+		// which is nil here.
+		Cfg: config.Config{LLM: config.LLMConfig{Provider: "anthropic"}},
+	}
+
+	results := NewRunner().Run(context.Background(), deps)
+
+	skipped := 0
+	for _, r := range results {
+		if r.Severity != SeveritySkip {
+			continue
+		}
+		skipped++
+		assert.NotEmptyf(t, r.Summary, "check %q returned a SeveritySkip Result with an empty Summary", r.ID)
+	}
+	require.Greater(t, skipped, 0, "this Deps must actually exercise at least one Skip branch, or this test would trivially pass")
 }
 
 // TestRunnerRunBoundsEachCheckWithATimeoutIndependentOfCallerContext

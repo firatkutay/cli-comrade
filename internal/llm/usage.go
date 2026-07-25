@@ -12,8 +12,15 @@ import "time"
 type UsageEvent struct {
 	Provider string
 	Model    string
-	Usage    Usage
-	Latency  time.Duration
+	// BaseURL is the exact endpoint this attempt's connector talked to —
+	// populated only for openai_compat (empty for every other provider,
+	// which have no equivalent ambiguity); EstimateUSD's own base_url
+	// gate is this field's one consumer (see pricing.go's doc comment on
+	// why a same-named model served through a non-OpenAI gateway must
+	// never reuse OpenAI's own price row).
+	BaseURL string
+	Usage   Usage
+	Latency time.Duration
 }
 
 // WithUsageObserver registers fn to be invoked once per successful

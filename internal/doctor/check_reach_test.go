@@ -51,6 +51,22 @@ func TestReachCheckTransportFailureIsFail(t *testing.T) {
 	assert.NotEmpty(t, result.Detail)
 }
 
+// TestReachCheckSkipsWithMessageWhenConfigFailedToLoad proves the
+// config-load-failure path renders a real, translatable Summary — not
+// the blank-looking zero-value Result a bare
+// Result{Severity: SeveritySkip} previously produced (issue #16
+// follow-up).
+func TestReachCheckSkipsWithMessageWhenConfigFailedToLoad(t *testing.T) {
+	deps := baseDeps()
+	deps.Cfg.LLM.Provider = "anthropic"
+	deps.ConfigErr = assertNotFoundErr
+
+	result := ReachCheck(context.Background(), deps)
+
+	assert.Equal(t, SeveritySkip, result.Severity)
+	assert.Equal(t, i18n.MsgDoctorSkipConfigUnavailable, result.Summary)
+}
+
 func TestReachCheckSkipsUnknownProvider(t *testing.T) {
 	deps := baseDeps()
 	deps.Cfg.LLM.Provider = "bogus"
@@ -206,9 +222,19 @@ func TestReachCheckLiveNeverRunsForOllama(t *testing.T) {
 
 // TestReachCheckLiveNeverSendsCredentialWhenNotLive proves LivePing is
 // never invoked unless deps.Live is explicitly true — the default-mode
-// "never sends a credential anywhere" guarantee.
+// "never sends a credential anywhere" guarantee — AND, the load-bearing
+// half of that guarantee this test previously left unchecked, that the
+// keyless GET itself carries no Authorization or x-api-key header: a
+// credential-safety property, not merely "LivePing wasn't called" (a
+// connector could in principle still leak a stored key onto the keyless
+// probe's own request without ever touching LivePing at all).
 func TestReachCheckLiveNeverSendsCredentialWhenNotLive(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	var gotAuthorization, gotAPIKeyHeader string
+	sawRequest := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawRequest = true
+		gotAuthorization = r.Header.Get("Authorization")
+		gotAPIKeyHeader = r.Header.Get("x-api-key")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -218,6 +244,7 @@ func TestReachCheckLiveNeverSendsCredentialWhenNotLive(t *testing.T) {
 	deps.Cfg.LLM.OpenAICompat.BaseURL = srv.URL
 	deps.HTTP = srv.Client()
 	deps.Live = false
+	deps.Store = newFakeStore(map[string]string{"openai_compat": "sk-should-never-be-sent"})
 	livePingCalled := false
 	deps.LivePing = func(context.Context, config.Config, string, string) (llm.CompletionResponse, time.Duration, error) {
 		livePingCalled = true
@@ -229,4 +256,7 @@ func TestReachCheckLiveNeverSendsCredentialWhenNotLive(t *testing.T) {
 	assert.Equal(t, SeverityOK, result.Severity)
 	assert.Equal(t, i18n.MsgDoctorReachOK, result.Summary)
 	assert.False(t, livePingCalled)
+	require.True(t, sawRequest, "the keyless GET must actually reach the server for this assertion to be meaningful")
+	assert.Empty(t, gotAuthorization, "the keyless reachability probe must never send an Authorization header")
+	assert.Empty(t, gotAPIKeyHeader, "the keyless reachability probe must never send an x-api-key header")
 }

@@ -411,9 +411,12 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 
 // promptOpenAICompatBaseURLIfDefault decides whether to ask for the real
 // endpoint by comparing the loaded llm.openai_compat.base_url against
-// config.Default()'s own value for that same key — NOT
-// loader.Source(key), despite that looking like the more direct "did the
-// user ever set this" signal. It isn't one here: Loader.ensureFileExists
+// config.Default()'s own value for that same key — via
+// config.IsDefaultOpenAICompatBaseURL (so a trailing-slash or
+// differently-cased scheme/host spelling of the same default still
+// counts as "still the default" — see that function's own doc comment),
+// NOT loader.Source(key), despite that looking like the more direct "did
+// the user ever set this" signal. It isn't one here: Loader.ensureFileExists
 // writes defaultConfigTOML VERBATIM to disk the first time any command
 // ever runs (before this function is ever reached — loadConfigWithNotice
 // itself already triggered it earlier in this same RunE), and that
@@ -437,7 +440,7 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 // rolls this value back, and must never have printed a "saved" line for a
 // value that no longer sticks).
 func promptOpenAICompatBaseURLIfDefault(cmd *cobra.Command, loader *config.Loader, cfg config.Config, tr i18n.Translator, reader *bufio.Reader) (string, error) {
-	if cfg.LLM.OpenAICompat.BaseURL != config.Default().LLM.OpenAICompat.BaseURL {
+	if !config.IsDefaultOpenAICompatBaseURL(cfg.LLM.OpenAICompat.BaseURL) {
 		return "", nil
 	}
 	return promptOpenAICompatBaseURL(cmd, loader, tr, cfg.LLM.OpenAICompat.BaseURL, reader)
@@ -543,7 +546,7 @@ func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18
 // what will accept or reject it, surfaced via the ping's own
 // MsgAuthModelNotFound classification.
 func promptOpenAICompatModelIfEmpty(cmd *cobra.Command, loader *config.Loader, cfg config.Config, tr i18n.Translator, reader *bufio.Reader) error {
-	if cfg.LLM.OpenAICompat.BaseURL == config.Default().LLM.OpenAICompat.BaseURL {
+	if config.IsDefaultOpenAICompatBaseURL(cfg.LLM.OpenAICompat.BaseURL) {
 		return nil
 	}
 	if cfg.LLM.Model != "" {

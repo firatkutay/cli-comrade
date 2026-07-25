@@ -1,6 +1,10 @@
 package llm
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/firatkutay/cli-comrade/internal/config"
+)
 
 // priceEntry is one hand-maintained row of pricingTable: provider plus a
 // model-name prefix (never an exact match — see bestPriceMatch) mapped to
@@ -29,11 +33,14 @@ type priceEntry struct {
 //     after that date and this row should be updated then.
 //   - OpenAI-compatible default model (gpt-5.4-mini):
 //     https://developers.openai.com/api/docs/pricing — this table only
-//     prices defaultOpenAICompatModel; a self-hosted/third-party
-//     openai_compat endpoint (Mistral/Groq/GLM/Qwen/Kimi/OpenRouter/LM
-//     Studio, per CLAUDE.md) serving a different model has no row here
-//     and correctly falls through to EstimateUSD's (_, false) unknown
-//     case.
+//     prices defaultOpenAICompatModel, and — see EstimateUSD's own
+//     base_url gate — ONLY when llm.openai_compat.base_url is still
+//     OpenAI's own shipped default. A self-hosted/third-party openai_compat
+//     endpoint (Mistral/Groq/GLM/Qwen/Kimi/OpenRouter/LM Studio, per
+//     CLAUDE.md) serving a model whose name happens to start with
+//     "gpt-5.4-mini" is NOT priced from this row: a wrong number is worse
+//     than no number, so a non-default base_url always falls through to
+//     EstimateUSD's (_, false) unknown case regardless of model name.
 //   - Google: https://ai.google.dev/gemini-api/docs/pricing (paid tier).
 //     Gemini 3.1 Pro's row is its <=200k-input-token tier; this table
 //     does not model Google's long-context price step for larger
@@ -57,11 +64,33 @@ var pricingTable = []priceEntry{
 }
 
 // EstimateUSD estimates u's USD cost for one completion against
-// provider/model. ollama is special-cased to an unconditional (0, true)
-// — see pricingTable's own doc comment for why it is not a table row —
-// so a caller can treat "known, zero cost" (local) and "known, priced"
-// identically and only needs a separate branch when it wants to render
-// ollama's cost as the word "local" instead of a dollar amount.
+// provider/model, served through baseURL (the exact endpoint the
+// connector actually talked to — irrelevant for every provider except
+// openai_compat, where it is the one signal that distinguishes OpenAI
+// itself from a same-named-model third-party gateway; pass "" for any
+// provider other than openai_compat). ollama is special-cased to an
+// unconditional (0, true) — see pricingTable's own doc comment for why
+// it is not a table row — so a caller can treat "known, zero cost"
+// (local) and "known, priced" identically and only needs a separate
+// branch when it wants to render ollama's cost as the word "local"
+// instead of a dollar amount.
+//
+// openai_compat gets one extra gate before matching pricingTable at all:
+// this package's pricingTable row for openai_compat only reflects
+// OpenAI's OWN published price for its own hosted model. A non-OpenAI
+// gateway (Groq/Qwen/OpenRouter/a local proxy, all reachable through the
+// same single openai_compat connector per CLAUDE.md) can serve a model
+// whose name happens to start with the same prefix (e.g. a
+// "gpt-5.4-mini"-named passthrough) at a completely different real
+// price — silently reusing OpenAI's rate for it would print a
+// confidently wrong dollar figure, which is worse than printing none.
+// So baseURL must be config.IsDefaultOpenAICompatBaseURL (OpenAI's own
+// shipped default, per that function's own trailing-slash/case-
+// insensitive identity rule — the SAME predicate
+// internal/doctor/check_baseurl.go's BaseURLCheck uses, so the two
+// checks can never disagree about what counts as "still the default"),
+// or this function returns (0, false) regardless of how closely model
+// matches a pricingTable prefix.
 //
 // Every other provider is matched against pricingTable by the LONGEST
 // modelPrefix that is a prefix of model (bestPriceMatch) — never an
@@ -71,9 +100,12 @@ var pricingTable = []priceEntry{
 // match the "claude-haiku-4-5" row). No match at all — an unrecognized
 // provider, or a model this table has no row for — returns (0, false):
 // the cost is unknown, never assumed to be free.
-func EstimateUSD(provider, model string, u Usage) (float64, bool) {
+func EstimateUSD(provider, model, baseURL string, u Usage) (float64, bool) {
 	if provider == "ollama" {
 		return 0, true
+	}
+	if provider == "openai_compat" && !config.IsDefaultOpenAICompatBaseURL(baseURL) {
+		return 0, false
 	}
 
 	entry, ok := bestPriceMatch(provider, model)

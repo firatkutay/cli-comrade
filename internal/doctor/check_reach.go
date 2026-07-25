@@ -35,7 +35,7 @@ const maxReachBodyBytes = 1 << 20 // 1 MiB
 func ReachCheck(ctx context.Context, deps Deps) Result {
 	provider := deps.Cfg.LLM.Provider
 	if deps.ConfigErr != nil || provider == "" {
-		return Result{Severity: SeveritySkip}
+		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorSkipConfigUnavailable}
 	}
 
 	url, ok := llm.HealthEndpoint(provider, deps.Cfg)
@@ -43,7 +43,7 @@ func ReachCheck(ctx context.Context, deps Deps) Result {
 		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorReachSkip, SummaryArgs: []any{provider}}
 	}
 	if deps.HTTP == nil {
-		return Result{Severity: SeveritySkip}
+		return Result{Severity: SeveritySkip, Summary: i18n.MsgDoctorSkipDependencyUnavailable}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -99,7 +99,7 @@ func ollamaHasNoModels(body io.Reader) bool {
 // `comrade auth login`'s own ping uses), then send ONE real completion
 // through deps.LivePing.
 func reachCheckLive(ctx context.Context, deps Deps, provider string) Result {
-	key, err := resolveKeyForLive(ctx, deps, provider)
+	key, err := ResolveKeyForLive(ctx, deps, provider)
 	if err != nil {
 		return Result{
 			Severity:    SeverityFail,
@@ -122,13 +122,26 @@ func reachCheckLive(ctx context.Context, deps Deps, provider string) Result {
 	return Result{Severity: SeverityOK, Summary: i18n.MsgDoctorReachLiveOK, SummaryArgs: []any{provider, latency.String()}}
 }
 
-// resolveKeyForLive resolves provider's API key exactly like
+// ResolveKeyForLive resolves provider's API key exactly like
 // internal/cli's secretsKeyResolver does (Store first, then
 // llm.ResolveEnvKey's own known-environment-variable fallback) — a small,
 // deliberate duplication of that tiny function rather than an
 // internal/cli import, which would create an import cycle (internal/cli
-// already imports internal/doctor for the check registry).
-func resolveKeyForLive(ctx context.Context, deps Deps, provider string) (string, error) {
+// already imports internal/doctor for the check registry). Exported
+// (unlike this package's other small helpers) SOLELY so internal/cli's
+// own TestResolveKeyForLiveMatchesSecretsKeyResolver
+// (doctor_mirror_test.go) can call both copies side by side across the
+// same table of scenarios and fail CI the moment either one's resolution
+// order diverges from the other — see that test file's own doc comment
+// for why a behavioral-equivalence pinning test, not a shared package, is
+// this pair's chosen drift guard.
+//
+// Deliberately bypasses Deps.Getenv: the llm.ResolveEnvKey fallback below
+// reads the REAL process environment directly, exactly like
+// secretsKeyResolver does — see Deps.Getenv's own doc comment for why
+// this is a disposed exception, not an oversight (a --live run must
+// resolve the SAME key a real request would use).
+func ResolveKeyForLive(ctx context.Context, deps Deps, provider string) (string, error) {
 	if deps.Store != nil {
 		if key, source, err := deps.Store.Get(ctx, provider); err == nil && source != secrets.SourceNone {
 			return key, nil

@@ -69,14 +69,15 @@ func (f fakeFetcher) LatestRelease(context.Context) (update.Release, error) {
 // real filesystem/network/keychain by accident.
 func baseDeps() Deps {
 	return Deps{
-		Cfg:        config.Default(),
-		Version:    "v1.0.0",
-		Fetcher:    fakeFetcher{release: update.Release{TagName: "v1.0.0"}},
-		Getenv:     func(string) string { return "" },
-		LookPath:   func(string) (string, error) { return "", assertNotFoundErr },
-		Executable: func() (string, error) { return "", assertNotFoundErr },
-		GOOS:       "linux",
-		Now:        func() time.Time { return time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC) },
+		Cfg:               config.Default(),
+		Version:           "v1.0.0",
+		Fetcher:           fakeFetcher{release: update.Release{TagName: "v1.0.0"}},
+		Getenv:            func(string) string { return "" },
+		LookPath:          func(string) (string, error) { return "", assertNotFoundErr },
+		Executable:        func() (string, error) { return "", assertNotFoundErr },
+		GOOS:              "linux",
+		Now:               func() time.Time { return time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC) },
+		KeychainAvailable: secrets.KeychainAvailable,
 		LivePing: func(context.Context, config.Config, string, string) (llm.CompletionResponse, time.Duration, error) {
 			return llm.CompletionResponse{}, 0, nil
 		},

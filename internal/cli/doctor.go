@@ -37,16 +37,17 @@ const doctorHTTPTimeout = 10 * time.Second
 // dependencies — defaultDoctorDeps wires the real ones in NewRootCmd;
 // tests construct their own doctorDeps directly.
 type doctorDeps struct {
-	version    string
-	goos       string
-	getenv     func(string) string
-	lookPath   func(string) (string, error)
-	executable func() (string, error)
-	run        func(ctx context.Context, name string, args ...string) ([]byte, error)
-	fetcher    update.ReleaseFetcher
-	httpClient *http.Client
-	now        func() time.Time
-	livePing   func(ctx context.Context, cfg config.Config, provider, key string) (llm.CompletionResponse, time.Duration, error)
+	version           string
+	goos              string
+	getenv            func(string) string
+	lookPath          func(string) (string, error)
+	executable        func() (string, error)
+	run               func(ctx context.Context, name string, args ...string) ([]byte, error)
+	fetcher           update.ReleaseFetcher
+	httpClient        *http.Client
+	now               func() time.Time
+	keychainAvailable func() bool
+	livePing          func(ctx context.Context, cfg config.Config, provider, key string) (llm.CompletionResponse, time.Duration, error)
 }
 
 // defaultDoctorDeps wires doctorDeps to the real operating system and
@@ -54,16 +55,17 @@ type doctorDeps struct {
 // string.
 func defaultDoctorDeps(version string) doctorDeps {
 	return doctorDeps{
-		version:    version,
-		goos:       runtime.GOOS,
-		getenv:     os.Getenv,
-		lookPath:   exec.LookPath,
-		executable: os.Executable,
-		run:        comradecontext.RunCommand,
-		fetcher:    &update.GitHubClient{},
-		httpClient: &http.Client{Timeout: doctorHTTPTimeout},
-		now:        time.Now,
-		livePing:   pingProviderWithKey,
+		version:           version,
+		goos:              runtime.GOOS,
+		getenv:            os.Getenv,
+		lookPath:          exec.LookPath,
+		executable:        os.Executable,
+		run:               comradecontext.RunCommand,
+		fetcher:           &update.GitHubClient{},
+		httpClient:        &http.Client{Timeout: doctorHTTPTimeout},
+		now:               time.Now,
+		keychainAvailable: secrets.KeychainAvailable,
+		livePing:          pingProviderWithKey,
 	}
 }
 
@@ -134,20 +136,21 @@ func newDoctorCmd(newLoader loaderFactory, deps doctorDeps) *cobra.Command {
 			}
 
 			runnerDeps := doctor.Deps{
-				Cfg:        cfgValue,
-				ConfigErr:  loadErr,
-				Version:    deps.version,
-				Fetcher:    deps.fetcher,
-				HTTP:       deps.httpClient,
-				Store:      store,
-				Getenv:     deps.getenv,
-				LookPath:   deps.lookPath,
-				Executable: deps.executable,
-				GOOS:       deps.goos,
-				Now:        deps.now,
-				Run:        deps.run,
-				Live:       live,
-				LivePing:   deps.livePing,
+				Cfg:               cfgValue,
+				ConfigErr:         loadErr,
+				Version:           deps.version,
+				Fetcher:           deps.fetcher,
+				HTTP:              deps.httpClient,
+				Store:             store,
+				Getenv:            deps.getenv,
+				LookPath:          deps.lookPath,
+				Executable:        deps.executable,
+				GOOS:              deps.goos,
+				Now:               deps.now,
+				KeychainAvailable: deps.keychainAvailable,
+				Run:               deps.run,
+				Live:              live,
+				LivePing:          deps.livePing,
 			}
 
 			results := doctor.NewRunner().Run(cmd.Context(), runnerDeps)

@@ -131,10 +131,42 @@ type Deps struct {
 	// Store is the credential store the key/reach/baseurl checks read
 	// from — nil is treated as "no stored credential", never a panic.
 	Store secrets.Store
+	// KeychainAvailable probes whether a real, reachable OS keychain
+	// backend is available — ConfigCheck's sole use of it. Normally
+	// secrets.KeychainAvailable itself, injected here (like every other
+	// OS/network touchpoint on this struct) rather than ConfigCheck
+	// calling that package-level function directly, so its test can fake
+	// "keychain available"/"keychain unavailable" without going through
+	// secrets' own global keyring.MockInit/MockInitWithError test seam.
+	// nil falls back to secrets.KeychainAvailable itself (ConfigCheck's
+	// own defensive default), matching every other nil-is-safe seam on
+	// this struct (Store, Run, LivePing).
+	KeychainAvailable func() bool
 	// Getenv, LookPath, Executable, GOOS mirror
 	// context.Collector/shellinit.RCPath's own injectable OS-environment
 	// seams, so every check is tests without depending on the real
 	// process environment or the OS the test binary runs on.
+	//
+	// Deliberate, disposed exception: Getenv covers every lightweight
+	// "is this var SET" display/detection touchpoint (KeyCheck's
+	// FirstSetEnvVar, ShellHookCheck's shell detection) — but the one
+	// path that resolves an ACTUAL credential value to send over the
+	// wire (ResolveKeyForLive's llm.ResolveEnvKey fallback,
+	// check_reach.go; BaseURLCheck's key-prefix sniff fallback,
+	// check_baseurl.go) intentionally calls llm.ResolveEnvKey directly
+	// against the REAL process environment instead of through this
+	// seam. This mirrors internal/cli's own secretsKeyResolver
+	// (secretsstore.go), which likewise calls llm.ResolveEnvKey directly
+	// with no injectable getenv of its own — routing ResolveKeyForLive
+	// through Deps.Getenv instead would make it behaviorally DIVERGE
+	// from the exact function it exists to mirror (and from what
+	// `comrade auth login`'s own ping actually resolves), which is a
+	// worse outcome than the seam gap itself: a --live run must resolve
+	// the SAME key a real request would use, not whatever a test's fake
+	// Getenv happens to return. TestResolveKeyForLiveMatchesSecretsKeyResolver
+	// (internal/cli/doctor_mirror_test.go) pins this equivalence
+	// directly against the real process environment for exactly this
+	// reason.
 	Getenv     func(string) string
 	LookPath   func(string) (string, error)
 	Executable func() (string, error)

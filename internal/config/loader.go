@@ -25,6 +25,12 @@ const (
 	// overlay layer, between the file's own top-level value and env —
 	// see newEffectiveViper's doc comment for the full precedence order).
 	SourceProfile Source = "profile"
+	// SourceFlag means the key's effective value came from a persistent
+	// CLI flag override threaded into the Loader — today that is only
+	// ever general.profile via the --profile flag (NewLoaderWithProfile's
+	// profileOverride); no other key has a flag wired this deep. See
+	// Loader.profileSource, general.profile's own dedicated Source path.
+	SourceFlag Source = "flag"
 )
 
 // envAliases lists the explicit, named environment variable aliases
@@ -133,6 +139,20 @@ func (l *Loader) Source(key string) (Source, error) {
 		return "", unknownKeyError(key)
 	}
 
+	// general.profile is special-cased entirely: newEffectiveViper forces
+	// cfg.General.Profile to equal the exact same `active` value that
+	// governs the profile-overlay decision (see that function's own doc
+	// comment for the invariant and why), so general.profile's own
+	// effective source IS wherever `active` came from — which needs
+	// --profile flag > COMRADE_PROFILE > COMRADE_GENERAL_PROFILE > file
+	// precedence, not the generic envCandidates loop below (that loop
+	// cannot express "a flag beats env", and would misreport SourceEnv
+	// even when l.profileOverride is ALSO set — see profileSource's own
+	// doc comment).
+	if key == "general.profile" {
+		return l.profileSource()
+	}
+
 	for _, name := range envCandidates(key) {
 		if os.Getenv(name) != "" {
 			return SourceEnv, nil
@@ -149,21 +169,47 @@ func (l *Loader) Source(key string) (Source, error) {
 		return "", fmt.Errorf("read config file %s: %w", l.path, err)
 	}
 
-	// general.profile is excluded here: it selects the active profile
-	// itself, and ValidateProfileKey already forbids it from ever being
-	// set INSIDE a profile — so it can never legitimately be SourceProfile.
-	if key != "general.profile" {
-		active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), os.Getenv("COMRADE_GENERAL_PROFILE"), fv.GetString("general.profile"))
-		if active != "" {
-			if raw, ok := fv.Get("profiles").(map[string]any); ok {
-				if profile, ok := raw[active].(map[string]any); ok && profileHasKey(profile, key) {
-					return SourceProfile, nil
-				}
+	active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), os.Getenv("COMRADE_GENERAL_PROFILE"), fv.GetString("general.profile"))
+	if active != "" {
+		if raw, ok := fv.Get("profiles").(map[string]any); ok {
+			if profile, ok := raw[active].(map[string]any); ok && profileHasKey(profile, key) {
+				return SourceProfile, nil
 			}
 		}
 	}
 
 	if fv.IsSet(key) {
+		return SourceFile, nil
+	}
+	return SourceDefault, nil
+}
+
+// profileSource is Source's dedicated path for the "general.profile" key
+// itself. ValidateProfileKey already forbids a profile from ever setting
+// general.profile INSIDE itself, so this key can never legitimately be
+// SourceProfile — only SourceFlag, SourceEnv, SourceFile, or SourceDefault,
+// checked in exactly ResolveActiveProfile's own precedence order so this
+// never disagrees with which source actually decided the active profile
+// (and therefore the overlay applied, and therefore cfg.General.Profile's
+// own forced value — see newEffectiveViper).
+func (l *Loader) profileSource() (Source, error) {
+	if l.profileOverride != "" {
+		return SourceFlag, nil
+	}
+	if os.Getenv("COMRADE_PROFILE") != "" || os.Getenv("COMRADE_GENERAL_PROFILE") != "" {
+		return SourceEnv, nil
+	}
+
+	if _, err := l.ensureFileExists(); err != nil {
+		return "", err
+	}
+	fv := viper.New()
+	fv.SetConfigFile(l.path)
+	fv.SetConfigType("toml")
+	if err := fv.ReadInConfig(); err != nil {
+		return "", fmt.Errorf("read config file %s: %w", l.path, err)
+	}
+	if fv.IsSet("general.profile") {
 		return SourceFile, nil
 	}
 	return SourceDefault, nil
@@ -255,6 +301,28 @@ func (l *Loader) mergedFileViper() (*viper.Viper, error) {
 // layer) and NOT viper.Set (which would write into the highest-priority
 // "override" layer and invert this order — see applyProfileOverlay's own
 // doc comment). l.path must already exist.
+//
+// INVARIANT: cfg.General.Profile must always name the profile actually in
+// force — see the v.Set("general.profile", active) call at the end of
+// this function. Without it, viper's own env precedence would leave the
+// RESOLVED VALUE of general.profile (what cfg.General.Profile ends up as)
+// disagreeing with the profile overlay actually applied above, in two
+// independent ways: (1) viper v1.21.0's own find() checks the generic
+// AutomaticEnv name (COMRADE_GENERAL_PROFILE) BEFORE an explicitly
+// BindEnv-registered alias (COMRADE_PROFILE) — the OPPOSITE of the
+// canonical-over-generic order ResolveActiveProfile (and this function's
+// own `active`) uses — so with both env vars set to different profiles,
+// the overlay applied would silently disagree with what
+// cfg.General.Profile reports; (2) l.profileOverride (the --profile flag)
+// never reaches viper's own value resolution AT ALL — it is a Go-level
+// parameter to ResolveActiveProfile, not anything viper's find() ever
+// sees — so without this v.Set, a --profile override would activate the
+// right overlay while cfg.General.Profile kept reporting the file/env
+// value instead. Forcing it here, via viper.Set (the highest-precedence
+// "override" layer — see find()'s own precedence order, checked before
+// pflags/env/config/defaults), makes the two questions ("which overlay
+// applied" and "what does general.profile read as") the SAME question,
+// answered once, by `active`.
 func (l *Loader) newEffectiveViper() (*viper.Viper, error) {
 	v, err := l.mergedFileViper()
 	if err != nil {
@@ -268,11 +336,9 @@ func (l *Loader) newEffectiveViper() (*viper.Viper, error) {
 	// other key — see envAliases's own doc comment) > the file's own
 	// general.profile value, read here BEFORE env binding is set up below
 	// so this reflects defaults+file only, never an env override of
-	// general.profile itself (that's handled by the envAliases entry for
-	// general.profile, applied afterward, exactly like every other key).
-	// Both env forms are read directly via os.Getenv rather than through
-	// v itself, since v has no env binding wired up yet at this point in
-	// construction.
+	// general.profile itself. Both env forms are read directly via
+	// os.Getenv rather than through v itself, since v has no env binding
+	// wired up yet at this point in construction.
 	active := ResolveActiveProfile(l.profileOverride, os.Getenv("COMRADE_PROFILE"), os.Getenv("COMRADE_GENERAL_PROFILE"), v.GetString("general.profile"))
 	if active != "" {
 		applyProfileOverlay(v, active)
@@ -282,6 +348,19 @@ func (l *Loader) newEffectiveViper() (*viper.Viper, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	bindEnvAliases(v)
+
+	// Force the invariant (see doc comment above): general.profile must
+	// always read back as exactly `active`, the same value that decided
+	// the overlay, regardless of viper's own env-precedence quirk or the
+	// --profile flag never otherwise reaching viper's value resolution.
+	// This is scoped to THIS ephemeral, read-only viper instance (used
+	// only by Load()/Get(), both read-only) — it never reaches
+	// mergedFileViper's own separate instance, so SetAndSave/CreateProfile/
+	// SetProfileKey/RemoveProfile (all built on mergedFileViper, never
+	// this function) keep persisting the file's own plain value, never an
+	// env- or flag-derived one. See
+	// TestSetAndSaveNeverPersistsEnvOrFlagDerivedProfile.
+	v.Set("general.profile", active)
 
 	return v, nil
 }

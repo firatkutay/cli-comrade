@@ -358,6 +358,40 @@ func TestNewRejectsMetadataBaseURLFromHandEditedActiveProfile(t *testing.T) {
 	assert.Equal(t, "llm.openai_compat.base_url", invalid.Key)
 }
 
+// TestNewRejectsMetadataBaseURLFromEnvActivatedProfile is
+// TestNewRejectsMetadataBaseURLFromHandEditedActiveProfile's cheap
+// env-activated variant: the profile is defined in the file but never
+// named by the file's own general.profile — COMRADE_GENERAL_PROFILE alone
+// activates it (GitHub issue #19's real bug) — and the SAME reject-class
+// base_url inside it must still refuse Client construction end to end.
+func TestNewRejectsMetadataBaseURLFromEnvActivatedProfile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	toml := "[llm]\n" +
+		"provider = \"anthropic\"\n\n" +
+		"[profiles.work]\n" +
+		"llm.provider = \"openai_compat\"\n\n" +
+		"[profiles.work.llm.openai_compat]\n" +
+		"base_url = \"http://169.254.169.254/latest/meta-data/\"\n"
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0o600))
+	t.Setenv("COMRADE_GENERAL_PROFILE", "work")
+
+	loader, err := config.NewLoader(path)
+	require.NoError(t, err)
+
+	cfg, _, err := loader.Load()
+	require.NoError(t, err, "Load() must never fail on a bad profile-scoped base_url either — see validateLoadedConfig")
+	require.Equal(t, "openai_compat", cfg.LLM.Provider, "precondition: COMRADE_GENERAL_PROFILE must have activated the overlay")
+	require.Equal(t, "work", cfg.General.Profile, "precondition: cfg.General.Profile must agree the overlay came from \"work\"")
+
+	_, err = New(*cfg)
+
+	require.Error(t, err)
+	var invalid *config.InvalidValueError
+	require.ErrorAs(t, err, &invalid)
+	assert.Equal(t, config.ReasonMetadataOrLinkLocal, invalid.Reason)
+	assert.Equal(t, "llm.openai_compat.base_url", invalid.Key)
+}
+
 // TestNewOpenAICompatCompleteHitsConfiguredBaseURLNotOpenAI locks the
 // base_url plumbing internal/cli's auth-login base_url prompt depends on:
 // with cfg.LLM.OpenAICompat.BaseURL pointed at a fake server, Complete

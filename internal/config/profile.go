@@ -233,16 +233,24 @@ func applyProfileOverlay(v *viper.Viper, name string) {
 }
 
 // stripPlaceholder returns profile with the internal profilePlaceholderKey
-// bookkeeping entry removed (a shallow copy — profile itself is never
-// mutated in place, since it is the same map instance viper's own
-// "profiles" settings tree holds, and mutating it in place would corrupt
-// that tree for any other reader sharing v). Without this, an
-// otherwise-empty active profile (one CreateProfile seeded with only
-// profilePlaceholderKey — see its own doc comment) would merge that
-// internal marker into the effective TOP-level config layer via
-// MergeConfigMap below. Harmless in practice (Config has no matching
-// field, so Unmarshal simply drops it), but it has no business leaking
-// out of the profiles table it was invented to keep alive on disk.
+// bookkeeping entry removed. It returns a shallow copy (a fresh top-level
+// map) rather than deleting the key from profile in place, so this call
+// itself never mutates profile — the same map instance viper's own
+// "profiles" settings tree holds. That guarantee is deliberately narrow:
+// profilePlaceholderKey is always a flat, top-level key (never nested —
+// see its own doc comment), so a shallow copy is all removing it needs.
+// It does NOT protect any NESTED map profile holds from mutation —
+// viper.MergeConfigMap's own insensitiviseMap recurses into nested
+// map[string]any values BY REFERENCE and lower-cases their keys in place,
+// pre-existing behavior of the MergeConfigMap call below that has nothing
+// to do with the placeholder key and is unchanged by this function either
+// way. Without stripping the placeholder here, an otherwise-empty active
+// profile (one CreateProfile seeded with only profilePlaceholderKey — see
+// its own doc comment) would merge that internal marker into the
+// effective TOP-level config layer via MergeConfigMap below. Harmless in
+// practice (Config has no matching field, so Unmarshal simply drops it),
+// but it has no business leaking out of the profiles table it was
+// invented to keep alive on disk.
 func stripPlaceholder(profile map[string]any) map[string]any {
 	if _, ok := profile[profilePlaceholderKey]; !ok {
 		return profile

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -382,6 +383,7 @@ func TestLoaderProfileFlagOverridesEnvAndFile(t *testing.T) {
 	cfg, _, err := loader.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "--profile flag must win over both COMRADE_PROFILE and the file's general.profile")
+	assert.Equal(t, "work", cfg.General.Profile, "cfg.General.Profile must report the --profile flag's value, not the file's own general.profile (GitHub issue #19 Finding 6)")
 }
 
 func TestLoaderProfileEnvOverridesFileValue(t *testing.T) {
@@ -422,7 +424,18 @@ func TestLoaderGenericProfileEnvActivatesOverlay(t *testing.T) {
 // TestLoaderCanonicalProfileEnvOutranksGenericProfileEnv pins the
 // documented precedence with BOTH env forms set at once, to different
 // profiles: the explicit, canonical COMRADE_PROFILE must still win over
-// the generic COMRADE_GENERAL_PROFILE form.
+// the generic COMRADE_GENERAL_PROFILE form — for BOTH halves of the
+// invariant newEffectiveViper now enforces: the overlay actually applied
+// (cfg.LLM.Provider) AND cfg.General.Profile's own resolved value must
+// agree it was "personal", never "work". Before the invariant fix (a
+// bare v.GetString("general.profile") with no forced v.Set), viper
+// v1.21.0's own find() checks the generic AutomaticEnv name
+// (COMRADE_GENERAL_PROFILE) BEFORE the explicitly bound alias
+// (COMRADE_PROFILE) — the opposite of ResolveActiveProfile's own
+// precedence — so cfg.General.Profile would have read "work" here even
+// though the overlay correctly applied "personal": exactly the
+// value-vs-activation split GitHub issue #19 was filed about, surviving
+// in this one case.
 func TestLoaderCanonicalProfileEnvOutranksGenericProfileEnv(t *testing.T) {
 	path := tempConfigPath(t)
 	writeConfigFile(t, path, "[profiles.personal]\nllm.provider = \"google\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
@@ -435,12 +448,18 @@ func TestLoaderCanonicalProfileEnvOutranksGenericProfileEnv(t *testing.T) {
 	cfg, _, err := loader.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "google", cfg.LLM.Provider, "COMRADE_PROFILE must win over COMRADE_GENERAL_PROFILE when both are set")
+	assert.Equal(t, "personal", cfg.General.Profile, "cfg.General.Profile must agree with the overlay actually applied, not silently name the other profile")
 }
 
 // TestLoaderProfileFlagOutranksBothProfileEnvForms is
 // TestLoaderProfileFlagOverridesEnvAndFile's counterpart with the generic
 // env form also in play: the --profile flag must win over COMRADE_PROFILE,
-// COMRADE_GENERAL_PROFILE, and the file's general.profile all at once.
+// COMRADE_GENERAL_PROFILE, and the file's general.profile all at once —
+// and, per the same invariant, cfg.General.Profile must report the flag's
+// value too. Before the invariant fix this was GitHub issue #19's
+// "Finding 6": l.profileOverride never reached viper's own value
+// resolution at all, so cfg.General.Profile kept reporting the file/env
+// value even when the flag correctly activated a different overlay.
 func TestLoaderProfileFlagOutranksBothProfileEnvForms(t *testing.T) {
 	path := tempConfigPath(t)
 	writeConfigFile(t, path, "[general]\nprofile = \"personal\"\n\n[profiles.personal]\nllm.provider = \"google\"\n\n[profiles.ambient]\nllm.provider = \"ollama\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
@@ -453,6 +472,7 @@ func TestLoaderProfileFlagOutranksBothProfileEnvForms(t *testing.T) {
 	cfg, _, err := loader.Load()
 	require.NoError(t, err)
 	assert.Equal(t, "openai_compat", cfg.LLM.Provider, "--profile flag must win over COMRADE_PROFILE, COMRADE_GENERAL_PROFILE, and the file's general.profile")
+	assert.Equal(t, "work", cfg.General.Profile, "cfg.General.Profile must report the --profile flag's value, not the file's own general.profile")
 }
 
 // TestLoaderEnvStaysKingOverActiveProfile is the whole reason applyProfileOverlay
@@ -472,6 +492,14 @@ func TestLoaderEnvStaysKingOverActiveProfile(t *testing.T) {
 	assert.Equal(t, "ollama", cfg.LLM.Provider, "COMRADE_PROVIDER must win over the active profile's own override")
 }
 
+// TestLoaderWarnsOnUndefinedActiveProfileButNeverFails also pins the
+// deliberate decision for what cfg.General.Profile reads as when the
+// active profile it names does not exist: the invariant
+// (newEffectiveViper's v.Set) still forces it to `active` itself
+// ("ghost") rather than silently falling back to empty/default — the
+// warning is the user-facing signal that "ghost" isn't actually defined,
+// not a discrepancy between what general.profile reports and what a user
+// asked for.
 func TestLoaderWarnsOnUndefinedActiveProfileButNeverFails(t *testing.T) {
 	buf := captureProfileWarnings(t)
 	path := tempConfigPath(t)
@@ -483,6 +511,7 @@ func TestLoaderWarnsOnUndefinedActiveProfileButNeverFails(t *testing.T) {
 	cfg, _, err := loader.Load()
 	require.NoError(t, err, "an undefined active profile must never fail Load()")
 	assert.Equal(t, "ask", cfg.General.Mode, "config must otherwise load normally")
+	assert.Equal(t, "ghost", cfg.General.Profile, "cfg.General.Profile must still report the requested (if undefined) profile name, matching the warning")
 	assert.Contains(t, buf.String(), `"ghost"`)
 	assert.Contains(t, buf.String(), "is not defined")
 }
@@ -551,6 +580,87 @@ func TestLoaderSourceReportsEnvOverProfile(t *testing.T) {
 	assert.Equal(t, SourceEnv, src)
 }
 
+// --- Source("general.profile") itself: one dedicated case per activation
+// source, in ResolveActiveProfile's own precedence order. general.profile
+// is special-cased in Loader.Source (profileSource) precisely because it
+// cannot use the generic envCandidates-first check every other key uses —
+// that check cannot express "a flag beats env" — so each of these pins one
+// rung directly against Source, not just against Load()'s resolved value.
+
+// TestLoaderSourceGeneralProfileReportsDefaultWhenNothingSet hand-writes a
+// partial file that never mentions general.profile at all (mirroring
+// TestLoaderSourceReportsDefaultThenFileThenEnv's own established
+// pattern) — a fresh file NewLoader auto-creates on first run always
+// spells out every key, including "profile = \"\"", literally on disk, so
+// asserting SourceDefault against an auto-created file would actually be
+// asserting SourceFile by accident.
+func TestLoaderSourceGeneralProfileReportsDefaultWhenNothingSet(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[llm]\nprovider = \"ollama\"\n")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	src, err := loader.Source("general.profile")
+	require.NoError(t, err)
+	assert.Equal(t, SourceDefault, src)
+}
+
+func TestLoaderSourceGeneralProfileReportsFileWhenFileSetsIt(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"work\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	src, err := loader.Source("general.profile")
+	require.NoError(t, err)
+	assert.Equal(t, SourceFile, src)
+}
+
+func TestLoaderSourceGeneralProfileReportsEnvForEitherForm(t *testing.T) {
+	cases := []struct {
+		name   string
+		envVar string
+	}{
+		{"canonical", "COMRADE_PROFILE"},
+		{"generic", "COMRADE_GENERAL_PROFILE"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := tempConfigPath(t)
+			writeConfigFile(t, path, "[profiles.work]\nllm.provider = \"openai_compat\"\n")
+			t.Setenv(tc.envVar, "work")
+
+			loader, err := NewLoader(path)
+			require.NoError(t, err)
+
+			src, err := loader.Source("general.profile")
+			require.NoError(t, err)
+			assert.Equal(t, SourceEnv, src)
+		})
+	}
+}
+
+// TestLoaderSourceGeneralProfileReportsFlagEvenWithBothEnvFormsSet is the
+// Source()-level proof that a --profile flag outranks env for this key
+// specifically: the generic envCandidates-first check every other key
+// uses would (wrongly) report SourceEnv here, since it never even looks
+// at l.profileOverride — profileSource's whole reason for existing.
+func TestLoaderSourceGeneralProfileReportsFlagEvenWithBothEnvFormsSet(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[profiles.personal]\nllm.provider = \"google\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_PROFILE", "personal")
+	t.Setenv("COMRADE_GENERAL_PROFILE", "personal")
+
+	loader, err := NewLoaderWithProfile(path, "work")
+	require.NoError(t, err)
+
+	src, err := loader.Source("general.profile")
+	require.NoError(t, err)
+	assert.Equal(t, SourceFlag, src)
+}
+
 // TestSetAndSavePreservesProfileTables is the spec-mandated regression
 // proof: SetAndSave's full-map rewrite (its own WriteConfigAs call) must
 // carry every existing [profiles.*] table through untouched when it sets
@@ -575,6 +685,36 @@ func TestSetAndSavePreservesProfileTables(t *testing.T) {
 	llmSection, ok := cfg.Profiles["work"]["llm"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "openai_compat", llmSection["provider"])
+}
+
+// TestSetAndSaveNeverPersistsEnvOrFlagDerivedProfile is the regression
+// proof that newEffectiveViper's invariant-forcing v.Set("general.profile",
+// active) is scoped to that one ephemeral, read-only viper instance only
+// (used by Load()/Get()) and never reaches SetAndSave's own, entirely
+// separate mergedFileViper()-built instance. An env var (or --profile
+// flag) activating a DIFFERENT profile than the file's own general.profile
+// must never get baked into the file by an unrelated SetAndSave call —
+// exactly the existing "excluding any environment override" contract
+// SetAndSave's own doc comment already promises for every other key,
+// proven here specifically for general.profile now that it can also be
+// flag/env-driven.
+func TestSetAndSaveNeverPersistsEnvOrFlagDerivedProfile(t *testing.T) {
+	path := tempConfigPath(t)
+	writeConfigFile(t, path, "[general]\nprofile = \"personal\"\n\n[profiles.personal]\nllm.provider = \"google\"\n\n[profiles.work]\nllm.provider = \"openai_compat\"\n")
+	t.Setenv("COMRADE_PROFILE", "work")
+
+	loader, err := NewLoader(path)
+	require.NoError(t, err)
+
+	value, err := Validate("llm.timeout_seconds", "42")
+	require.NoError(t, err)
+	require.NoError(t, loader.SetAndSave("llm.timeout_seconds", value))
+
+	raw := viper.New()
+	raw.SetConfigFile(path)
+	raw.SetConfigType("toml")
+	require.NoError(t, raw.ReadInConfig())
+	assert.Equal(t, "personal", raw.GetString("general.profile"), "SetAndSave must never persist an env-derived active profile into the file")
 }
 
 func TestLoaderCreateProfileEmptyIsListedWithZeroKeysAndSurvivesReload(t *testing.T) {

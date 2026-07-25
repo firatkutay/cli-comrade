@@ -7,6 +7,15 @@ GORELEASER             := $(GOPATH_BIN)/goreleaser
 BINARY      := comrade
 VERSION     ?= dev
 LDFLAGS     := -X main.version=$(VERSION)
+# -trimpath strips the build-time absolute source path from the binary so a
+# local build matches .goreleaser.yaml's build (and therefore a real,
+# cosign-signed release) byte-for-byte given the same source, Go toolchain,
+# and ldflags — the same source built at two different absolute paths
+# otherwise produces two different SHA-256 sums. Applied to every `go build`
+# invocation below that produces a binary someone could compare against a
+# release artifact (`build`, `cross`); it is not applied to CI's plain
+# `go build ./...` compile check, which never writes a binary to disk.
+GOBUILDFLAGS := -trimpath
 DIST_DIR    := dist
 NPM_OUT_DIR := npm/packages
 
@@ -27,7 +36,7 @@ CROSS_TARGETS := \
 	npm-test npm-package npm-dry-run npm-smoke
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o ./$(BINARY) ./cmd/comrade
+	go build $(GOBUILDFLAGS) -ldflags "$(LDFLAGS)" -o ./$(BINARY) ./cmd/comrade
 
 test:
 	go test ./...
@@ -77,7 +86,7 @@ cross:
 		ext=""; \
 		[ "$$os" = "windows" ] && ext=".exe"; \
 		echo "building $$os/$$arch..."; \
-		GOOS=$$os GOARCH=$$arch go build -ldflags "$(LDFLAGS)" \
+		GOOS=$$os GOARCH=$$arch go build $(GOBUILDFLAGS) -ldflags "$(LDFLAGS)" \
 			-o $(DIST_DIR)/$(BINARY)-$$os-$$arch$$ext ./cmd/comrade || exit 1; \
 	done
 

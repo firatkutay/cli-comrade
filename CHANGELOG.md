@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Release binaries are now reproducible, closing a byte-for-byte verification gap in the self-update trust chain.** Building v0.4.3 from an isolated clone produced a `comrade` binary whose SHA-256 matched no entry in the released, cosign-signed `checksums.txt` — root-caused (via a controlled two-path experiment on the same commit, same `go1.26.5` toolchain, same ldflags) to `go build` embedding the absolute build-time source path when `.goreleaser.yaml`'s `builds:` entry set `ldflags` but no `-trimpath`. This project's whole security posture is a cosign-verified, fail-closed self-update (`comrade upgrade` refuses without a valid signature over `checksums.txt`); without reproducibility, a binary built locally — such as the one-time manual npm bootstrap publish, which is built outside this repo's own CI runner — matches no signed release and is permanently unverifiable once published, since npm versions are immutable. `.goreleaser.yaml` now sets `flags: [-trimpath]` on the `comrade` build (goreleaser's own documented mechanism for this — see `goreleaser.com/blog/reproducible-builds`), and `Makefile`'s `build`/`cross` targets, the other local paths that produce a binary someone could compare against a release, apply the same flag. Verified empirically: the same commit built at two different absolute paths now produces byte-identical `linux/amd64` binaries, and the binary no longer contains the build's scratch path (previously found via `strings | grep`).
+
 ## [0.4.3] - 2026-07-26
 
 ### Fixed

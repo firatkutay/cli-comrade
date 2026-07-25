@@ -2,14 +2,25 @@
 # check-coverage-floors.sh — the coverage ratchet gate (GitHub issue #21).
 #
 # Fails when either:
-#   1. any package's CURRENT `go test -cover` coverage falls below the
-#      floor recorded for it in coverage-floors.txt, or
+#   1. any package's CURRENT coverage falls below the (decimal, one-tenth-
+#      point) floor recorded for it in coverage-floors.txt, or
 #   2. coverage-floors.txt and `go list ./...` have drifted out of sync in
 #      EITHER direction — a package `go list` reports with no floor entry,
 #      or a floor entry for a package `go list` no longer reports. This is
 #      the bidirectional drift guard a hand-maintained mirror (the floors
 #      file mirrors the module's package list) requires: a one-directional
 #      check would let a brand-new package ship with no floor at all.
+#
+# Precision note: this script computes each package's coverage itself,
+# directly from a `-coverprofile` profile (covered statements / total
+# statements), rather than trusting `go test -cover`'s own printed
+# percentage. `go test -cover` formats with "%.1f" (standard rounding),
+# which could round a true 82.65% up to a displayed "82.7%" — silently
+# PASSING against an 82.7 floor that the true, unrounded value should
+# FAIL. Computing the ratio ourselves and comparing it against the floor
+# with plain floating-point `<` (coverage-floors.txt's floors are already
+# truncated, never rounded — see its own header) avoids that asymmetry
+# entirely: no rounding is ever applied to the actual measured value.
 #
 # See coverage-floors.txt's own header for the re-baselining procedure.
 #
@@ -67,8 +78,11 @@ if [ "$drift" -ne 0 ]; then
 	exit 1
 fi
 
-echo "check-coverage-floors: running go test -cover ./..."
-test_output="$(go test ./... -cover 2>&1)"
+profile="$(mktemp)"
+trap 'rm -f "$profile"' EXIT
+
+echo "check-coverage-floors: running go test -coverprofile ./..."
+test_output="$(go test ./... -coverprofile="$profile" -covermode=set 2>&1)"
 test_status=$?
 echo "$test_output"
 
@@ -77,26 +91,39 @@ if [ "$test_status" -ne 0 ]; then
 	exit 1
 fi
 
+# A package with NO test files at all (e.g. a hypothetical future
+# no-test package with an explicit 0 floor) produces zero lines in the
+# profile for that package -- pkg_stats reports "0 0" for it, and the
+# awk block below treats that as 0.0% exactly (never a division by
+# zero), so it only ever compares against a floor of 0.
+pkg_stats() {
+	awk -v pkg="$1/" '
+		{
+			split($1, a, ":")
+			path = a[1]
+			# pkg is the full "<import-path>/" prefix (from go list, with
+			# a trailing slash appended) -- match profile lines whose
+			# source file path starts with EXACTLY that prefix, so
+			# internal/cli never accidentally matches a sibling package
+			# whose name happens to start the same way.
+			if (index(path, pkg) == 1) {
+				total += $2
+				if ($3 + 0 > 0) covered += $2
+			}
+		}
+		END { printf "%d %d\n", covered + 0, total + 0 }
+	' "$profile"
+}
+
 fail=0
 for pkg in "${all_pkgs[@]}"; do
 	floor="${floor_of[$pkg]}"
-	pkg_line="$(printf '%s\n' "$test_output" | grep -F -m1 "	$pkg	")"
+	read -r covered total <<<"$(pkg_stats "$pkg")"
 
-	if [ -z "$pkg_line" ]; then
-		echo "check-coverage-floors: could not find go test output for $pkg" >&2
-		fail=1
-		continue
-	fi
-
-	if printf '%s' "$pkg_line" | grep -q '\[no test files\]'; then
-		actual="0.0"
+	if [ "$total" -eq 0 ]; then
+		actual="0.000"
 	else
-		actual="$(printf '%s' "$pkg_line" | grep -oE 'coverage: [0-9]+\.[0-9]+% of statements' | grep -oE '[0-9]+\.[0-9]+')"
-		if [ -z "$actual" ]; then
-			echo "check-coverage-floors: could not parse a coverage percentage for $pkg from: $pkg_line" >&2
-			fail=1
-			continue
-		fi
+		actual="$(awk -v c="$covered" -v t="$total" 'BEGIN{printf "%.3f", c/t*100}')"
 	fi
 
 	below="$(awk -v a="$actual" -v f="$floor" 'BEGIN{print (a+0 < f+0) ? 1 : 0}')"

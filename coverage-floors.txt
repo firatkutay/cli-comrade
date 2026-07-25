@@ -18,7 +18,7 @@
 # coverage (exactly how the plan-review CLI glue first shipped untested).
 #
 # Re-baselining after intentionally changing a package's coverage:
-#   1. go test ./... -cover
+#   1. go test ./... -cover   (on Linux — see the note below on why)
 #   2. For the changed package, take the new coverage%, floor it to an
 #      integer, subtract 2 (minimum 0), and update its line below.
 #   3. Never raise a floor above a package's ACTUAL current coverage — that
@@ -27,6 +27,16 @@
 #      guard above fails the build otherwise). A package with genuinely no
 #      tests yet (e.g. a thin main-only package) gets floor 0 with a comment
 #      explaining why, not a fabricated test.
+#
+# Linux-only, deliberately: every floor below was measured on ubuntu-latest,
+# and CI only runs this check on the ubuntu-latest matrix leg (see the
+# "Coverage floors" step's own comment in .github/workflows/ci.yml). Do NOT
+# re-baseline from a macOS or Windows run — per-package coverage genuinely
+# differs by OS in this repo (internal/executor and internal/shellinit
+# branch on runtime.GOOS with only one branch executing per OS,
+# internal/doctor/check_path.go is GOOS-aware, and several tests skip on
+# Windows), so a macOS/Windows measurement would silently drift these
+# floors away from what the gate actually checks against.
 
 github.com/firatkutay/cli-comrade/cmd/comrade 38
 github.com/firatkutay/cli-comrade/internal/audit 75

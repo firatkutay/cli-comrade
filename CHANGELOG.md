@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.4] - 2026-07-26
 
 ### Security
 
@@ -899,7 +899,8 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.3...HEAD
+[0.4.4]: https://github.com/firatkutay/cli-comrade/compare/v0.4.3...v0.4.4
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.4...HEAD
 [0.4.3]: https://github.com/firatkutay/cli-comrade/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/firatkutay/cli-comrade/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/firatkutay/cli-comrade/compare/v0.4.0...v0.4.1

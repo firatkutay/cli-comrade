@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`comrade upgrade` could desync npm's own installed version.** An npm-managed install (`npm/main/bin/comrade.js` spawning the real binary out of `node_modules`) self-updating in place would leave `npm ls -g` reporting the old version, and the next `npm update` would silently revert the binary. `comrade upgrade` now refuses unconditionally (`--check` included) when it detects an npm-managed install — via `COMRADE_MANAGED_BY=npm`, set by the dispatcher in the child env (primary signal), or a `node_modules` path segment in the resolved running executable (fallback, for a direct invocation that bypasses the dispatcher) — and points at `npm update -g cli-comrade` instead. The passive "a new version is available" notice is not suppressed for an npm-managed install; it likewise suggests `npm update -g cli-comrade` rather than `comrade upgrade`.
+
 ## [0.4.2] - 2026-07-25
 
 ### Fixed

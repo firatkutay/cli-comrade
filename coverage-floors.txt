@@ -129,7 +129,7 @@
 
 github.com/firatkutay/cli-comrade/cmd/comrade 39.5
 github.com/firatkutay/cli-comrade/internal/audit 76.6
-github.com/firatkutay/cli-comrade/internal/cli 83.0
+github.com/firatkutay/cli-comrade/internal/cli 83.1
 github.com/firatkutay/cli-comrade/internal/config 86.9
 github.com/firatkutay/cli-comrade/internal/context 90.1
 github.com/firatkutay/cli-comrade/internal/doctor 92.4
@@ -143,4 +143,4 @@ github.com/firatkutay/cli-comrade/internal/secrets 85.3
 github.com/firatkutay/cli-comrade/internal/shellinit 93.0
 github.com/firatkutay/cli-comrade/internal/tui 82.3
 github.com/firatkutay/cli-comrade/internal/undo 91.1
-github.com/firatkutay/cli-comrade/internal/update 83.9
+github.com/firatkutay/cli-comrade/internal/update 84.6

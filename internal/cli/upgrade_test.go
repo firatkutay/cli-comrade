@@ -463,6 +463,85 @@ func TestUpgradeApplyRealEmbeddedKeyRequiresSignatureAsset(t *testing.T) {
 	assert.Equal(t, "this release does not include a signature file; refusing to install it", err.Error())
 }
 
+// TestUpgradeRefusesWhenNPMManagedViaEnv proves the env-signal path
+// (COMRADE_MANAGED_BY=npm, exactly what npm/main/bin/comrade.js's
+// dispatcher sets in the child env) makes `comrade upgrade` refuse to
+// self-update, exit non-zero, and point at `npm update -g cli-comrade`
+// instead of downloading/replacing anything.
+func TestUpgradeRefusesWhenNPMManagedViaEnv(t *testing.T) {
+	t.Setenv("COMRADE_MANAGED_BY", "npm")
+
+	replaceCalled := false
+	replace := func(string, []byte, string) error { replaceCalled = true; return nil }
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.2.0"}}, fakeDownloader{}, replace)
+
+	_, err := execUpgradeCmd(t, deps)
+	require.Error(t, err)
+	assert.Equal(t, "comrade was installed via npm; self-update is disabled to keep npm's installed version in sync — run `npm update -g cli-comrade` instead", err.Error())
+	assert.False(t, replaceCalled, "an npm-managed install must never reach ReplaceBinary")
+}
+
+// TestUpgradeRefusesWhenNPMManagedViaEnvInTurkish is the same case
+// under COMRADE_LANG=tr, proving the refusal is genuinely translated
+// (this project's established TR-smoke-test convention).
+func TestUpgradeRefusesWhenNPMManagedViaEnvInTurkish(t *testing.T) {
+	t.Setenv("COMRADE_LANG", "tr")
+	t.Setenv("COMRADE_MANAGED_BY", "npm")
+
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.2.0"}}, fakeDownloader{}, nil)
+
+	_, err := execUpgradeCmd(t, deps)
+	require.Error(t, err)
+	assert.Equal(t, "comrade npm üzerinden kuruldu; npm'in kurulu sürümüyle tutarlılığı korumak için kendi kendini güncelleme devre dışı — bunun yerine `npm update -g cli-comrade` çalıştırın", err.Error())
+}
+
+// TestUpgradeCheckRefusesWhenNPMManagedViaEnv proves the same refusal
+// applies to `--check` too (no check-only carve-out).
+func TestUpgradeCheckRefusesWhenNPMManagedViaEnv(t *testing.T) {
+	t.Setenv("COMRADE_MANAGED_BY", "npm")
+
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.2.0"}}, fakeDownloader{}, nil)
+
+	_, err := execUpgradeCmd(t, deps, "--check")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "npm update -g cli-comrade")
+}
+
+// TestUpgradeRefusesWhenNPMManagedViaPathFallback proves the fallback
+// path-signal detection (no COMRADE_MANAGED_BY set at all) also refuses
+// self-update, for a direct invocation of the resolved platform binary
+// that bypasses npm/main/bin/comrade.js's dispatcher entirely.
+func TestUpgradeRefusesWhenNPMManagedViaPathFallback(t *testing.T) {
+	dir := t.TempDir()
+	nodeModulesBin := filepath.Join(dir, "node_modules", "@firatkutay", "comrade-linux-x64", "bin")
+	require.NoError(t, os.MkdirAll(nodeModulesBin, 0o755))
+	fakeExePath := filepath.Join(nodeModulesBin, "comrade")
+	require.NoError(t, os.WriteFile(fakeExePath, []byte("fake-binary"), 0o755))
+
+	replaceCalled := false
+	replace := func(string, []byte, string) error { replaceCalled = true; return nil }
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.2.0"}}, fakeDownloader{}, replace)
+	deps.executable = func() (string, error) { return fakeExePath, nil }
+
+	_, err := execUpgradeCmd(t, deps)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "npm update -g cli-comrade")
+	assert.False(t, replaceCalled)
+}
+
+// TestUpgradeProceedsWhenNotNPMManaged is the negative-control
+// regression guard: with no env signal and an executable path outside
+// any node_modules tree (testUpgradeDeps's own fixed fake path), the
+// upgrade must proceed exactly as it did before this feature existed.
+func TestUpgradeProceedsWhenNotNPMManaged(t *testing.T) {
+	replace := func(string, []byte, string) error { return nil }
+	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{release: update.Release{TagName: "v0.1.0"}}, fakeDownloader{}, replace)
+
+	out, err := execUpgradeCmd(t, deps)
+	require.NoError(t, err)
+	assert.Contains(t, out, "already on the latest version")
+}
+
 func TestUpgradeHelpDescribesCheckFlag(t *testing.T) {
 	deps := testUpgradeDeps("v0.1.0", fakeReleaseFetcher{}, fakeDownloader{}, nil)
 	out, err := execUpgradeCmd(t, deps, "--help")

@@ -959,6 +959,19 @@ const (
 	// args.
 	MsgUpgradeSignatureInvalid MessageID = "upgrade_signature_invalid"
 
+	// MsgUpgradeNPMManagedError refuses `comrade upgrade` (--check or
+	// not) when update.IsNPMManaged detects this binary is running out
+	// of an npm install (either the npm/main/bin/comrade.js dispatcher's
+	// COMRADE_MANAGED_BY=npm env signal, or a node_modules path segment
+	// in the resolved running executable, as a fallback for a direct
+	// invocation that bypasses the dispatcher). A Go-side self-update in
+	// that case would overwrite the platform binary npm itself installed
+	// under node_modules without updating npm's own package-lock/manifest
+	// bookkeeping, so the two would desync — the next `npm update` would
+	// silently revert it. No args: the fix is always the same one
+	// command, `npm update -g cli-comrade`.
+	MsgUpgradeNPMManagedError MessageID = "upgrade_npm_managed_error"
+
 	// -- per-flag --help descriptions (comrade upgrade) -------------------
 
 	// MsgFlagCheck is --check's --help description.
@@ -971,6 +984,15 @@ const (
 	// newer release than the running build. Two args: the latest
 	// version, the current version.
 	MsgUpdateAvailableNotice MessageID = "update_available_notice"
+
+	// MsgUpdateAvailableNoticeNPM is MsgUpdateAvailableNotice's variant
+	// for an npm-managed install (update.IsNPMManaged): it still reports
+	// the newer version (the notice itself is never suppressed for an
+	// npm install), but points at `npm update -g cli-comrade` instead of
+	// `comrade upgrade`, since the latter is refused in that case (see
+	// MsgUpgradeNPMManagedError). Two args: the latest version, the
+	// current version.
+	MsgUpdateAvailableNoticeNPM MessageID = "update_available_notice_npm"
 
 	// -- internal/tui ask-mode confirm prompt ----------------------------
 	//
@@ -1602,6 +1624,7 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUpgradeSignatureNotConfigured: "cli-comrade: release signature verification is not configured; proceeding with checksum-only verification\n",
 	MsgUpgradeSignatureMissing:       "this release does not include a signature file; refusing to install it",
 	MsgUpgradeSignatureInvalid:       "this release's signature could not be verified; refusing to install it",
+	MsgUpgradeNPMManagedError:        "comrade was installed via npm; self-update is disabled to keep npm's installed version in sync — run `npm update -g cli-comrade` instead",
 
 	MsgHelpShortUpgrade: "Check for or install a newer released version of comrade",
 	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
@@ -1624,7 +1647,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpLabelAdditionalHelpTopics: "Additional help topics:",
 	MsgHelpMoreInfo:                  `Use "{{.CommandPath}} [command] --help" for more information about a command.`,
 
-	MsgUpdateAvailableNotice: "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
+	MsgUpdateAvailableNotice:    "\ncomrade: a new version is available: %s (you have %s). Run `comrade upgrade` to update.\n",
+	MsgUpdateAvailableNoticeNPM: "\ncomrade: a new version is available: %s (you have %s). Run `npm update -g cli-comrade` to update.\n",
 
 	MsgConfirmLegend:     "[y]es [n]o [e]dit [x]plain [a]ll: ",
 	MsgConfirmEditHeader: "Edit command (enter to confirm, esc to cancel):\n",
@@ -1934,6 +1958,7 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUpgradeSignatureNotConfigured: "cli-comrade: sürüm imza doğrulaması yapılandırılmamış; yalnızca sağlama toplamı (checksum) ile doğrulamaya devam ediliyor\n",
 	MsgUpgradeSignatureMissing:       "bu sürüm bir imza dosyası içermiyor; kurulum reddediliyor",
 	MsgUpgradeSignatureInvalid:       "bu sürümün imzası doğrulanamadı; kurulum reddediliyor",
+	MsgUpgradeNPMManagedError:        "comrade npm üzerinden kuruldu; npm'in kurulu sürümüyle tutarlılığı korumak için kendi kendini güncelleme devre dışı — bunun yerine `npm update -g cli-comrade` çalıştırın",
 
 	MsgHelpShortUpgrade: "comrade'in daha yeni bir yayımlanmış sürümünü denetler veya kurar",
 	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",
@@ -1956,7 +1981,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpLabelAdditionalHelpTopics: "Ek yardım konuları:",
 	MsgHelpMoreInfo:                  `Bir komut hakkında daha fazla bilgi için "{{.CommandPath}} [command] --help" kullanın.`,
 
-	MsgUpdateAvailableNotice: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
+	MsgUpdateAvailableNotice:    "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `comrade upgrade` çalıştırın.\n",
+	MsgUpdateAvailableNoticeNPM: "\ncomrade: daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s). Güncellemek için `npm update -g cli-comrade` çalıştırın.\n",
 
 	MsgConfirmLegend:     "[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: ",
 	MsgConfirmEditHeader: "Komutu düzenle (onaylamak için enter, iptal için esc):\n",

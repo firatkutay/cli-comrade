@@ -193,4 +193,36 @@ withFixture(({ dispatcherPath, fakeBinaryPath, cwd }) => {
   );
 });
 
+// ===========================================================================
+// 6. COMRADE_MANAGED_BY=npm env signal: the child (the real Go binary)
+//    must see this variable set, in addition to the rest of the parent's
+//    own environment (a custom var here stands in for "the rest of
+//    process.env" -- proving the dispatcher extends a COPY of it rather
+//    than replacing it wholesale). internal/update.IsNPMManaged reads
+//    this to refuse `comrade upgrade` self-updates for an npm-managed
+//    install.
+// ===========================================================================
+
+withFixture(({ dispatcherPath, fakeBinaryPath, cwd }) => {
+  writeFakeBinary(
+    fakeBinaryPath,
+    'process.stdout.write(JSON.stringify({ managedBy: process.env.COMRADE_MANAGED_BY, custom: process.env.COMRADE_DISPATCHER_TEST_CUSTOM_VAR }));'
+  );
+
+  const result = spawnSync(process.execPath, [dispatcherPath], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, COMRADE_DISPATCHER_TEST_CUSTOM_VAR: 'still-here' },
+  });
+
+  assert.equal(result.status, 0);
+  const seen = JSON.parse(result.stdout);
+  assert.equal(seen.managedBy, 'npm', 'dispatcher must set COMRADE_MANAGED_BY=npm in the child env');
+  assert.equal(
+    seen.custom,
+    'still-here',
+    'dispatcher must extend a COPY of the parent env, not replace it -- other vars must still reach the child'
+  );
+});
+
 console.log('dispatcher.test.js: all assertions passed');

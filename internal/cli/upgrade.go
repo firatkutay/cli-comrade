@@ -79,6 +79,18 @@ func newUpgradeCmd(newLoader loaderFactory, deps upgradeDeps) *cobra.Command {
 				update.CleanupOldBinary(exePath)
 			}
 
+			// An npm-managed install (npm/main/bin/comrade.js spawned the
+			// real binary out of node_modules) must never self-update in
+			// place: that would desync npm's own recorded installed
+			// version from what's actually on disk, and the next `npm
+			// update` would silently revert it. Refused unconditionally
+			// (--check included) — no override flag, per YAGNI; the fix
+			// is always the same one command, `npm update -g
+			// cli-comrade`.
+			if update.IsNPMManaged(os.Getenv, deps.executable, filepath.EvalSymlinks) {
+				return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeNPMManagedError))
+			}
+
 			if update.IsDevBuild(deps.version) {
 				return fmt.Errorf("%s", tr.T(i18n.MsgUpgradeDevBuildError))
 			}

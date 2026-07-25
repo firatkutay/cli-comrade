@@ -16,13 +16,21 @@ CROSS_TARGETS := \
 	darwin/arm64 \
 	windows/amd64
 
-.PHONY: build test lint vet cross tools clean release-check release-snapshot
+.PHONY: build test lint vet cross tools clean release-check release-snapshot coverage-check
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o ./$(BINARY) ./cmd/comrade
 
 test:
 	go test ./...
+
+# coverage-check is the per-package coverage ratchet (GitHub issue #21):
+# fails when a package's go test coverage drops below the floor recorded
+# in coverage-floors.txt, or when that file has drifted out of sync with
+# go list ./... in either direction. See coverage-floors.txt's own header
+# for the re-baselining procedure after intentionally changing coverage.
+coverage-check:
+	bash scripts/check-coverage-floors.sh
 
 vet:
 	go vet ./...

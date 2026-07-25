@@ -34,6 +34,29 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # Coverage ratchet (GitHub issue #21): fails when a package's
+      # coverage drops below its recorded floor in coverage-floors.txt,
+      # or when that file drifts out of sync with go list ./... in
+      # either direction — see coverage-floors.txt's own header.
+      #
+      # Linux-leg only (`if:` below), on purpose: the floors in
+      # coverage-floors.txt were measured on ubuntu-latest, and
+      # per-package coverage genuinely differs by OS in this repo —
+      # internal/executor and internal/shellinit branch on runtime.GOOS
+      # (only one branch executes per OS), internal/doctor/check_path.go
+      # is GOOS-aware, and several tests skip on Windows (e.g.
+      # chmod-based cases). Running this same check on macos-26/
+      # windows-latest against Linux-measured floors would fail on
+      # those legs for a real OS-coverage difference, not a real
+      # regression — a red PR that says nothing about a bug. `shell:
+      # bash` is kept (rather than dropped along with the other two
+      # legs) so this step still runs correctly if the `if:` is ever
+      # loosened back to all three.
+      - name: Coverage floors
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: bash scripts/check-coverage-floors.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:

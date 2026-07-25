@@ -147,6 +147,53 @@ func TestChatModelChatTurnDoneMsgAppendsReplyAndClearsWaiting(t *testing.T) {
 	assert.True(t, m2.input.Focused(), "the input must be refocused once the turn completes")
 }
 
+// TestChatModelSpinnerTickAdvancesSpinnerWhileWaiting drives
+// chatModel.Update's `case spinner.TickMsg:` branch DIRECTLY — a
+// spinner.TickMsg built by hand and fed straight to Update(), never a real
+// tea.Program's own timer-driven tick. This matters because that branch's
+// "m.waiting == true" body (m.spinner.Update(msg), returning the spinner's
+// own next-tick Cmd) was previously reached only incidentally, by
+// TestChatModelHeadlessProgram*'s real *tea.Program racing its own
+// spinner.Tick timer against the fake LLM call's completion — genuinely
+// non-deterministic (a real coverage-measurement flake this repo's
+// coverage-floors.txt's own NOISE CHECK section documents: internal/cli's
+// covered-statement count varied by exactly the 3 statements in this
+// branch's body, run to run). Asserting this branch directly, independent
+// of any timer race, makes that 3-statement block permanently covered
+// instead of a coin flip. spinner.TickMsg's ID/tag fields default to zero,
+// which the real spinner.Model.Update always accepts (see its own
+// doc-commented ID/tag-rejection checks) — so a zero-value TickMsg here
+// exercises the exact same path a real tick would.
+func TestChatModelSpinnerTickAdvancesSpinnerWhileWaiting(t *testing.T) {
+	m := newTestChatModel(&fakeChatLLM{}, nil)
+	m.waiting = true
+
+	updated, cmd := m.Update(spinner.TickMsg{Time: time.Now()})
+	m2, ok := updated.(chatModel)
+	require.True(t, ok)
+
+	assert.True(t, m2.waiting, "a spinner tick must never itself clear waiting")
+	assert.NotNil(t, cmd, "a tick while waiting must return the spinner's own next-tick Cmd, keeping it animating")
+}
+
+// TestChatModelSpinnerTickIgnoredWhenNotWaiting is the branch's other
+// half: chatModel.Update's own early "if !m.waiting { return m, nil }"
+// inside the spinner.TickMsg case, deterministically exercised the same
+// way — a stray tick that arrives after a turn has already completed
+// (e.g. one already in flight when chatTurnDoneMsg lands) must be a
+// silent no-op, never touching m.spinner.
+func TestChatModelSpinnerTickIgnoredWhenNotWaiting(t *testing.T) {
+	m := newTestChatModel(&fakeChatLLM{}, nil)
+	m.waiting = false
+
+	updated, cmd := m.Update(spinner.TickMsg{Time: time.Now()})
+	m2, ok := updated.(chatModel)
+	require.True(t, ok)
+
+	assert.False(t, m2.waiting)
+	assert.Nil(t, cmd, "a tick received while not waiting must be ignored entirely")
+}
+
 // runHeadlessChatProgram builds and runs the exact same *tea.Program
 // construction runChatProgram (chatmodel.go) uses — WithContext/WithInput/
 // WithOutput, m.program wired for "/do"'s ReleaseTerminal — but, unlike

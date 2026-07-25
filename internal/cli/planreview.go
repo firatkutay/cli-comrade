@@ -33,6 +33,34 @@ func (r *tuiPlanReviewer) Review(ctx context.Context, steps []tui.PlanReviewStep
 	return tui.ReviewPlan(ctx, steps, r.colorEnabled, r.in, r.out, r.tr)
 }
 
+// fdReader is satisfied by *os.File (and anything else that exposes its
+// own file descriptor) — the seam isReaderTerminal type-asserts against
+// to decide whether a reader is TTY-capable at all.
+type fdReader interface {
+	Fd() uintptr
+}
+
+// isReaderTerminal reports whether in — the ACTUAL reader the program is
+// about to read the plan-review screen from — is an interactive
+// terminal, by asking isTerminal about in's own file descriptor rather
+// than os.Stdin's. do.go/fix.go call this with cmd.InOrStdin(): in the
+// real CLI, cmd.InOrStdin() defaults to os.Stdin, so this is the exact
+// same fd os.Stdin.Fd() would report on — no behavior change there. The
+// difference only surfaces when a caller rewires cmd.In away from
+// os.Stdin (e.g. a test harness, or a future embedding of this CLI): a
+// rewired reader that doesn't expose Fd() at all (a *bytes.Buffer, a
+// *strings.Reader, an io.Pipe end) is never treated as a TTY, even if
+// os.Stdin itself happens to be one — closing the latent mis-gate GitHub
+// issue #21 flagged, where shouldShowPlanReview's TTY check and
+// tui.ReviewPlan's actual read source could silently diverge.
+func isReaderTerminal(in io.Reader, isTerminal isTerminalFunc) bool {
+	f, ok := in.(fdReader)
+	if !ok {
+		return false
+	}
+	return isTerminal(int(f.Fd()))
+}
+
 // shouldShowPlanReview is the pure gate deciding whether runDo/runFix
 // show the plan-preview/edit screen at all, before ever constructing a
 // planReviewer or touching stdin:

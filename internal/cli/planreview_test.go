@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -312,6 +313,54 @@ func TestResolveReviewPassReorderDeleteSkipAcrossTwoPasses(t *testing.T) {
 	// D's final text matches the TRUE original exactly -> never
 	// re-evaluated -> the untouched original Decision comes through.
 	assert.Equal(t, stepD.Decision, finalPlan2.Steps[1].Decision)
+}
+
+// --- isReaderTerminal --------------------------------------------------------
+
+// TestIsReaderTerminalSameHandleGatesOn is the "not a live bug today"
+// case GitHub issue #21 called out: cmd.InOrStdin() defaults to
+// os.Stdin in the real CLI, so asking isReaderTerminal about os.Stdin
+// itself must behave exactly like the old, directly-os.Stdin.Fd()-based
+// check — gated on when the underlying fd reports as a terminal.
+func TestIsReaderTerminalSameHandleGatesOn(t *testing.T) {
+	isTerminal := func(fd int) bool { return fd == int(os.Stdin.Fd()) }
+
+	got := isReaderTerminal(os.Stdin, isTerminal)
+
+	assert.True(t, got)
+}
+
+// TestIsReaderTerminalRewiredNonTTYReaderGatesOffEvenWhenStdinIsATTY is
+// the latent-coupling case GitHub issue #21 flagged: a caller rewires
+// the reader away from os.Stdin (a strings.Reader here — it exposes no
+// Fd() at all), while isTerminal itself would happily report every fd
+// (including os.Stdin's own) as a TTY. isReaderTerminal must still gate
+// off, because it asks about the reader it was actually handed, never
+// os.Stdin behind its back — proving shouldShowPlanReview and
+// tui.ReviewPlan can no longer silently diverge on which handle is
+// TTY-ness authority.
+func TestIsReaderTerminalRewiredNonTTYReaderGatesOffEvenWhenStdinIsATTY(t *testing.T) {
+	isTerminal := func(_ int) bool { return true } // simulates os.Stdin (and anything else) looking like a TTY
+
+	got := isReaderTerminal(strings.NewReader("anything"), isTerminal)
+
+	assert.False(t, got)
+}
+
+// TestIsReaderTerminalFileHandleReportsNonTTYFd asserts the check is the
+// reader's OWN fd, not merely "is it an *os.File at all": a real
+// *os.File (os.DevNull) whose fd isTerminal reports as non-TTY (only
+// os.Stdin's own fd is wired to look like one) must gate off.
+func TestIsReaderTerminalFileHandleReportsNonTTYFd(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
+
+	isTerminal := func(fd int) bool { return fd == int(os.Stdin.Fd()) }
+
+	got := isReaderTerminal(f, isTerminal)
+
+	assert.False(t, got)
 }
 
 // --- shouldShowPlanReview (full truth table) --------------------------------

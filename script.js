@@ -412,7 +412,6 @@
       var els = document.querySelectorAll(sel);
       for (var i = 0; i < els.length; i++) layers.push({ el: els[i], speed: speed, base: 0 });
     }
-    add(".hero__logo", 0.08);
     add(".crt-stage", -0.06);
     add(".section .eyebrow", 0.1);
     add(".section .section__title", 0.05);

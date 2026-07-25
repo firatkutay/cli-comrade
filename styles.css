@@ -699,6 +699,21 @@ img { max-width: 100%; height: auto; display: block; }
   border-radius: 5px;
   font-size: 0.85rem;
 }
+/* Flag names must not fragment mid-token. CSS puts a soft wrap opportunity
+   after every hyphen, so on a phone `--profile` splits into "--" / "profile"
+   and `--no-review` into "--no-" / "review" — one flag reading as two
+   tokens. Nothing suppresses only that break: word-break: keep-all,
+   line-break: strict and hyphens: none were each measured as no-ops in
+   Blink, leaving white-space: nowrap as the only lever.
+   So it is opt-in, never blanket — blanket is not safe: the guide's longest
+   chip (comrade config profile set work llm.provider openai_compat) needs
+   488px against a 267px column at a 320px viewport, and nowrap also defeats
+   the overflow-wrap: break-word fallback below that catches such chips.
+   Budget for applying it: the run must fit the narrowest column a chip can
+   land in — .gwarn is 249px at 320px wide, so roughly 20ch of content.
+   A chip under that budget takes the class itself; a longer chip keeps
+   wrapping at its spaces and marks only the hyphenated token inside it. */
+.nowrap { white-space: nowrap; }
 .dim { color: var(--dim); }
 .sep { color: var(--dim); }
 

@@ -301,7 +301,7 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-tr=") bir adım HER ZAMAN onay ister — bu, config'te "
                data-en=") step ALWAYS asks for confirmation — this only changes if ">) bir adım HER ZAMAN onay ister — bu, config'te </span><code class="inline-code">safety.confirm_destructive=false</code><span
                data-tr=" ve "
-               data-en=" in config and "> ve </span><code class="inline-code">--yolo</code><span
+               data-en=" in config and "> ve </span><code class="inline-code nowrap">--yolo</code><span
                data-tr=" bayrağı birlikte kullanılmadıkça değişmez, ve o zaman bile her kullanımda kırmızı bir uyarı basılır."
                data-en=" are used together, and even then a red warning prints on every use."> bayrağı birlikte kullanılmadıkça değişmez, ve o zaman bile her kullanımda kırmızı bir uyarı basılır.</span>
           </div>
@@ -414,16 +414,16 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-tr=" — geri alınabilir son işlemi tersine çevirir, ya da elle yapılacak adımları gösterir. Her zaman "
                data-en=" — reverses the last reversible action, or shows the manual steps. Always runs in "> — geri alınabilir son işlemi tersine çevirir, ya da elle yapılacak adımları gösterir. Her zaman </span><code class="inline-code">ask</code><span
                data-tr=" modunda çalışır — bir "
-               data-en=" mode — there is NO "> modunda çalışır — bir </span><code class="inline-code">--yolo</code><span
+               data-en=" mode — there is NO "> modunda çalışır — bir </span><code class="inline-code nowrap">--yolo</code><span
                data-tr=" yolu YOKTUR, çünkü bir geri alma orijinal işlemden daha az değil, daha fazla dikkat ister. "
-               data-en=" path here, since a reversal deserves more scrutiny than the original action, not less. "> yolu YOKTUR, çünkü bir geri alma orijinal işlemden daha az değil, daha fazla dikkat ister. </span><code class="inline-code">comrade undo --list</code><span
+               data-en=" path here, since a reversal deserves more scrutiny than the original action, not less. "> yolu YOKTUR, çünkü bir geri alma orijinal işlemden daha az değil, daha fazla dikkat ister. </span><code class="inline-code nowrap">comrade undo --list</code><span
                data-tr=" son geri alınabilir işlemleri listeler; "
                data-en=" lists recent reversible actions; bounded by "> son geri alınabilir işlemleri listeler; </span><code class="inline-code">audit.retention_days</code><span
                data-tr=" (varsayılan 90 gün) ile sınırlıdır."
                data-en=" (default 90 days)."> (varsayılan 90 gün) ile sınırlıdır.</span></li>
             <li><code class="inline-code">comrade history</code><span
                data-tr=" — denetim kaydından (audit log) son çalıştırılan komutları gösterir ("
-               data-en=" — shows recently executed commands from the audit log (e.g. "> — denetim kaydından (audit log) son çalıştırılan komutları gösterir (</span><code class="inline-code">--limit 50</code><span
+               data-en=" — shows recently executed commands from the audit log (e.g. "> — denetim kaydından (audit log) son çalıştırılan komutları gösterir (</span><code class="inline-code nowrap">--limit 50</code><span
                data-tr=" gibi)."
                data-en=")."> gibi).</span></li>
             <li><code class="inline-code">comrade config</code><span data-tr=" — " data-en=" — "> — </span><code class="inline-code" data-tr="get &lt;anahtar&gt;" data-en="get &lt;key&gt;">get &lt;anahtar&gt;</code> / <code class="inline-code" data-tr="set &lt;anahtar&gt; &lt;değer&gt;" data-en="set &lt;key&gt; &lt;value&gt;">set &lt;anahtar&gt; &lt;değer&gt;</code> / <code class="inline-code">list</code><span
@@ -441,15 +441,15 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-en=" (prints the file path)."> (dosya yolunu yazdırır).</span></li>
             <li><b data-tr="Profiller" data-en="Profiles">Profiller</b><span
                data-tr=" — iş/kişisel gibi ayrı yapılandırmalar için: "
-               data-en=" — for separate setups like work/personal: "> — iş/kişisel gibi ayrı yapılandırmalar için: </span><code class="inline-code">comrade config profile add work --from-current</code>, <code class="inline-code">comrade config profile use work</code><span
+               data-en=" — for separate setups like work/personal: "> — iş/kişisel gibi ayrı yapılandırmalar için: </span><code class="inline-code">comrade config profile add work <span class="nowrap">--from-current</span></code>, <code class="inline-code">comrade config profile use work</code><span
                data-tr=", ya da tek seferlik "
-               data-en=", or a one-off ">, ya da tek seferlik </span><code class="inline-code">--profile work</code><span
+               data-en=", or a one-off ">, ya da tek seferlik </span><code class="inline-code nowrap">--profile work</code><span
                data-tr=". Dikkat: "
                data-en=". Note: ">. Dikkat: </span><code class="inline-code">config set</code><span
                data-tr=" dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil İÇİNDEKİ bir anahtarı değiştirmek için "
                data-en=" writes the file-level value, NOT the active profile — to change a key INSIDE a profile use "> dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil İÇİNDEKİ bir anahtarı değiştirmek için </span><code class="inline-code">comrade config profile set work llm.provider openai_compat</code><span
                data-tr=" kullanın. "
-               data-en=". "> kullanın. </span><code class="inline-code">--profile</code><span
+               data-en=". "> kullanın. </span><code class="inline-code nowrap">--profile</code><span
                data-tr=" bayrağı, ham argüman alan alt komutlarda etkili olmaz: "
                data-en=" has no effect on the subcommands that take raw arguments: "> bayrağı, ham argüman alan alt komutlarda etkili olmaz: </span><code class="inline-code">config set</code><span
                data-tr=" ve "
@@ -466,14 +466,14 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-tr=" — "
                data-en=" — set "> — </span><code class="inline-code">general.plan_review=ask</code><span
                data-tr=" ayarlayın (ya da "
-               data-en=" (or pass "> ayarlayın (ya da </span><code class="inline-code">--review</code><span
+               data-en=" (or pass "> ayarlayın (ya da </span><code class="inline-code nowrap">--review</code><span
                data-tr=" verin) ki adımlar çalışmadan önce yeniden sıralayabileceğiniz/atlayabileceğiniz/düzenleyebileceğiniz interaktif bir önizleme ekranı görün (ask modda, çok adımlı planlarda); "
-               data-en=") to see an interactive preview where you can reorder/skip/edit steps before they run (ask mode, multi-step plans); "> verin) ki adımlar çalışmadan önce yeniden sıralayabileceğiniz/atlayabileceğiniz/düzenleyebileceğiniz interaktif bir önizleme ekranı görün (ask modda, çok adımlı planlarda); </span><code class="inline-code">--no-review</code><span
+               data-en=") to see an interactive preview where you can reorder/skip/edit steps before they run (ask mode, multi-step plans); "> verin) ki adımlar çalışmadan önce yeniden sıralayabileceğiniz/atlayabileceğiniz/düzenleyebileceğiniz interaktif bir önizleme ekranı görün (ask modda, çok adımlı planlarda); </span><code class="inline-code nowrap">--no-review</code><span
                data-tr=" bunu her zaman kapatır."
                data-en=" always forces it off."> bunu her zaman kapatır.</span></li>
             <li><b data-tr="Maliyet görünürlüğü" data-en="Cost visibility">Maliyet görünürlüğü</b><span
                data-tr=" — herhangi bir çalıştırmaya "
-               data-en=" — add "> — herhangi bir çalıştırmaya </span><code class="inline-code">--usage</code><span
+               data-en=" — add "> — herhangi bir çalıştırmaya </span><code class="inline-code nowrap">--usage</code><span
                data-tr=" ekleyin, ya da kalıcı olarak "
                data-en=" to any run, or make it permanent with "> ekleyin, ya da kalıcı olarak </span><code class="inline-code">comrade config set general.show_usage true</code><span
                data-tr=" yapın; her çalıştırma sonunda token/maliyet özeti yazılır. Not: "
@@ -482,12 +482,12 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-en=" points at a non-OpenAI endpoint (Qwen, Groq, OpenRouter, a local gateway…), no cost estimate is shown — the price table only covers OpenAI's own hosted model, and a confidently wrong dollar figure would be worse than none. Token counts still print regardless."> OpenAI dışı bir uç noktaya (Qwen, Groq, OpenRouter, yerel bir gateway…) işaret ediyorsa maliyet tahmini gösterilmez — fiyat tablosu yalnızca OpenAI'ın kendi barındırdığı modeli kapsar, ve emin görünen ama yanlış bir rakam hiç göstermemekten daha kötü olurdu. Token sayıları her durumda yazılmaya devam eder.</span></li>
             <li><code class="inline-code">comrade doctor</code><span
                data-tr=" — salt-okunur, uçtan uca bir öz-tanı; "
-               data-en=" — a read-only, end-to-end self-diagnostic; "> — salt-okunur, uçtan uca bir öz-tanı; </span><code class="inline-code">--live</code><span
+               data-en=" — a read-only, end-to-end self-diagnostic; "> — salt-okunur, uçtan uca bir öz-tanı; </span><code class="inline-code nowrap">--live</code><span
                data-tr=" ile gerçek bir doğrulanmış istek gönderir (bir token harcar)."
                data-en=" sends a real authenticated request (spends one token)."> ile gerçek bir doğrulanmış istek gönderir (bir token harcar).</span></li>
             <li><code class="inline-code">comrade upgrade</code><span
                data-tr=" — yeni bir sürümü kontrol eder/kurar; "
-               data-en=" — checks for / installs a newer version; "> — yeni bir sürümü kontrol eder/kurar; </span><code class="inline-code">--check</code><span
+               data-en=" — checks for / installs a newer version; "> — yeni bir sürümü kontrol eder/kurar; </span><code class="inline-code nowrap">--check</code><span
                data-tr=" sadece rapor verir, kurmaz. Yalnızca resmi paket kanallarından kurulmuş sürümlerde çalışır (kaynaktan "
                data-en=" only reports, never installs. Only works on versions installed via the official package channels (not a local "> sadece rapor verir, kurmaz. Yalnızca resmi paket kanallarından kurulmuş sürümlerde çalışır (kaynaktan </span><code class="inline-code">go build</code><span
                data-tr=" ile yapılan yerel derlemelerde değil)."
@@ -520,14 +520,14 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-tr=" modda bile. Bu, "
                data-en=". This only changes with "> modda bile. Bu, </span><code class="inline-code">safety.confirm_destructive=false</code>/<wbr /><code class="inline-code">safety.confirm_elevated=false</code><span
                data-tr=" ve "
-               data-en=" and "> ve </span><code class="inline-code">--yolo</code><span
+               data-en=" and "> ve </span><code class="inline-code nowrap">--yolo</code><span
                data-tr=" birlikte olmadıkça değişmez; o zaman bile her kullanımda kırmızı bir uyarı basılır."
                data-en=" together, and even then a red warning prints on every use."> birlikte olmadıkça değişmez; o zaman bile her kullanımda kırmızı bir uyarı basılır.</span></li>
             <li><span data-tr="Sabit bir " data-en="There's a fixed ">Sabit bir </span><b data-tr="kara liste (denylist)" data-en="denylist">kara liste (denylist)</b><span
                data-tr=" vardır: "
-               data-en=": patterns like "> vardır: </span><code class="inline-code">rm -rf /</code>, <code class="inline-code">mkfs</code>, <code class="inline-code">dd of=/dev/...</code>, <code class="inline-code">diskpart clean</code><span
+               data-en=": patterns like "> vardır: </span><code class="inline-code nowrap">rm -rf /</code>, <code class="inline-code">mkfs</code>, <code class="inline-code">dd of=/dev/...</code>, <code class="inline-code">diskpart clean</code><span
                data-tr=", drive-root "
-               data-en=", drive-root ">, drive-root </span><code class="inline-code">Remove-Item -Recurse</code><span
+               data-en=", drive-root ">, drive-root </span><code class="inline-code nowrap">Remove-Item -Recurse</code><span
                data-tr=" ve fork bomb gibi kalıplar hiçbir modda, hiçbir bayrakla çalışmaz — engellenir."
                data-en=", and fork bombs never run in any mode, with any flag — they're blocked."> ve fork bomb gibi kalıplar hiçbir modda, hiçbir bayrakla çalışmaz — engellenir.</span></li>
             <li><span data-tr="Tam güvenlik modeli: " data-en="Full safety model: ">Tam güvenlik modeli: </span><a href="https://github.com/firatkutay/cli-comrade/blob/main/docs/SECURITY.md" target="_blank" rel="noopener noreferrer">docs/SECURITY.md</a><span data-tr="." data-en=".">.</span></li>

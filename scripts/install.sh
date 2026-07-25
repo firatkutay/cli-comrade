@@ -14,6 +14,14 @@
 #                         from appending a PATH export to your shell rc file
 #                         when the install dir isn't already on PATH (default:
 #                         unset — the rc file is edited automatically)
+#
+# Requirements on PATH (all preflighted by main() before any network call):
+#   - curl or wget (download)
+#   - one SHA-256 checksum tool: sha256sum (GNU/most Linux distros),
+#     shasum (macOS/BSD), or openssl (fallback) — checksum verification
+#     is mandatory and never skipped
+#   - tar and gzip (archive extraction)
+#   - install (places the binary with the correct permissions)
 set -eu
 
 REPO="firatkutay/cli-comrade"
@@ -47,6 +55,145 @@ require_downloader() {
     DOWNLOADER=wget
   else
     echo "install.sh: neither curl nor wget was found on PATH; install one of them and re-run this script." >&2
+    exit 1
+  fi
+}
+
+# require_checksum_verifier picks a SHA-256 verifier and sets
+# CHECKSUM_VERIFIER to "gnu", "bsd", or "openssl" — resolved once, then
+# dispatched on by verify_checksum() at the call site, the same
+# resolver/wrapper split as require_downloader/fetch_url_to_file above.
+#
+# Preference order: sha256sum (GNU coreutils; most Linux distros) >
+# shasum -a 256 (BSD/macOS — stock macOS has no sha256sum at all, only
+# shasum and openssl) > openssl dgst -sha256 (near-universal fallback).
+# Verification is never weakened or skipped: if none of the three is on
+# PATH, abort non-zero with an actionable message instead of continuing
+# without verifying the download.
+#
+# Each candidate must pass a functional probe (hash a zero-byte input),
+# not just `command -v` existence: `command -v` only proves a file with
+# that name is on PATH, not that it can actually run. macOS's `shasum` is
+# a `#!/usr/bin/perl` script — a broken/missing perl makes it fail with
+# "shasum: not found"/exit 127 despite `command -v shasum` succeeding,
+# reproducing the exact "dies at verifying checksum" breakage this
+# resolver exists to eliminate. A candidate that exists but fails its
+# probe is skipped in favor of the next one, not treated as fatal.
+probe_checksum_tool() {
+  case "$1" in
+    gnu) printf '' | sha256sum >/dev/null 2>&1 ;;
+    bsd) printf '' | shasum -a 256 >/dev/null 2>&1 ;;
+    openssl) printf '' | openssl dgst -sha256 >/dev/null 2>&1 ;;
+    *)
+      # Unreachable: the three call sites below only ever pass a literal
+      # gnu/bsd/openssl. Fail closed anyway, for the same reason
+      # verify_checksum's `*)` branch exists — an unrecognized probe name
+      # returning "success" (a bare `case` with no match is exit 0) would
+      # be the exact fail-open shape that finding closed, one function
+      # up the call chain.
+      return 1
+      ;;
+  esac
+}
+
+require_checksum_verifier() {
+  if command -v sha256sum >/dev/null 2>&1 && probe_checksum_tool gnu; then
+    CHECKSUM_VERIFIER=gnu
+  elif command -v shasum >/dev/null 2>&1 && probe_checksum_tool bsd; then
+    CHECKSUM_VERIFIER=bsd
+  elif command -v openssl >/dev/null 2>&1 && probe_checksum_tool openssl; then
+    CHECKSUM_VERIFIER=openssl
+  else
+    echo "install.sh: no working SHA-256 checksum tool found on PATH (checked sha256sum, shasum, openssl — present-but-broken installs are skipped, not treated as found); install one of them (e.g. 'sha256sum' is in GNU coreutils, 'shasum' ships with macOS/Perl, or install openssl) and re-run this script." >&2
+    exit 1
+  fi
+}
+
+# verify_checksum checks archive file $1 against checksums.txt line $2
+# ("<hash>  <filename>", the format sha256sum/shasum -c both expect),
+# using whichever verifier require_checksum_verifier resolved into
+# CHECKSUM_VERIFIER. Must be called with $1 in the current directory.
+#
+# A hash MISMATCH always aborts non-zero with a clear message — this is
+# never downgraded to a warning, on any of the three verifier paths.
+verify_checksum() {
+  file="$1"
+  checksum_line="$2"
+
+  case "$CHECKSUM_VERIFIER" in
+    gnu)
+      printf '%s\n' "$checksum_line" >checksum.line
+      sha256sum -c checksum.line
+      ;;
+    bsd)
+      printf '%s\n' "$checksum_line" >checksum.line
+      shasum -a 256 -c checksum.line
+      ;;
+    openssl)
+      # `openssl dgst` has no built-in -c/--check mode and a different
+      # output format than sha256sum/shasum. The label before "(file)="
+      # varies by OpenSSL version/build too — OpenSSL 1.x prints
+      # "SHA256(file)= <hash>", OpenSSL 3.x prints "SHA2-256(file)= <hash>"
+      # — but the hash itself is always the last whitespace-separated
+      # field either way, so `awk '{print $NF}'` is version-agnostic and
+      # doesn't need to match the label. Compared case-insensitively
+      # since checksums.txt generators and openssl builds differ in case.
+      # `--` ends option parsing before $file, so a filename starting with
+      # "-" (e.g. a crafted "-rf_linux_amd64.tar.gz") is treated as a
+      # filename, never as an openssl option (verified against OpenSSL
+      # 3.0.2). Without it this branch alone would diverge from gnu/bsd
+      # for such a name: those read the filename out of checksum.line's
+      # file content, not argv, so they're unaffected either way, but
+      # `--` keeps all three verifier paths behaving identically instead
+      # of relying on the archive-filename guard below as the only line
+      # of defense for this one branch.
+      expected_hash="$(printf '%s\n' "$checksum_line" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+      actual_hash="$(openssl dgst -sha256 -- "$file" | awk '{print $NF}' | tr '[:upper:]' '[:lower:]')"
+      if [ -z "$expected_hash" ] || [ -z "$actual_hash" ] || [ "$expected_hash" != "$actual_hash" ]; then
+        echo "install.sh: checksum mismatch for ${file} (expected ${expected_hash}, got ${actual_hash})" >&2
+        exit 1
+      fi
+      echo "${file}: OK"
+      ;;
+    *)
+      # Unreachable today: require_checksum_verifier is the only writer of
+      # CHECKSUM_VERIFIER, and its only branches are gnu/bsd/openssl or a
+      # non-zero exit. Kept anyway — this function sits on the
+      # download-integrity trust boundary, so an unrecognized value must
+      # fail closed by construction rather than by an unenforced invariant
+      # elsewhere in the script (e.g. a future refactor that widens how
+      # CHECKSUM_VERIFIER gets set).
+      echo "install.sh: internal error — unknown checksum verifier '${CHECKSUM_VERIFIER}'; refusing to install unverified download." >&2
+      exit 1
+      ;;
+  esac
+}
+
+# require_gzip aborts with an actionable message if gzip is missing.
+# `tar -xzf` shells out to a child gzip process; on minimal images that
+# ship tar but not gzip this otherwise fails deep inside tar with a
+# cryptic "tar (child): gzip: Cannot exec: No such file or directory"
+# instead of a clear, actionable message.
+require_gzip() {
+  if ! command -v gzip >/dev/null 2>&1; then
+    echo "install.sh: gzip was not found on PATH; tar needs it to extract the release archive. Install gzip and re-run this script." >&2
+    exit 1
+  fi
+}
+
+# require_tool aborts with an actionable message if tool $1 is missing,
+# citing what it's needed for ($2). Covers the remaining core utilities
+# this script has no verifier-style fallback for (tar, install) — on a
+# minimal image missing one of these, the previous behavior was a late,
+# cryptic failure (e.g. "install: applet not found" on busybox, AFTER a
+# successful download+verify) instead of a clear, up-front message. Same
+# fail-fast rationale as require_gzip, generalized so tar/install don't
+# need their own bespoke functions.
+require_tool() {
+  tool_name="$1"
+  purpose="$2"
+  if ! command -v "$tool_name" >/dev/null 2>&1; then
+    echo "install.sh: ${tool_name} was not found on PATH; ${purpose}. Install it and re-run this script." >&2
     exit 1
   fi
 }
@@ -166,6 +313,10 @@ configure_path_in_rc() {
 
 main() {
   require_downloader
+  require_checksum_verifier
+  require_tool tar "it's needed to extract the release archive"
+  require_gzip
+  require_tool install "it's needed to place the binary with the correct permissions"
   os="$(detect_os)"
   arch="$(detect_arch)"
   base_url="$(resolve_base_url)"
@@ -181,6 +332,11 @@ main() {
   # match (avoids regex-metachar escaping on the dots in ".tar.gz") and
   # pull the archive's real filename — which embeds the resolved version
   # — straight out of it, rather than resolving the version separately.
+  # Note: a CRLF-terminated checksums.txt (e.g. served with Windows line
+  # endings) makes this suffix match fail too — the trailing \r becomes
+  # part of $2's last field, so it never equals archive_suffix. That
+  # surfaces as the same "no release asset found" message below rather
+  # than a distinct diagnosis. Fail-closed either way; cosmetic only.
   checksum_line="$(awk -v suf="$archive_suffix" \
     '{ if (substr($2, length($2) - length(suf) + 1) == suf) print $0 }' \
     "${workdir}/checksums.txt")"
@@ -189,6 +345,27 @@ main() {
     exit 1
   fi
   archive="$(printf '%s\n' "$checksum_line" | awk '{print $2}')"
+
+  # Reject a filename column that isn't a bare, same-directory name before
+  # it's used to build any path. checksums.txt is untrusted input (it's a
+  # downloaded file); without this, a "/" or leading "." lets a crafted
+  # checksums.txt write the download outside the mktemp workdir — before
+  # verification even runs. Requires control of checksums.txt to exploit;
+  # closed here defensively since it costs nothing.
+  #
+  # A leading "-" is rejected too (e.g. "-rf_linux_amd64.tar.gz"): a
+  # dash-leading name is never a legitimate goreleaser archive filename,
+  # and this guard runs before verify_checksum is ever called, so it's
+  # the first line of defense for all three verifier branches — the
+  # openssl branch's own `--` (see verify_checksum above) is defense in
+  # depth for that function's other callers, not the only guard here.
+  case "$archive" in
+    */* | .* | -*)
+      echo "install.sh: refusing unsafe archive filename from checksums.txt: ${archive}" >&2
+      exit 1
+      ;;
+  esac
+
   version_number="${archive%"$archive_suffix"}"
   version_number="${version_number#"${BIN_NAME}"_}"
 
@@ -198,8 +375,7 @@ main() {
   echo "install.sh: verifying checksum..."
   (
     cd "$workdir"
-    printf '%s\n' "$checksum_line" > checksum.line
-    sha256sum -c checksum.line
+    verify_checksum "$archive" "$checksum_line"
   )
 
   tar -xzf "${workdir}/${archive}" -C "$workdir" "${BIN_NAME}"

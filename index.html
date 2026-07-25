@@ -321,6 +321,14 @@
     </div>
   </footer>
 
+  <!-- Copy-button status. The visible label swap (Kopyala → Kopyalandı ✓) is
+       invisible to a screen reader because the buttons' accessible names are
+       fixed, so script.js mirrors the state change here instead. It ships
+       empty, so nothing is announced on load; script.js writes one message per
+       click, re-renders it on a language toggle, and clears it when the button
+       reverts. -->
+  <div id="copyLive" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
   <script src="./script.js"></script>
 </body>
 </html>

@@ -92,6 +92,24 @@ img { max-width: 100%; height: auto; display: block; }
 }
 .skip-link:focus { top: 12px; }
 
+/* Off-screen but still in the accessibility tree. The clip-rect pattern is
+   deliberate: display:none and visibility:hidden would take the node out of
+   the tree entirely, and a live region a screen reader cannot see is a live
+   region that never speaks. white-space: nowrap stops the 1px box from
+   wrapping its contents into a tall sliver. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* ============================================================
    TOP BAR
    ============================================================ */

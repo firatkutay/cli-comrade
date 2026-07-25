@@ -61,6 +61,11 @@
     var copies = document.querySelectorAll(".copy");
     for (var c = 0; c < copies.length; c++) setCopyLabel(copies[c]);
 
+    // ...and the screen-reader status that mirrors them. A no-op (writes ""
+    // over "") unless a copy is still in its 1.8s window, which is also why
+    // the init call below cannot announce anything.
+    renderLive();
+
     // restart terminal in the new language
     startTerminal();
   }
@@ -96,6 +101,47 @@
   /* -----------------------------------------------------------
      COPY BUTTONS
      ----------------------------------------------------------- */
+
+  /* Screen-reader status for the copy buttons.
+     The buttons keep a fixed accessible name on purpose (four of them are
+     authored bilingually so "Copy" is never ambiguous), which means the
+     Kopyala → Kopyalandı ✓ label swap is entirely invisible to assistive
+     tech. #copyLive carries that state change instead.
+     Held as a key rather than a rendered string so applyLang() can re-render
+     it in the new language, exactly like every other bilingual node. The
+     region ships empty and is emptied again by a single shared timer, so it
+     is silent at rest — including on page load, where the only write is the
+     "" that renderLive() puts over an already-empty node. */
+  var liveRegion = document.getElementById("copyLive");
+  var liveTimer = null;
+  var liveKey = null;
+  var LIVE_MSG = {
+    copied: {
+      tr: "Komut panoya kopyalandı.",
+      en: "Command copied to clipboard."
+    },
+    soon: {
+      tr: "Yakında — bu kurulum kanalı henüz yayında değil, kopyalanmadı.",
+      en: "Soon — this install channel isn't live yet, nothing was copied."
+    }
+  };
+  function renderLive() {
+    if (!liveRegion) return;
+    liveRegion.textContent = liveKey ? LIVE_MSG[liveKey][lang] : "";
+  }
+  // One write per click — no clear-then-reset dance, which is what makes a
+  // live region speak twice. Emptying it later is silent: assistive tech
+  // announces added text, not removed text.
+  function announce(key) {
+    liveKey = key;
+    renderLive();
+    window.clearTimeout(liveTimer);
+    liveTimer = window.setTimeout(function () {
+      liveKey = null;
+      renderLive();
+    }, 1800);
+  }
+
   function setCopyLabel(btn) {
     var span = btn.querySelector(".copy-label");
     if (!span) return;
@@ -128,6 +174,7 @@
         if (soon) {
           btn.classList.add("soon");
           setCopyLabel(btn);
+          announce("soon");
           window.clearTimeout(btn._t);
           btn._t = window.setTimeout(function () {
             btn.classList.remove("soon");
@@ -138,6 +185,7 @@
         copyText(text).then(function () {
           btn.classList.add("copied");
           setCopyLabel(btn);
+          announce("copied");
           window.clearTimeout(btn._t);
           btn._t = window.setTimeout(function () {
             btn.classList.remove("copied");

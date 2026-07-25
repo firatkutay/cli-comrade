@@ -1146,6 +1146,21 @@ const (
 	// MsgDoctorVersionBehind reports that a newer release is published.
 	// Two args: the latest version, the current (running) version.
 	MsgDoctorVersionBehind MessageID = "doctor_version_behind"
+	// MsgDoctorVersionBehindNodeManaged is MsgDoctorVersionBehind's
+	// variant used as Summary (not Fix — PR #37 review, P2) when
+	// npmManaged(deps) is true: `comrade doctor` must not merely swap
+	// Fix's command while leaving an un-translated "a newer version is
+	// available" Summary that then names a bare "comrade upgrade" Fix a
+	// Node-managed install can't run — the caveat belongs in the
+	// TRANSLATED line itself, immediately above the (still plain,
+	// copy-pasteable, per doctor.Result.Fix's own doc comment) `npm
+	// update -g cli-comrade` Fix VersionCheck sets alongside it.
+	// Deliberately generic ("a Node package manager") rather than
+	// npm-specific — see MsgUpgradeNPMManagedError's own doc comment:
+	// pnpm/yarn/bun-managed installs are detected identically. Two args:
+	// the latest version, the current (running) version — same shape as
+	// MsgDoctorVersionBehind.
+	MsgDoctorVersionBehindNodeManaged MessageID = "doctor_version_behind_node_managed"
 	// MsgDoctorVersionUpToDate reports that the running version is
 	// already the latest published release. One arg: the current
 	// version.
@@ -1694,10 +1709,11 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgDoctorBaseURLTitle:   "base_url sanity",
 	MsgDoctorConfigTitle:    "config & keychain",
 
-	MsgDoctorVersionDevSkip:    "dev build; version check skipped",
-	MsgDoctorVersionFetchError: "could not check for a newer version",
-	MsgDoctorVersionBehind:     "a newer version is available: %s (you have %s)",
-	MsgDoctorVersionUpToDate:   "up to date (%s)",
+	MsgDoctorVersionDevSkip:           "dev build; version check skipped",
+	MsgDoctorVersionFetchError:        "could not check for a newer version",
+	MsgDoctorVersionBehind:            "a newer version is available: %s (you have %s)",
+	MsgDoctorVersionBehindNodeManaged: "a newer version is available: %s (you have %s) — comrade was installed through a Node package manager (e.g. npm, pnpm, yarn, bun); update it with that package manager instead (npm shown below as the example)",
+	MsgDoctorVersionUpToDate:          "up to date (%s)",
 
 	MsgDoctorPathNotFound: "%q was not found on PATH",
 	MsgDoctorPathStale:    "PATH resolves to a different comrade binary than the one currently running (%s)",
@@ -2029,10 +2045,11 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgDoctorBaseURLTitle:   "base_url tutarlılığı",
 	MsgDoctorConfigTitle:    "yapılandırma ve anahtarlık",
 
-	MsgDoctorVersionDevSkip:    "geliştirme sürümü; sürüm kontrolü atlandı",
-	MsgDoctorVersionFetchError: "daha yeni bir sürüm olup olmadığı kontrol edilemedi",
-	MsgDoctorVersionBehind:     "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s)",
-	MsgDoctorVersionUpToDate:   "güncel (%s)",
+	MsgDoctorVersionDevSkip:           "geliştirme sürümü; sürüm kontrolü atlandı",
+	MsgDoctorVersionFetchError:        "daha yeni bir sürüm olup olmadığı kontrol edilemedi",
+	MsgDoctorVersionBehind:            "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s)",
+	MsgDoctorVersionBehindNodeManaged: "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s) — comrade bir Node paket yöneticisiyle (ör. npm, pnpm, yarn, bun) kuruldu; bunun yerine o paket yöneticisiyle güncelleyin (örnek olarak npm gösterilmiştir)",
+	MsgDoctorVersionUpToDate:          "güncel (%s)",
 
 	MsgDoctorPathNotFound: "%q, PATH üzerinde bulunamadı",
 	MsgDoctorPathStale:    "PATH, şu anda çalışan comrade ikili dosyasından farklı bir kopyaya işaret ediyor (%s)",

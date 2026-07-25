@@ -1,22 +1,10 @@
 package update
 
-import "strings"
+import (
+	"strings"
 
-// ManagedByEnvVar is the environment variable npm/main/bin/comrade.js
-// sets (in a copy of its own process env, before spawning the real Go
-// binary) so a self-update check downstream can tell it is running
-// under npm's dispatcher without having to inspect its own path at all.
-// Exported so internal/executor can strip it from every spawned
-// command's own environment (PR #37 review, MEDIUM-2) without a THIRD
-// hardcoded copy of this literal — see managed_mirror_test.go for the
-// guard against the one cross-language copy that can't be derived
-// (npm/main/bin/comrade.js, a different language entirely).
-const ManagedByEnvVar = "COMRADE_MANAGED_BY"
-
-// managedByEnvValue is ManagedByEnvVar's expected value for an
-// npm-managed install. Any other value (or the variable being unset) is
-// treated as "not npm-managed" by the env signal — see IsNPMManaged.
-const managedByEnvValue = "npm"
+	"github.com/firatkutay/cli-comrade/internal/envkeys"
+)
 
 // GetenvFunc is the exact signature of os.Getenv — named here so
 // IsNPMManaged's callers (and its own tests) can inject a fake without
@@ -41,6 +29,13 @@ type EvalSymlinksFunc func(string) (string, error)
 // desync npm's own recorded installed version from what is actually on
 // disk: the next `npm update` would silently revert the in-place
 // self-update.
+//
+// The env var name/value themselves (envkeys.ManagedByEnvVar/
+// ManagedByEnvValueNPM) live in internal/envkeys, a zero-cli-comrade-
+// dependency leaf package (PR #37 review, P3), rather than here — so
+// internal/executor's own env-strip (which needs the exact same
+// constant) doesn't have to import this package's much larger
+// dependency closure just to reference one string.
 //
 // Two independent signals are checked, either one being sufficient:
 //
@@ -69,7 +64,7 @@ type EvalSymlinksFunc func(string) (string, error)
 // negative (a rare direct-invocation edge case silently allowed to
 // self-update).
 func IsNPMManaged(getenv GetenvFunc, executable ExecutableFunc, evalSymlinks EvalSymlinksFunc) bool {
-	if getenv(ManagedByEnvVar) == managedByEnvValue {
+	if getenv(envkeys.ManagedByEnvVar) == envkeys.ManagedByEnvValueNPM {
 		return true
 	}
 

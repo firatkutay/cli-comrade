@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/firatkutay/cli-comrade/internal/config"
+	"github.com/firatkutay/cli-comrade/internal/envkeys"
 	"github.com/firatkutay/cli-comrade/internal/i18n"
 	"github.com/firatkutay/cli-comrade/internal/llm"
 )
@@ -328,6 +329,14 @@ func newConfigEditCmd(newLoader loaderFactory) *cobra.Command {
 
 			editor := resolveEditor()
 			editCmd := exec.CommandContext(cmd.Context(), editor, loader.Path()) // #nosec G204 -- editor is EDITOR/vi/notepad, not attacker-controlled
+			// Strip envkeys.ManagedByEnvVar before handing the editor its
+			// environment (PR #37 review, N1): the editor can itself
+			// shell out (e.g. vim's `:!comrade upgrade`), and without
+			// this it would inherit COMRADE_MANAGED_BY exactly like an
+			// internal/executor-run plan step would — see
+			// envkeys.StripManaged's own doc comment for the full
+			// rationale and site inventory.
+			editCmd.Env = envkeys.StripManaged(os.Environ())
 			editCmd.Stdin = cmd.InOrStdin()
 			editCmd.Stdout = cmd.OutOrStdout()
 			editCmd.Stderr = cmd.ErrOrStderr()

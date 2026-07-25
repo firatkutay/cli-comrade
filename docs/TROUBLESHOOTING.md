@@ -140,9 +140,10 @@ kabuk açın (ya da `source ~/.bashrc` gibi dosyayı yeniden yükleyin).
 `go build`/`go install` ile (bir `-ldflags -X main.version=...`
 olmadan) yaptığınız yerel bir derlemeyi çalıştırıyorsunuz — bu
 derlemeler `dev` sürüm dizesini taşır ve karşılaştırılacak bir release
-etiketi yoktur. Yalnızca yukarıdaki resmi paket
-yöneticilerinden/scriptlerinden kurulan sürümler `comrade upgrade`'i
-destekler.
+etiketi yoktur. `comrade upgrade` yalnızca yukarıdaki resmi paket
+yöneticilerinden/scriptlerinden kurulan sürümlerde karşılaştırılacak bir
+release etiketine sahiptir — npm/pnpm/yarn/bun kurulumlarının kendine
+özgü ek davranışı için aşağıya bakın.
 
 ### `comrade upgrade` bir Node paket yöneticisiyle kurulduğunu söyleyip reddediyor
 
@@ -321,7 +322,8 @@ You're running a local build made with `go build`/`go install`
 (without a `-ldflags -X main.version=...`) — these builds carry the
 literal version string `dev` and have no release tag to compare
 against. Only versions installed via the official package
-managers/scripts above support `comrade upgrade`.
+managers/scripts above have a release tag to compare against at all —
+see below for npm/pnpm/yarn/bun installs' own additional behavior.
 
 ### `comrade upgrade` refuses, saying it was installed through a Node package manager
 

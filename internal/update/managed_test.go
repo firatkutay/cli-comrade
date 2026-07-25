@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/firatkutay/cli-comrade/internal/envkeys"
 )
 
 // identityEvalSymlinks stands in for filepath.EvalSymlinks for tests
@@ -141,7 +143,7 @@ func TestIsNPMManagedEnvSignal(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			getenv := func(key string) string {
-				if key == ManagedByEnvVar && tt.isSet {
+				if key == envkeys.ManagedByEnvVar && tt.isSet {
 					return tt.envValue
 				}
 				return ""

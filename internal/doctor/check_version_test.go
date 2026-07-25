@@ -51,22 +51,38 @@ func TestVersionCheckBehindWarnsWithUpgradeFix(t *testing.T) {
 	assert.Equal(t, "comrade upgrade", result.Fix)
 }
 
+// npmManagedTestGetenv is a GetenvFunc-shaped fake reporting
+// COMRADE_MANAGED_BY=npm and every other variable unset, shared by every
+// npm-managed VersionCheck test in this file.
+func npmManagedTestGetenv(name string) string {
+	if name == "COMRADE_MANAGED_BY" {
+		return "npm"
+	}
+	return ""
+}
+
 // TestVersionCheckAgreesWithUpgradeRefusalUnderNPMManagedEnv is HIGH-1's
 // regression guard (PR #37 review): `comrade doctor` must never advise
-// `comrade upgrade` as the Fix when `comrade upgrade` itself refuses to
-// run — both must call the exact same update.IsNPMManaged detection, and
-// this pins that agreement directly under COMRADE_MANAGED_BY=npm rather
-// than trusting the two call sites to stay in sync by inspection alone.
+// the bare `comrade upgrade` as the Fix when `comrade upgrade` itself
+// refuses to run — both must call the exact same update.IsNPMManaged
+// detection, and this pins that agreement directly under
+// COMRADE_MANAGED_BY=npm rather than trusting the two call sites to stay
+// in sync by inspection alone.
+//
+// Per P2 (PR #37 review's second pass): the Node-managed caveat lives in
+// the TRANSLATED Summary (MsgDoctorVersionBehindNodeManaged), not in
+// Fix — Fix itself stays a bare, copy-pasteable shell command exactly
+// like the non-managed case, per doctor.Result.Fix's own "a shell
+// command, not prose" contract (matching the existing `ollama pull
+// llama3.1` precedent). This test asserts BOTH halves: Fix is the exact
+// npm command (never the bare "comrade upgrade" the real CLI refuses),
+// AND Summary is the dedicated, non-misleading MessageID rather than
+// the plain MsgDoctorVersionBehind.
 func TestVersionCheckAgreesWithUpgradeRefusalUnderNPMManagedEnv(t *testing.T) {
 	deps := baseDeps()
 	deps.Version = "v1.0.0"
 	deps.Fetcher = fakeFetcher{release: update.Release{TagName: "v1.2.0"}}
-	deps.Getenv = func(name string) string {
-		if name == "COMRADE_MANAGED_BY" {
-			return "npm"
-		}
-		return ""
-	}
+	deps.Getenv = npmManagedTestGetenv
 
 	// Sanity-check the premise: the env var this test sets is genuinely
 	// what update.IsNPMManaged (the SAME function comrade upgrade calls)
@@ -77,9 +93,35 @@ func TestVersionCheckAgreesWithUpgradeRefusalUnderNPMManagedEnv(t *testing.T) {
 	result := VersionCheck(context.Background(), deps)
 
 	assert.Equal(t, SeverityWarn, result.Severity)
-	assert.NotEqual(t, "comrade upgrade", result.Fix,
-		"doctor must never recommend a command comrade upgrade itself refuses under a Node-managed install")
-	assert.Contains(t, result.Fix, "Node package manager")
+	assert.Equal(t, "npm update -g cli-comrade", result.Fix,
+		"Fix must be the bare, copy-pasteable command — never the plain \"comrade upgrade\" comrade upgrade itself refuses under a Node-managed install")
+	assert.Equal(t, i18n.MsgDoctorVersionBehindNodeManaged, result.Summary,
+		"Summary must be the dedicated Node-managed MessageID, not the plain MsgDoctorVersionBehind, so the caveat is actually translated")
+	assert.Equal(t, []any{"v1.2.0", "v1.0.0"}, result.SummaryArgs)
+}
+
+// TestVersionCheckBehindNodeManagedSummaryRendersInTurkish is P2's
+// "verify the TR rendering at runtime" requirement: it actually
+// constructs an i18n.Translator(LangTR) and renders the exact
+// MessageID/SummaryArgs pair VersionCheck returned, rather than merely
+// eyeballing the catalog string — proving the Turkish translation
+// interpolates correctly (this project's established per-feature
+// TR-smoke convention; see upgrade_test.go's own release-not-found
+// Turkish case).
+func TestVersionCheckBehindNodeManagedSummaryRendersInTurkish(t *testing.T) {
+	deps := baseDeps()
+	deps.Version = "v1.0.0"
+	deps.Fetcher = fakeFetcher{release: update.Release{TagName: "v1.2.0"}}
+	deps.Getenv = npmManagedTestGetenv
+
+	result := VersionCheck(context.Background(), deps)
+
+	tr := i18n.NewTranslator(i18n.LangTR)
+	rendered := tr.T(result.Summary, result.SummaryArgs...)
+
+	assert.Equal(t,
+		"daha yeni bir sürüm mevcut: v1.2.0 (mevcut sürümünüz: v1.0.0) — comrade bir Node paket yöneticisiyle (ör. npm, pnpm, yarn, bun) kuruldu; bunun yerine o paket yöneticisiyle güncelleyin (örnek olarak npm gösterilmiştir)",
+		rendered)
 }
 
 func TestVersionCheckFetchErrorIsWarnNotFail(t *testing.T) {

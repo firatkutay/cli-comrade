@@ -23,12 +23,10 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"slices"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/firatkutay/cli-comrade/internal/update"
+	"github.com/firatkutay/cli-comrade/internal/envkeys"
 )
 
 // maxCaptureBytes is the tail-truncation cap applied independently to the
@@ -139,7 +137,12 @@ func (e *Executor) Run(ctx context.Context, command string, opts Options) (Resul
 
 	name, args := e.buildCommand(command)
 	cmd := exec.Command(name, args...) //nolint:gosec,noctx // gosec: command text comes from a plan step the mode loop has already run through internal/safety; this package's job is only to execute it, per its doc comment. noctx: exec.CommandContext's automatic-SIGKILL-on-cancel is deliberately NOT used here — Run manages runCtx cancellation itself (see the select below) so it can kill the whole process GROUP via killProcessGroup, not just the direct child.
-	cmd.Env = childEnv()
+	// envkeys.StripManaged (PR #37 review, MEDIUM-2/N2/P3) removes
+	// envkeys.ManagedByEnvVar from this process's own environment before
+	// handing it to the child — see that function's own doc comment for
+	// the full rationale and the site inventory (this Run, and
+	// internal/cli/config.go's $EDITOR launch).
+	cmd.Env = envkeys.StripManaged(os.Environ())
 	setProcAttr(cmd)
 
 	outCap := newCapWriter(maxCaptureBytes)
@@ -177,34 +180,6 @@ func (e *Executor) Run(ctx context.Context, command string, opts Options) (Resul
 		TimedOut: timedOut,
 		Canceled: canceled,
 	}, nil
-}
-
-// childEnv returns this process's own environment (os.Environ()) with
-// update.ManagedByEnvVar stripped out — PR #37 review, MEDIUM-2: without
-// this, exec.Command leaves cmd.Env nil, which makes the child inherit
-// the FULL parent environment, including COMRADE_MANAGED_BY=npm when
-// this process is itself npm-managed. Two concrete problems that guards
-// against:
-//
-//  1. A plan step that itself invokes another comrade binary (a nested
-//     session, or a step that shells out to comrade) would silently
-//     inherit "npm-managed" even when the child binary is a completely
-//     different, non-npm install (Homebrew, install.sh, ...), making it
-//     refuse a legitimate self-update for the wrong reason.
-//  2. Since the variable is user-settable, an unstripped leak would let
-//     anyone who can write a shell rc export it once and have it
-//     propagate through every comrade-spawned command tree — pinning
-//     comrade against ever self-updating behind a message that reads
-//     like a deliberate product decision. `comrade upgrade` is this
-//     project's security-update path, so that is a denial-of-patch
-//     primitive, not a cosmetic bug.
-//
-// Every other environment variable still reaches the child unchanged —
-// this strips exactly one name, nothing else.
-func childEnv() []string {
-	return slices.DeleteFunc(os.Environ(), func(kv string) bool {
-		return strings.HasPrefix(kv, update.ManagedByEnvVar+"=")
-	})
 }
 
 // extractExitCode derives Result.ExitCode from cmd.Wait's error: nil means

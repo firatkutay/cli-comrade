@@ -33,13 +33,21 @@ func VersionCheck(ctx context.Context, deps Deps) Result {
 	writeVersionCheckState(deps, result.LatestVersion)
 
 	if result.UpdateAvailable {
+		// PR #37 review, P2: the Node-managed caveat belongs in the
+		// TRANSLATED Summary line, not smuggled into Fix — Fix stays a
+		// bare, copy-pasteable shell command either way (per
+		// doctor.Result.Fix's own doc comment; see npmManagedFixCommand's
+		// doc comment for why it's still npm-specific despite the
+		// generic Summary wording above it).
+		summary := i18n.MsgDoctorVersionBehind
 		fix := "comrade upgrade"
 		if npmManaged(deps) {
-			fix = npmManagedFixInstruction()
+			summary = i18n.MsgDoctorVersionBehindNodeManaged
+			fix = npmManagedFixCommand
 		}
 		return Result{
 			Severity:    SeverityWarn,
-			Summary:     i18n.MsgDoctorVersionBehind,
+			Summary:     summary,
 			SummaryArgs: []any{result.LatestVersion, result.CurrentVersion},
 			Fix:         fix,
 		}
@@ -72,22 +80,23 @@ func npmManaged(deps Deps) bool {
 	return update.IsNPMManaged(deps.Getenv, deps.Executable, filepath.EvalSymlinks)
 }
 
-// npmManagedFixInstruction is VersionCheck's Fix remediation when
-// npmManaged is true (PR #37 review, HIGH-1 + MEDIUM-4): deliberately
-// generic ("your Node package manager") rather than npm-specific, since
-// a pnpm/yarn/bun-managed install resolves under the exact same
-// node_modules tree and sees the exact same COMRADE_MANAGED_BY=npm
-// signal npm/main/bin/comrade.js's dispatcher sets today — there is no
-// reliable way, at a globally-installed binary's own runtime, to tell
-// WHICH Node package manager actually installed it (npm_config_user_agent
-// is only set for scripts a package manager itself runs, not for a bare
-// global-binary invocation). See doctor.Result.Fix's own doc comment for
-// why this is plain, untranslated text rather than a MessageID — a
-// contained i18n conversion of Fix as a whole is a bigger, separate
-// change (see this function's own PR discussion).
-func npmManagedFixInstruction() string {
-	return "update it with your Node package manager instead (e.g. `npm update -g cli-comrade` for npm) — comrade upgrade refuses to self-update under a Node-managed install"
-}
+// npmManagedFixCommand is VersionCheck's Fix when npmManaged is true
+// (PR #37 review, P2): a bare, copy-pasteable shell command — restoring
+// doctor.Result.Fix's own documented contract ("almost always a literal
+// comrade (or vendor, e.g. `ollama pull llama3.1`) command", never
+// prose) instead of HIGH-1's original fix, which smuggled a full
+// generic-wording sentence into Fix itself.
+//
+// This is deliberately npm-specific (unlike MsgDoctorVersionBehindNodeManaged's
+// Summary text, which is generic) because Fix has no room for a
+// "your package manager" hedge and still be a single runnable command —
+// the Summary line printed directly above it already tells a pnpm/yarn/
+// bun user this is only the worked EXAMPLE, not a literal must-run
+// instruction (there is no reliable way, at a globally-installed
+// binary's own runtime, to tell WHICH Node package manager actually
+// installed it: npm_config_user_agent is only set for scripts a package
+// manager itself runs, not for a bare global-binary invocation).
+const npmManagedFixCommand = "npm update -g cli-comrade"
 
 // writeVersionCheckState persists a successful fetch's outcome to
 // update_check.json (update.WriteState), throttling the NEXT background

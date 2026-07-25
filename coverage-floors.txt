@@ -134,6 +134,7 @@ github.com/firatkutay/cli-comrade/internal/config 86.9
 github.com/firatkutay/cli-comrade/internal/context 90.1
 github.com/firatkutay/cli-comrade/internal/doctor 92.4
 github.com/firatkutay/cli-comrade/internal/engine 85.6
+github.com/firatkutay/cli-comrade/internal/envkeys 99.5
 github.com/firatkutay/cli-comrade/internal/executor 92.7
 github.com/firatkutay/cli-comrade/internal/i18n 96.5
 github.com/firatkutay/cli-comrade/internal/llm 88.4

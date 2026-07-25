@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Smoke test: assembles the real npm packages from goreleaser's dist/
-# output, publishes all 6 to a throwaway, uplink-disabled LOCAL registry
-# (verdaccio -- see npm/test/package.json), then runs a real
+# output, serves all 6 from a minimal, dependency-free local registry
+# (npm/test/local-registry.js -- stdlib node:http only, no
+# publish/auth/proxy endpoint of any kind), then runs a real
 # `npm install -g cli-comrade` with cli-comrade as the ONLY direct install
 # target, so its optionalDependency on the matching platform package is
 # resolved TRANSITIVELY -- exactly like a real end-user install, and
@@ -53,28 +54,18 @@ if [ ! -d "${DIST_DIR}" ]; then
   exit 1
 fi
 
-for tool in jq curl node; do
+for tool in curl node npm; do
   if ! command -v "${tool}" >/dev/null 2>&1; then
     echo "test-smoke.sh: required tool \"${tool}\" not found on PATH" >&2
     exit 1
   fi
 done
 
-if [ ! -d "${SCRIPT_DIR}/node_modules/verdaccio" ]; then
-  echo "test-smoke.sh: installing the pinned test-harness devDependencies (verdaccio) via npm ci..."
-  ( cd "${SCRIPT_DIR}" && npm ci --no-audit --no-fund )
-fi
-VERDACCIO_BIN="${SCRIPT_DIR}/node_modules/.bin/verdaccio"
-if [ ! -x "${VERDACCIO_BIN}" ]; then
-  echo "test-smoke.sh: verdaccio binary not found at \"${VERDACCIO_BIN}\" after npm ci" >&2
-  exit 1
-fi
-
 WORK_DIR="$(mktemp -d)"
-VERDACCIO_PID=""
+REGISTRY_PID=""
 cleanup() {
-  if [ -n "${VERDACCIO_PID}" ] && kill -0 "${VERDACCIO_PID}" 2>/dev/null; then
-    kill "${VERDACCIO_PID}" 2>/dev/null || true
+  if [ -n "${REGISTRY_PID}" ] && kill -0 "${REGISTRY_PID}" 2>/dev/null; then
+    kill "${REGISTRY_PID}" 2>/dev/null || true
   fi
   rm -rf "${WORK_DIR}"
 }
@@ -85,88 +76,47 @@ trap cleanup EXIT
 OUT_DIR="${WORK_DIR}/assembled"
 bash "${REPO_ROOT}/scripts/build-npm-packages.sh" "${VERSION}" "${DIST_DIR}" "${OUT_DIR}"
 
-# --- start a throwaway, offline local registry (verdaccio) ----------------
-# uplinks: {} means verdaccio can never proxy to the real npm registry, no
-# matter what a package below happens to reference -- this test cannot
-# reach registry.npmjs.org even by accident.
+# --- start the minimal local registry (no auth, no publish endpoint, no
+# uplink/proxy of any kind -- see local-registry.js's own header) ---------
 
-REGISTRY_PORT="$(node -e "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close();});")"
-REGISTRY_URL="http://127.0.0.1:${REGISTRY_PORT}/"
+REGISTRY_LOG="${WORK_DIR}/registry.log"
+node "${SCRIPT_DIR}/local-registry.js" "${OUT_DIR}" >"${REGISTRY_LOG}" 2>&1 &
+REGISTRY_PID=$!
 
-cat >"${WORK_DIR}/verdaccio-config.yaml" <<EOF
-storage: ${WORK_DIR}/verdaccio-storage
-auth:
-  htpasswd:
-    file: ${WORK_DIR}/verdaccio-htpasswd
-uplinks: {}
-packages:
-  '@firatkutay/*':
-    access: \$all
-    publish: \$all
-  '**':
-    access: \$all
-    publish: \$all
-log: { type: stdout, format: pretty, level: warn }
-EOF
-
-"${VERDACCIO_BIN}" --config "${WORK_DIR}/verdaccio-config.yaml" --listen "127.0.0.1:${REGISTRY_PORT}" \
-  >"${WORK_DIR}/verdaccio.log" 2>&1 &
-VERDACCIO_PID=$!
-
-# Verdaccio's own startup latency here is dominated by requiring its
-# (many) module files from wherever npm/test/node_modules happens to live
-# -- when that's on a slow-per-syscall mount (e.g. drvfs under WSL2), cold
-# start can take tens of seconds even though the process is healthy the
-# whole time. 90 attempts x 1s is a generous but still-bounded wait for
-# that, not an indefinite one.
-ready=0
-for _ in $(seq 1 90); do
-  status="$(curl -s -o /dev/null -w '%{http_code}' "${REGISTRY_URL}" || true)"
-  if [ "${status}" != "000" ]; then
-    ready=1
-    break
+registry_port=""
+for _ in $(seq 1 60); do
+  if [ -s "${REGISTRY_LOG}" ]; then
+    registry_port="$(sed -n 's/^PORT=//p' "${REGISTRY_LOG}" | head -n1)"
+    [ -n "${registry_port}" ] && break
   fi
-  sleep 1
+  if ! kill -0 "${REGISTRY_PID}" 2>/dev/null; then
+    echo "test-smoke.sh: local-registry.js exited before printing its port" >&2
+    cat "${REGISTRY_LOG}" >&2
+    exit 1
+  fi
+  sleep 0.5
 done
-if [ "${ready}" -ne 1 ]; then
-  echo "test-smoke.sh: local verdaccio registry never became ready on ${REGISTRY_URL}" >&2
-  cat "${WORK_DIR}/verdaccio.log" >&2
-  exit 1
-fi
-echo "test-smoke.sh: local offline registry (verdaccio, uplinks disabled) ready at ${REGISTRY_URL}"
-
-# --- non-interactive login: the classic adduser PUT, verified directly
-# against this running instance (avoids an interactive `npm adduser` /
-# `npm login` prompt in a script) --------------------------------------
-
-adduser_response="$(curl -s -X PUT -H 'Content-Type: application/json' \
-  -d '{"name":"smoketest","password":"smoketest-not-a-real-secret","email":"smoketest@example.invalid"}' \
-  "${REGISTRY_URL}-/user/org.couchdb.user:smoketest")"
-token="$(echo "${adduser_response}" | jq -r '.token // empty')"
-if [ -z "${token}" ]; then
-  echo "test-smoke.sh: could not obtain an auth token from the local registry: ${adduser_response}" >&2
+if [ -z "${registry_port}" ]; then
+  echo "test-smoke.sh: local-registry.js never printed a PORT= line" >&2
+  cat "${REGISTRY_LOG}" >&2
   exit 1
 fi
 
-NPMRC="${WORK_DIR}/npmrc"
-{
-  echo "//127.0.0.1:${REGISTRY_PORT}/:_authToken=${token}"
-  echo "registry=${REGISTRY_URL}"
-} >"${NPMRC}"
-
-# --- publish all 6 assembled packages to the local registry ---------------
-
-for pkg_dir in "${OUT_DIR}"/*/; do
-  npm publish --userconfig "${NPMRC}" --silent "${pkg_dir}" >/dev/null
-  echo "test-smoke.sh: published $(basename "${pkg_dir}") to the local registry"
-done
+REGISTRY_URL="http://127.0.0.1:${registry_port}/"
+status="$(curl -s -o /dev/null -w '%{http_code}' "${REGISTRY_URL}cli-comrade" || true)"
+if [ "${status}" != "200" ]; then
+  echo "test-smoke.sh: local registry at ${REGISTRY_URL} did not answer GET /cli-comrade with 200 (got ${status})" >&2
+  cat "${REGISTRY_LOG}" >&2
+  exit 1
+fi
+echo "test-smoke.sh: minimal local registry (stdlib http, no auth/publish/uplink) ready at ${REGISTRY_URL}"
 
 # --- install ONLY cli-comrade -- the optionalDependency must resolve
 # transitively, exactly like a real end user's `npm install -g cli-comrade`
 
 PREFIX_DIR="${WORK_DIR}/prefix"
 mkdir -p "${PREFIX_DIR}"
-npm install -g --prefix "${PREFIX_DIR}" --userconfig "${NPMRC}" --no-audit --no-fund cli-comrade
+npm install -g --prefix "${PREFIX_DIR}" --registry "${REGISTRY_URL}" --no-audit --no-fund cli-comrade
 
 BIN_PATH="${PREFIX_DIR}/bin/comrade"
 if [ ! -e "${BIN_PATH}" ]; then
@@ -194,7 +144,8 @@ esac
 # installed, and executable -- proving `bin` on the platform package is
 # load-bearing for npm's own chmod-on-install behavior even though it is
 # never itself linked into the top-level bin/ directory (see the module
-# comment at the top of this file, and platform-template/package.json).
+# comment at the top of scripts/build-npm-packages.sh, and
+# npm/platform-template/package.json).
 platform_binary="$(find "${PREFIX_DIR}" -type f -path '*/comrade-linux-x64/bin/comrade' | head -n1)"
 if [ -z "${platform_binary}" ]; then
   echo "test-smoke.sh: could not find the transitively-installed platform binary under ${PREFIX_DIR}" >&2

@@ -64,9 +64,9 @@ jobs:
       # npm/test/test-script-permissions.sh — this exact class of bug,
       # a script committed non-executable and invoked directly, has
       # shipped broken twice; this step is what would have caught it on
-      # the very first push). Linux-leg only: npm/test/test-smoke.sh is
-      # explicitly Linux-only per its own header, and jq/bash are not
-      # guaranteed on the other legs the same way.
+      # the very first push). Linux-leg only: npm/test/test-smoke.sh (run
+      # below) is explicitly Linux-only per its own header, and jq/bash
+      # are not guaranteed on the other legs the same way.
       - name: Set up Node.js
         if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -77,6 +77,32 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: make npm-test
+
+      # npm end-to-end install smoke test: this is deliberately a real
+      # integration check (real goreleaser snapshot dist/, a real `npm
+      # install -g cli-comrade`, a real dispatcher launch) gated on every
+      # PR rather than demoted to nightly — a prior review round found a
+      # dispatcher-bypass bug that ONLY this kind of end-to-end check
+      # catches (npm/test/test-smoke.sh's own header has the full story).
+      # It costs a real, if bounded, amount of CI time: a goreleaser
+      # snapshot cross-compiles all 5 npm-distribution targets from
+      # scratch. Reads the version to stamp from dist/metadata.json's own
+      # "tag" (rather than a git-tag lookup) so this works correctly
+      # regardless of this job's checkout depth/tag visibility.
+      - name: Install goreleaser (for the npm smoke test's dist/ input)
+        if: matrix.os == 'ubuntu-latest'
+        run: make tools
+
+      - name: Build a snapshot dist/ for the npm smoke test
+        if: matrix.os == 'ubuntu-latest'
+        run: goreleaser release --snapshot --clean --skip=sign
+
+      - name: npm end-to-end install smoke test
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          smoke_version="$(jq -r '.tag' dist/metadata.json | sed 's/^v//')"
+          make npm-smoke NPM_VERSION="${smoke_version}"
 
   lint:
     runs-on: ubuntu-latest

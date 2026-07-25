@@ -3,11 +3,14 @@
 # Format: one entry per line, "<go-package-import-path> <decimal-floor-percent>".
 # Floors are ONE-DECIMAL values (e.g. "82.7"), not integers. Blank lines and
 # lines starting with # are ignored; trailing "# ..." comments on a data
-# line are also stripped.
+# line are also stripped. A repeated package line is a hard error (the
+# script refuses to silently let the last one win).
 #
 # scripts/check-coverage-floors.sh (wired into `make coverage-check` and the
-# ubuntu-latest leg of CI — see the Linux-only note below) fails the build
-# when either:
+# ubuntu-latest leg of CI — see the Linux-only note below; invoke it as
+# `bash scripts/check-coverage-floors.sh`, never `./scripts/...` — the exec
+# bit is not something every checkout preserves) fails the build when
+# either:
 #   - a package's CURRENT coverage falls below its floor here, or
 #   - this file and `go list ./...` have drifted out of sync in EITHER
 #     direction (a package with no floor entry, or a floor entry for a
@@ -18,34 +21,41 @@
 # header for why that distinction matters at one-decimal tolerance.
 #
 # TOLERANCE: 0.5 points, not 2. Floors are today's measured coverage MINUS
-# 0.5, TRUNCATED (never rounded) to one decimal — e.g. a measured 83.2549%
-# floors at 82.7, not 82.8 and not "83" from integer-flooring. This is
-# deliberately tight: at the old 2-point/integer-tolerance scheme (up to
-# ~2.25 points of real slack once integer-flooring was added in), a
+# 0.5, TRUNCATED (never rounded) to one decimal — e.g. a measured 83.5919%
+# floors at 83.0, not 83.1 and not "83" from integer-flooring. This is
+# deliberately tight: at the original 2-point/integer-tolerance scheme (up
+# to ~2.25 points of real slack once integer-flooring was added in), a
 # same-sized re-add of internal/cli/planreview.go itself (53 statements,
 # 0% covered) would have needed 60 new uncovered statements in internal/cli
 # before the gate caught it -- i.e. it would NOT have caught the exact file
 # this ratchet exists because of. See "KNOWN LIMITATION" below for the
-# current (tightened) numbers, which are much smaller but still nonzero.
+# current (tightened, injection-verified) numbers, which are much smaller
+# but still nonzero.
 #
-# NOISE CHECK (performed before adopting 0.5): ran `go test ./... -cover
-# -count=1` three consecutive times (count=1 forces real re-execution,
-# bypassing Go's test-result cache, so this is genuine run-to-run
-# variance) and compared each package's EXACT covered/total ratio (not the
-# rounded display) across the three runs:
-#   - 16 of 17 packages: bit-identical across all three runs (0.0000-point
-#     spread) -- cmd/comrade, internal/audit, internal/config,
-#     internal/context, internal/doctor, internal/engine,
-#     internal/executor, internal/i18n, internal/llm, internal/redact,
-#     internal/safety, internal/secrets, internal/shellinit, internal/tui,
-#     internal/undo, internal/update.
-#   - internal/cli: 83.2549% / 83.3960% / 83.2549% -- a genuine ~0.14-point
-#     spread (a timing/scheduling-sensitive branch somewhere in its test
-#     suite; not chased down further since it's well inside tolerance).
-# All 17 packages' spreads are comfortably under the 0.3-point threshold
-# that would have required an individually larger, documented tolerance
-# for that package -- so a single blanket 0.5-point tolerance is used for
-# every package below; none needed a special case.
+# NOISE CHECK: ran `go test ./... -cover -count=1` three consecutive times
+# (count=1 forces real re-execution, bypassing Go's test-result cache, so
+# this is genuine run-to-run variance) and compared each package's EXACT
+# covered/total ratio (not the rounded display) across the three runs.
+# Current result (after fixing the flake below): all 17 packages are
+# bit-identical across all three runs (0.0000-point spread) -- no package
+# needs an individually larger tolerance; a single blanket 0.5-point
+# tolerance is used for every package below.
+#
+# FLAKE FOUND AND FIXED: the first noise check (pre-dating this note) found
+# internal/cli varying by ~0.14 points run to run (83.2549% / 83.3960% /
+# 83.2549%). Root cause, isolated to the exact profile block: chatModel.
+# Update's `case spinner.TickMsg:` "waiting" body (internal/cli/
+# chatmodel.go, 3 statements) was covered only incidentally, by
+# TestChatModelHeadlessProgram*'s real *tea.Program racing its own
+# spinner.Tick timer against a fake LLM call's completion -- a genuine,
+# non-deterministic race, not a bug in the code itself. Fixed by adding
+# TestChatModelSpinnerTickAdvancesSpinnerWhileWaiting/
+# TestChatModelSpinnerTickIgnoredWhenNotWaiting (chatmodel_test.go), which
+# feed a hand-built spinner.TickMsg straight into Update() with m.waiting
+# set explicitly true/false -- both halves of that branch are now covered
+# deterministically, every run, independent of any timer. Re-running the
+# 3x noise check after that fix (see above) confirmed the flake is gone,
+# not just narrower: 0.0000-point spread for internal/cli too.
 #
 # Re-baselining after intentionally changing a package's coverage:
 #   1. go test ./... -coverprofile=/tmp/cov.out -covermode=set   (on Linux
@@ -66,6 +76,15 @@
 #      noise check above for it; if its spread now exceeds 0.3 points, give
 #      it its own larger, individually documented tolerance instead of
 #      forcing the blanket 0.5 — do not silently ship a gate that flakes.
+#   6. WHENEVER THIS BRANCH'S BASE BRANCH MOVES UNDER IT (a rebase, or
+#      landing after other PRs merged first): re-measure and re-baseline
+#      EVERY floor before merging, not just the packages you touched.
+#      Other PRs' changes shift other packages' real coverage too (a floor
+#      with unrebased slack isn't wrong, but it's stale, and it silently
+#      erodes the whole point of a 0.5-point ratchet) -- e.g. this file's
+#      own floors were re-baselined after a rebase pulled in safety
+#      hardening that moved internal/safety from 95.845% to 93.803% and
+#      internal/doctor from 89.820% to 92.941%.
 #
 # Linux-only, deliberately: every floor below was measured on ubuntu-latest,
 # and CI only runs this check on the ubuntu-latest matrix leg (see the
@@ -82,39 +101,44 @@
 # brand-new, wholly-uncovered code a package can absorb before its average
 # moves past a 0.5-point tolerance still scales with that package's total
 # statement count. At today's floors, a new file needs at least:
-#   - internal/cli:  15 new uncovered statements to drop it below 82.7%
-#   - internal/llm:   5 new uncovered statements to drop it below 88.3%
+#   - internal/cli:  16 new uncovered statements to drop it below 83.0%
+#   - internal/llm:   5 new uncovered statements to drop it below 88.4%
 # (computed the same way as the tolerance above: floor = covered/(total+S),
 # solved for the smallest integer S that pushes coverage below the floor,
-# using each package's real covered/total statement counts.) Both numbers
-# are now comfortably BELOW internal/cli/planreview.go's own 53 statements
-# -- so at today's tightened tolerance, this ratchet WOULD have caught that
-# exact file shipping untested, with real margin. It would NOT catch
-# something smaller: internal/llm's 5-statement threshold in particular is
-# roughly "a single short function" -- a genuinely tiny addition can still
-# slip under a large, well-tested package's average.
+# using each package's real covered/total statement counts -- and then
+# VERIFIED BY ACTUAL INJECTION, not just arithmetic: a real, never-called,
+# straight-line 16-statement function was added to internal/cli and the
+# gate FAILED against the 83.0 floor at exactly 16, and PASSED at 15; a
+# real 5-statement function was added to internal/llm and the gate FAILED
+# at exactly 5, and PASSED at 4.) Both thresholds are comfortably BELOW
+# internal/cli/planreview.go's own 53 statements -- so at today's
+# tightened tolerance, this ratchet WOULD have caught that exact file
+# shipping untested, with real margin. It would NOT catch something
+# smaller: internal/llm's 5-statement threshold in particular is roughly
+# "a single short function" -- a genuinely tiny addition can still slip
+# under a large, well-tested package's average.
 #
 # Per-file coverage floors (checking each new/changed file's own coverage,
 # not just the package average) would close this gap completely, and were
 # considered. Rejected for now: it requires tracking a floor per FILE
 # rather than per package, multiplying the size of this file and the
 # re-baselining churn on any refactor that moves or splits code across
-# files, for a benefit (catching a <15/<5-statement untested addition)
+# files, for a benefit (catching a <16/<5-statement untested addition)
 # that's already fairly narrow post-tightening. Revisit if a
 # similarly-sized untested file slips through again in practice.
 
 github.com/firatkutay/cli-comrade/cmd/comrade 39.5
 github.com/firatkutay/cli-comrade/internal/audit 76.6
-github.com/firatkutay/cli-comrade/internal/cli 82.7
-github.com/firatkutay/cli-comrade/internal/config 86.4
+github.com/firatkutay/cli-comrade/internal/cli 83.0
+github.com/firatkutay/cli-comrade/internal/config 86.9
 github.com/firatkutay/cli-comrade/internal/context 90.1
-github.com/firatkutay/cli-comrade/internal/doctor 89.3
+github.com/firatkutay/cli-comrade/internal/doctor 92.4
 github.com/firatkutay/cli-comrade/internal/engine 85.6
 github.com/firatkutay/cli-comrade/internal/executor 92.7
 github.com/firatkutay/cli-comrade/internal/i18n 96.5
-github.com/firatkutay/cli-comrade/internal/llm 88.3
+github.com/firatkutay/cli-comrade/internal/llm 88.4
 github.com/firatkutay/cli-comrade/internal/redact 99.5
-github.com/firatkutay/cli-comrade/internal/safety 95.3
+github.com/firatkutay/cli-comrade/internal/safety 93.3
 github.com/firatkutay/cli-comrade/internal/secrets 85.3
 github.com/firatkutay/cli-comrade/internal/shellinit 93.0
 github.com/firatkutay/cli-comrade/internal/tui 82.3

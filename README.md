@@ -252,10 +252,13 @@ make build             # -> ./comrade
 make test              # go test ./...
 make lint              # golangci-lint (auto-installs the pinned version)
 make vet               # go vet ./...
+make coverage-check    # per-package coverage ratchet, see coverage-floors.txt
 make cross             # -> dist/comrade-<os>-<arch>[.exe], all platforms
 make release-check     # validate .goreleaser.yaml, no build
 make release-snapshot  # full local dry-run of every release artifact
 ```
+
+`coverage-floors.txt` records a minimum coverage percentage per package (measured on Linux); `make coverage-check` fails if a package's coverage drops below its recorded floor, or if the file drifts out of sync with the package list — see the file's own header for the full ratchet mechanics and how to re-baseline after intentionally changing a package's coverage.
 
 ### License
 
@@ -501,10 +504,13 @@ make build             # -> ./comrade
 make test              # go test ./...
 make lint              # golangci-lint (pinlenmiş sürümü otomatik kurar)
 make vet               # go vet ./...
+make coverage-check    # paket başına coverage ratchet'i, bkz. coverage-floors.txt
 make cross             # -> dist/comrade-<os>-<arch>[.exe], tüm platformlar
 make release-check     # .goreleaser.yaml'ı doğrula, derleme yapmadan
 make release-snapshot  # her release artifact'inin tam yerel deneme derlemesi
 ```
+
+`coverage-floors.txt`, her paket için (Linux üzerinde ölçülmüş) asgari bir coverage yüzdesi kaydeder; bir paketin coverage'ı kayıtlı tabanının altına düşerse, veya dosya paket listesiyle senkron dışı kalırsa `make coverage-check` başarısız olur — tam ratchet mekaniği ve bir paketin coverage'ını kasıtlı değiştirdikten sonra nasıl yeniden taban alınacağı için dosyanın kendi başlığına bakın.
 
 ### Lisans
 

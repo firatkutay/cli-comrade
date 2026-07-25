@@ -113,7 +113,16 @@
     (function (btn) {
       var text = btn.getAttribute("data-copy") || "";
       var soon = btn.getAttribute("data-soon") === "1";
-      btn.setAttribute("aria-label", soon ? "Yakında / Soon" : "Kopyala / Copy");
+      // The generic name is only a fallback. Where one panel holds several
+      // copy buttons, "Copy" alone is ambiguous to a screen reader, so those
+      // buttons author their own bilingual name via data-tr-aria/data-en-aria
+      // and applyLang keeps it in the active language — don't clobber it.
+      var named =
+        btn.hasAttribute("aria-label") ||
+        (btn.hasAttribute("data-tr-aria") && btn.hasAttribute("data-en-aria"));
+      if (!named) {
+        btn.setAttribute("aria-label", soon ? "Yakında / Soon" : "Kopyala / Copy");
+      }
       btn.addEventListener("click", function () {
         // Channels not live yet (winget/snap): don't copy — flash a red "Soon".
         if (soon) {

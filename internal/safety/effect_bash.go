@@ -483,12 +483,13 @@ func (r *bashResolver) resolveScopedStmts(stmts []*syntax.Stmt) (text string, in
 // from (and handled identically to) a same-level modification, one level
 // up, all the way to the top.
 //
-// (A key the body ADDS that r.env never had is a different case, already
-// handled correctly by "value differs": clone[name] is compared against
-// a zero-value "" read from r.env via the map's comma-ok form below, so a
-// brand-new name is naturally invalidated too — but it was never in
-// r.env to begin with, so there is nothing for a caller outside this
-// function to observe changing.)
+// (A key the body ADDS that r.env never had is a different, simpler
+// case: since this loop ranges over r.env — not clone — a brand-new name
+// is never even visited here at all, let alone compared or deleted. That
+// is still correct, not a gap: the name was never in r.env to begin
+// with, so a later reference to it is already strictly-unresolvable via
+// the ordinary "unknown variable" path, with nothing for this function
+// to invalidate or for a caller outside it to observe changing.)
 //
 // If the child resolution is itself indeterminate, that propagates
 // directly (no invalidation step needed — the whole command already

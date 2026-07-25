@@ -138,6 +138,31 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   bulgusundaki AYNI `--yolo` etkileşimi burada da geçerli — ve kapsamı çok
   daha geniş (auditor'un korpuslarında 83 vaka). Kabul edilen, kasıtlı bir
   değiş tokuş: bir CRITICAL false-Allow'u kapatmanın dürüst sonucu budur.
+- **Bir döngü gövdesi TEK GEÇİŞTE çözülür — 2. veya sonraki iterasyonda
+  tehlikeli hale gelen bir değişken görünmez kalır** (main'de de AYNI,
+  bu turun işi tarafından İNTRODUCE EDİLMEMİŞ, önceden var olan bir
+  boşluk) — `internal/safety/resolveMayNotExecute`, bir `for`/`while`
+  gövdesini KENDİ İÇİNDE tutarlı tek bir sıralı geçişle çözer (döngünün
+  gerçekte kaç kez çalışacağını bilmediği için); bu, `for i in 1; do
+  R=rm; $R -rf /; done` gibi TEK-İTERASYONLUK bir ataması-ve-kullanımı
+  doğru yakalar, ama İKİNCİ (veya sonraki) iterasyonda farklı bir değer
+  üreten bir zincir kaçar:
+  ```
+  X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /
+  ```
+  Bu analiz geçişi 1. iterasyonu hesaplar (`X=echo`, döngü-öncesi değerle
+  AYNI olduğu için "değişmemiş" sayılır ve dokunulmaz), ama gerçek bash'te
+  2. iterasyon `R`yi zaten `rm`e çevirmiş olduğundan `X` de `rm` olur ve
+  komut gerçekten `rm -rf /` çalıştırır (`bash -c 'X=echo; R=echo; for i
+  in 1 2; do X=$R; R=rm; done; echo "$X"'` → `rm` doğrular). İmza/denylist
+  katmanı da bunu yakalamaz — hiçbir katman döngüyü birden fazla kez
+  "çalıştırmaz". Dar bir kalıp: sadece SINK değişkenin döngü-öncesi
+  ÖNCEDEN-TOHUMLANMIŞ değeri, 1. geçişin ürettiği değerle TAM OLARAK
+  ÇAKIŞTIĞINDA (böylece "değişmemiş" sayılıp invalidation'ı atlattığında)
+  ortaya çıkar — rastgele bir önceki değer bu çakışmayı neredeyse hiç
+  yaşamaz. Literal tehlikeli kalıplar için (örn. döngü içinde doğrudan
+  `rm -rf /` yazan bir literal) imza/denylist tabanı hâlâ geçerlidir; bu
+  boşluk yalnızca DOLAYLI, İTERASYONA-BAĞIMLI değer akışını etkiler.
 
 ### CLI bayrağı — `--profile`, ham-argümanlı komutlarda çalışmıyor (issue #27)
 
@@ -320,6 +345,32 @@ validation, redaction coverage, and the destructive-command classifier
   tilde entry's narrower scope). Accepted as a deliberate trade-off: this
   is the honest consequence of closing a CRITICAL false-Allow, not an
   oversight.
+- **A loop body is resolved in a SINGLE PASS — a variable that only
+  becomes dangerous on iteration >= 2 is invisible** (pre-existing on
+  `origin/main` too — this class was NOT introduced by the may-not-execute
+  fix above) — `internal/safety/resolveMayNotExecute` resolves a `for`/
+  `while` body with one internally-consistent sequential pass (it has no
+  way to know how many times the loop actually runs), which correctly
+  catches a SINGLE-iteration assignment-and-use (`for i in 1; do R=rm;
+  $R -rf /; done`), but misses a chain that only produces a different
+  value on the SECOND (or later) iteration:
+  ```
+  X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /
+  ```
+  This analysis pass computes iteration 1 (`X=echo`, identical to the
+  pre-loop value, so treated as "unchanged" and left alone), but real
+  bash's second iteration has already turned `R` into `rm`, so `X`
+  becomes `rm` too, and the command genuinely runs `rm -rf /` (confirmed:
+  `bash -c 'X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; echo
+  "$X"'` → `rm`). The signature/denylist layer does not catch this either
+  — neither layer ever runs the loop more than once. Narrow in practice:
+  it only manifests when the SINK variable's pre-loop seeded value
+  happens to EXACTLY MATCH what pass 1 computes (so invalidation is
+  skipped) — an arbitrary prior value almost never collides this way.
+  Literal dangerous shapes (a literal `rm -rf /` written directly inside
+  the loop body) are still caught by the signature/denylist floor
+  regardless; this gap is specific to INDIRECT, iteration-dependent value
+  flow.
 
 ### CLI flag — `--profile` doesn't work on raw-arg commands (issue #27)
 

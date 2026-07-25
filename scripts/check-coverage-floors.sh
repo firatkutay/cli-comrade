@@ -24,10 +24,28 @@
 #
 # See coverage-floors.txt's own header for the re-baselining procedure.
 #
+# Invocation: always `bash scripts/check-coverage-floors.sh` (see Makefile/
+# CI), never `./scripts/check-coverage-floors.sh` — the latter depends on
+# the file's own exec bit, which some filesystems/checkouts don't
+# preserve reliably; `bash` explicitly does not care.
+#
+# Requires bash >= 4 (declare -A, mapfile) -- see the version guard right
+# below. This is a SCRIPT requirement, independent of coverage-floors.txt's
+# own "floors are Linux-measured" note: that note is about WHERE the
+# floors were measured and re-baselined from, not about what this script
+# itself needs to run.
+#
 # Usage: scripts/check-coverage-floors.sh [path/to/coverage-floors.txt]
 # Run from anywhere; it cds to the repo root itself.
 
 set -uo pipefail
+
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+	echo "check-coverage-floors: requires bash >= 4 (uses declare -A / mapfile); found ${BASH_VERSION:-an unknown, pre-4 bash}." >&2
+	echo "check-coverage-floors: macOS ships bash 3.2 by default -- install a current one with: brew install bash" >&2
+	echo "check-coverage-floors: then re-run this script via that bash explicitly, e.g.: /opt/homebrew/bin/bash scripts/check-coverage-floors.sh" >&2
+	exit 1
+fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
@@ -48,6 +66,10 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
 	read -r pkg floor <<<"$line"
 	if [ -z "$pkg" ] || [ -z "$floor" ]; then
 		echo "check-coverage-floors: malformed line in $floors_file: $raw_line" >&2
+		exit 1
+	fi
+	if [ -n "${floor_of[$pkg]+set}" ]; then
+		echo "check-coverage-floors: duplicate floor entry for $pkg in $floors_file (first: ${floor_of[$pkg]}, again: $floor) -- a repeated key silently wins last-one-in otherwise; fix the file" >&2
 		exit 1
 	fi
 	floor_of["$pkg"]="$floor"
@@ -91,22 +113,29 @@ if [ "$test_status" -ne 0 ]; then
 	exit 1
 fi
 
-# A package with NO test files at all (e.g. a hypothetical future
-# no-test package with an explicit 0 floor) produces zero lines in the
-# profile for that package -- pkg_stats reports "0 0" for it, and the
-# awk block below treats that as 0.0% exactly (never a division by
-# zero), so it only ever compares against a floor of 0.
+# Even a package with NO test files at all still gets a profile line per
+# source file (all statements, count 0) on the Go toolchain this repo
+# pins -- e.g. "somepkg/file.go:3.16,5.2 1 0" -- so pkg_stats below never
+# actually hits its own total==0 fallback for a real Go package today;
+# that fallback exists purely so a future toolchain change (or a
+# genuinely empty/unbuildable package) can't turn into a division by
+# zero.
 pkg_stats() {
 	awk -v pkg="$1/" '
 		{
 			split($1, a, ":")
 			path = a[1]
-			# pkg is the full "<import-path>/" prefix (from go list, with
-			# a trailing slash appended) -- match profile lines whose
-			# source file path starts with EXACTLY that prefix, so
-			# internal/cli never accidentally matches a sibling package
-			# whose name happens to start the same way.
-			if (index(path, pkg) == 1) {
+			plen = length(pkg)
+			# pkg is the full "<import-path>/" prefix (from go list, with a
+			# trailing slash appended). Match profile lines whose source
+			# file path starts with EXACTLY that prefix, AND has no
+			# further "/" after it -- i.e. the file lives directly in pkg,
+			# not in one of pkgs OWN subpackages. Without the second
+			# check, a nested package (e.g. internal/llm/openai) would
+			# match its parents prefix too and get double-counted into
+			# the parents total/covered, silently corrupting the parents
+			# percentage.
+			if (index(path, pkg) == 1 && index(substr(path, plen + 1), "/") == 0) {
 				total += $2
 				if ($3 + 0 > 0) covered += $2
 			}

@@ -30,7 +30,7 @@ test:
 # go list ./... in either direction. See coverage-floors.txt's own header
 # for the re-baselining procedure after intentionally changing coverage.
 coverage-check:
-	./scripts/check-coverage-floors.sh
+	bash scripts/check-coverage-floors.sh
 
 vet:
 	go vet ./...

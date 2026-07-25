@@ -55,7 +55,7 @@ jobs:
       - name: Coverage floors
         if: matrix.os == 'ubuntu-latest'
         shell: bash
-        run: ./scripts/check-coverage-floors.sh
+        run: bash scripts/check-coverage-floors.sh
 
   lint:
     runs-on: ubuntu-latest

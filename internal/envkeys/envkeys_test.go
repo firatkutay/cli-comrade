@@ -67,3 +67,42 @@ func TestStripManagedEmptyInput(t *testing.T) {
 
 	assert.Empty(t, got)
 }
+
+// TestStripManagedEdgeCases covers four regression cases discovered in empirical
+// review: entries without '=', values containing '=', empty values, and entries
+// where the key is merely a substring within another entry's value.
+func TestStripManagedEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "entry with no equals sign is preserved",
+			input:    []string{"PATH=/usr/bin", "NOEQUALSIGN", "HOME=/home/user"},
+			expected: []string{"PATH=/usr/bin", "NOEQUALSIGN", "HOME=/home/user"},
+		},
+		{
+			name:     "managed key with value containing equals is stripped",
+			input:    []string{"PATH=/usr/bin", "COMRADE_MANAGED_BY=a=b=c", "HOME=/home/user"},
+			expected: []string{"PATH=/usr/bin", "HOME=/home/user"},
+		},
+		{
+			name:     "managed key with empty value is stripped",
+			input:    []string{"PATH=/usr/bin", "COMRADE_MANAGED_BY=", "HOME=/home/user"},
+			expected: []string{"PATH=/usr/bin", "HOME=/home/user"},
+		},
+		{
+			name:     "managed key appearing in value is preserved",
+			input:    []string{"PATH=/usr/bin", "FOO=COMRADE_MANAGED_BY=x", "HOME=/home/user"},
+			expected: []string{"PATH=/usr/bin", "FOO=COMRADE_MANAGED_BY=x", "HOME=/home/user"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := StripManaged(tt.input)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}

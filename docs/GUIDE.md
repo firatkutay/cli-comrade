@@ -33,6 +33,11 @@ En hızlı yol, işletim sisteminize göre tek satırlık bir script'tir:
 curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
+```sh
+# macOS / Linux — curl yoksa
+wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
 ```powershell
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex
@@ -236,7 +241,12 @@ bir terminal/TTY gerektirir). Oturum içi komutlar:
   zaman kapatır.
 - **Maliyet görünürlüğü** — herhangi bir çalıştırmaya `--usage` ekleyin,
   ya da kalıcı olarak `comrade config set general.show_usage true` yapın;
-  her çalıştırma sonunda token/maliyet özeti yazılır.
+  her çalıştırma sonunda token/maliyet özeti yazılır. Not: `openai_compat`
+  OpenAI dışı bir uç noktaya (Qwen, Groq, OpenRouter, yerel bir gateway, ...)
+  işaret ediyorsa maliyet tahmini GÖSTERİLMEZ — fiyat tablosu yalnızca
+  OpenAI'ın kendi barındırdığı modeli kapsar, ve emin görünen ama yanlış
+  bir dolar rakamı hiç göstermemekten daha kötü olurdu. Token sayıları
+  her durumda yazdırılmaya devam eder.
 - **`comrade doctor`** — salt-okunur, uçtan uca bir öz-tanı; `--live` ile
   gerçek bir doğrulanmış istek gönderir (bir token harcar).
 - **`comrade upgrade`** — yeni bir sürümü kontrol eder/kurar; `--check`
@@ -317,6 +327,11 @@ The fastest path is a one-line script for your OS:
 ```sh
 # macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
+```sh
+# macOS / Linux — no curl?
+wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
 ```powershell
@@ -518,7 +533,11 @@ If the command starts with a dash: `comrade explain -- <command>`.
   forces it off.
 - **Cost visibility** — add `--usage` to any run, or make it permanent
   with `comrade config set general.show_usage true`; a token/cost
-  summary prints at the end of every run.
+  summary prints at the end of every run. Caveat: when `openai_compat`
+  points at a non-OpenAI endpoint (Qwen, Groq, OpenRouter, a local
+  gateway, ...), no cost estimate is shown — the price table only
+  covers OpenAI's own hosted model, and a confidently wrong dollar
+  figure would be worse than none. Token counts still print regardless.
 - **`comrade doctor`** — a read-only, end-to-end self-diagnostic;
   `--live` sends a real authenticated request (spends one token).
 - **`comrade upgrade`** — checks for / installs a newer version;

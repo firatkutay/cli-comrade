@@ -107,6 +107,26 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   eşleşmediği için maskelenmeden kalabilir. Standart biçimli DSN'ler
   etkilenmez.
 
+### CLI bayrağı — `--profile`, ham-argümanlı komutlarda çalışmıyor (issue #27)
+
+- **`--profile <ad>`, `config set`/`config profile set`/`explain` üzerinde
+  görmezden gelinir ya da hataya yol açar**: `--profile` kalıcı (persistent)
+  bir bayraktır (`internal/cli/root.go:105-106`), ama üç leaf komut kendi
+  konumsal argümanlarının (`-` ile başlayabilen) olduğu gibi geçmesi için
+  `DisableFlagParsing: true` ayarlar — `config set`
+  (`internal/cli/config.go:172`), `config profile set`
+  (`internal/cli/configprofile.go:342`), ve `explain`
+  (`internal/cli/explain.go:52`). cobra'nın `DisableFlagParsing: true`'su
+  yalnızca o leaf'in kendi bayraklarını değil, root'un kalıcı bayrak
+  ayrıştırmasını da atlar; bu üç komutta `--profile` pflag'e hiç ulaşmaz.
+  `config set`/`config profile set`'te `--profile`/`<ad>` token'ları ham
+  argüman olarak kalır, arity kontrolü başarısız olur ve komut kendi
+  kullanım hatasıyla döner. `explain`'de arity kontrolü yoktur, bu yüzden
+  bayrak SESSİZCE açıklanan komut metnine karışır ve istek varsayılan
+  profille sessizce çalışır — hiçbir hata/uyarı yoktur. Geçici çözüm: bu
+  üç komut için `--profile` yerine `COMRADE_PROFILE=<ad>` kullanın. Bkz.
+  [issue #27](https://github.com/firatkutay/cli-comrade/issues/27).
+
 ### Tasarım gereği sınırlar (bilinçli seçimler, hata değil)
 
 - **`anthropic`/`google` model listeleri statik bir anlık görüntüdür**
@@ -123,17 +143,18 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü`, EN
   `[y]es [n]o [e]dit [x]plain [a]ll`.)
 - **`go install github.com/firatkutay/cli-comrade/cmd/comrade@<sürüm>`
-  bu sürümde desteklenmez**: `docs/history/phases/FAZ-11.md`'in vendorlanmış clipboard soğuk-başlangıç
-  düzeltmesi (`go.mod`'daki yerel-dosya-yolu `replace` direktifi) Go'nun
-  kendi kısıtlaması nedeniyle `@sürüm` biçiminde sert bir hatayla
-  reddedilir (bir ana-modül bağlamı olmadan `replace` direktifleri
-  yok sayılamaz/uygulanamaz — bkz. `docs/INSTALL.md`'nin "Kaynaktan
-  derleme" bölümü, doğrulanmış tam hata metniyle birlikte). Bunun yerine
-  bir kaynak checkout'undan kurun (`git clone` + `go build`/`go install
-  ./cmd/comrade`) ya da ikili paketlerden birini kullanın (brew/scoop/
-  winget/.deb/.rpm/`install.sh`/`install.ps1`) — bu paketler goreleaser
-  ile checkout içinden derlendiği için `replace` direktifi normal
-  şekilde uygulanır ve etkilenmezler.
+  bu sürümde desteklenmez**: `docs/history/phases/FAZ-11.md`'in
+  vendorlanmış clipboard soğuk-başlangıç düzeltmesi (`go.mod`'daki
+  yerel-dosya-yolu `replace` direktifi) Go'nun kendi kısıtlaması
+  nedeniyle `@sürüm` biçiminde sert bir hatayla reddedilir (bir
+  ana-modül bağlamı olmadan `replace` direktifleri yok
+  sayılamaz/uygulanamaz — bkz. `docs/INSTALL.md`'nin "Kaynaktan derleme"
+  bölümü, doğrulanmış tam hata metniyle birlikte). Bunun yerine bir
+  kaynak checkout'undan kurun (`git clone` +
+  `go build`/`go install ./cmd/comrade`) ya da ikili paketlerden birini
+  kullanın (brew/scoop/ winget/.deb/.rpm/`install.sh`/`install.ps1`) —
+  bu paketler goreleaser ile checkout içinden derlendiği için `replace`
+  direktifi normal şekilde uygulanır ve etkilenmezler.
 
 ---
 
@@ -167,12 +188,12 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   real hardware (verified instead with a go-keyring mock + an injectable
   reader). A user should try `comrade auth login` once on those
   platforms.
-- **Keychain write over an SSH session (cosmetic)**: running `comrade
-  auth login` over a non-console SSH session on macOS makes the keychain
-  write fail with the raw `keychain set: exit status 36`
-  (`errSecInteractionNotAllowed`) error instead of a friendly localized
-  hint (found during v0.1.3 QA, minor/cosmetic). Workaround: run it in a
-  local/console session (or with a GUI-unlocked keychain).
+- **Keychain write over an SSH session (cosmetic)**: running
+  `comrade auth login` over a non-console SSH session on macOS makes
+  the keychain write fail with the raw `keychain set: exit status 36`
+  (`errSecInteractionNotAllowed`) error instead of a friendly
+  localized hint (found during v0.1.3 QA, minor/cosmetic). Workaround:
+  run it in a local/console session (or with a GUI-unlocked keychain).
 - **macOS/Windows end-to-end scenarios** (see `docs/history/phases/FAZ-11.md`
   item 1): a brew error, a file-permission error (macOS); an
   `ExecutionPolicy` error, a winget install, a PATH problem (Windows) —
@@ -208,16 +229,16 @@ validation, redaction coverage, and the destructive-command classifier
 (see `docs/SECURITY.md`). The honest gaps that remain:
 
 - **The destructive-command classifier is signature-based, not
-  intent-based** — an unrecognized fetch tool (httpie's `http` command,
-  BSD `fetch`) is deliberately excluded from
+  intent-based** — an unrecognized fetch tool (httpie's `http`
+  command, BSD `fetch`) is deliberately excluded from
   `internal/safety/escalation.go`'s fetch patterns (both collide with
   ordinary English words / the `http(s)://` URL-scheme substring and
   would false-positive too broadly), and shell-variable indirection
-  (`R=rm; $R -rf /`) is never caught at all — `internal/safety/
-  tokenize.go`'s `normalizeCommand` deliberately does no variable
-  expansion. The long-term fix is not a bigger signature allowlist but
-  moving to **intent-based** classification (interpreting what the
-  command will actually do).
+  (`R=rm; $R -rf /`) is never caught at all —
+  `internal/safety/tokenize.go`'s `normalizeCommand` deliberately does
+  no variable expansion. The long-term fix is not a bigger signature
+  allowlist but moving to **intent-based** classification
+  (interpreting what the command will actually do).
 - **`base_url` alt-encoding (decimal/hex IP) warns, it does not reject**
   — `internal/config/validate.go`'s metadata/link-local check only
   recognizes a literal IP address parsed by `net.ParseIP`; a
@@ -232,6 +253,28 @@ validation, redaction coverage, and the destructive-command classifier
   password that itself contains an unescaped `/` or `@` (already a
   malformed DSN) won't match through to the terminating `@` and can be
   left unmasked. Standard-shaped DSNs are unaffected.
+
+### CLI flag — `--profile` doesn't work on raw-arg commands (issue #27)
+
+- **`--profile <name>` is ignored or errors on three raw-arg commands**:
+  `--profile` is a persistent flag (`internal/cli/root.go:105-106`), but
+  `config set` (`internal/cli/config.go:172`),
+  `config profile set` (`internal/cli/configprofile.go:342`), and
+  `explain` (`internal/cli/explain.go:52`) each set
+  `DisableFlagParsing: true` so their own positional arguments (which may
+  legitimately start with `-`) pass through untouched. cobra's
+  `DisableFlagParsing: true` disables flag parsing for the whole
+  invocation, not just that leaf's own flags — it skips root's
+  persistent-flag parsing too, so `--profile` never reaches pflag on
+  these three commands. On `config set` and `config profile set`, the
+  literal `--profile`/`<name>` tokens land in `args`, the arity check
+  fails, and the command errors with its own usage message. On
+  `explain`, there is no arity check, so the flag is silently folded
+  into the text being explained and the request silently runs under the
+  default profile instead — no error, no indication the flag did
+  nothing. Workaround: use `COMRADE_PROFILE=<name>` instead of
+  `--profile` for these three commands. See
+  [issue #27](https://github.com/firatkutay/cli-comrade/issues/27).
 
 ### Limits by design (deliberate choices, not bugs)
 
@@ -253,9 +296,9 @@ validation, redaction coverage, and the destructive-command classifier
   (a local-filesystem `replace` directive in `go.mod`) is hard-rejected
   by Go's own `@version` install constraint (a `replace` directive
   cannot be honored/ignored without a main-module context — see
-  `docs/INSTALL.md`'s "Build from source" section for the exact,
-  verified error text). Install from a source checkout instead (`git
-  clone` + `go build`/`go install ./cmd/comrade`), or use one of the
+  `docs/INSTALL.md`'s "Build from source" section for the exact, verified
+  error text). Install from a source checkout instead (`git clone` +
+  `go build`/`go install ./cmd/comrade`), or use one of the
   binary packages (brew/scoop/winget/.deb/.rpm/`install.sh`/
   `install.ps1`) — those are built by goreleaser from within the
   checkout, so the `replace` directive is honored normally and they are

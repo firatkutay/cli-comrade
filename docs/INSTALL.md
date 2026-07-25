@@ -19,6 +19,12 @@ imzalanmış/checksum'lı arşivlerden ve paketlerden üretilir (bkz.
 curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
+`curl` yoksa, script `wget` ile de aynı şekilde çalışır:
+
+```sh
+wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
 Bu script:
 
 1. `curl` veya `wget`'ten hangisi varsa onu kullanır (ikisi de yoksa
@@ -125,30 +131,28 @@ cd cli-comrade
 go build -o comrade ./cmd/comrade   # ya da: go install ./cmd/comrade
 ```
 
-**`go install github.com/firatkutay/cli-comrade/cmd/comrade@<sürüm>`
-biçimi (modülü doğrudan bir proxy'den, bir ana-modül bağlamı OLMADAN
-kuran `@sürüm` biçimi) bu sürümde DESTEKLENMEZ.** Sebep keyfi değil, Go
-araç zincirinin kendi, belgelenmiş kısıtlaması: `go.mod`'umuzda bir
-soğuk-başlangıç performans düzeltmesi için yerel-dosya-yolu bir
-`replace` direktifi var (`replace github.com/atotto/clipboard =>
-./third_party/atotto-clipboard` — bkz. `docs/history/phases/FAZ-11.md`), ve
-Go'nun kendi kuralı gereği "`@sürüm` argümanlarını içeren komut
-satırındaki paketleri barındıran modülün `go.mod` dosyası, ana modül
-olsaydı farklı yorumlanmasına neden olacak direktifler (`replace` ve
-`exclude`) içermemelidir" (go.dev/ref/mod). Bunu ihlal ederek
-denendiğinde Go **sessizce yok saymaz, sert bir hatayla reddeder** (bu
-davranış doğrudan doğrulandı: `go install .../cmd/foo@v0.0.1` verilen
-bir go.mod'da yerel bir `replace` varken, Go tam olarak şu hatayı
-basıyor: *"The go.mod file for the module providing named packages
-contains one or more replace directives. It must not contain
-directives that would cause it to be interpreted differently than if
-it were the main module."*). Yukarıdaki `git clone` + `go build`/`go
-install ./cmd/comrade` yöntemi bunun yerine çalışır, çünkü checkout'un
-kendisi o an ana modül olur ve `replace` direktifi normal şekilde
-uygulanır — soğuk başlangıç düzeltmesini de doğru şekilde alırsınız
-(goreleaser'ın kendi derleme adımı da aynı sebeple bu yöntemi kullanır
-ve etkilenmez). Bu yöntem checksum doğrulaması yapmaz; üretim
-ortamlarında yukarıdaki paket yöneticilerinden birini tercih edin.
+**`go install github.com/firatkutay/cli-comrade/cmd/comrade@<sürüm>` biçimi
+(modülü doğrudan bir proxy'den, bir ana-modül bağlamı OLMADAN kuran `@sürüm`
+biçimi) bu sürümde DESTEKLENMEZ.** Sebep keyfi değil, Go araç zincirinin
+kendi, belgelenmiş kısıtlaması: `go.mod`'umuzda bir soğuk-başlangıç
+performans düzeltmesi için yerel-dosya-yolu bir `replace` direktifi var
+(`replace github.com/atotto/clipboard => ./third_party/atotto-clipboard` —
+bkz. `docs/history/phases/FAZ-11.md`), ve Go'nun kendi kuralı gereği
+"`@sürüm` argümanlarını içeren komut satırındaki paketleri barındıran
+modülün `go.mod` dosyası, ana modül olsaydı farklı yorumlanmasına neden
+olacak direktifler (`replace` ve `exclude`) içermemelidir" (go.dev/ref/mod).
+Bunu ihlal ederek denendiğinde Go **sessizce yok saymaz, sert bir hatayla
+reddeder** (bu davranış doğrudan doğrulandı: `go install .../cmd/foo@v0.0.1`
+verilen bir go.mod'da yerel bir `replace` varken, Go tam olarak şu hatayı
+basıyor: *"The go.mod file for the module providing named packages contains
+one or more replace directives. It must not contain directives that would
+cause it to be interpreted differently than if it were the main module."*).
+Yukarıdaki `git clone` + `go build`/`go install ./cmd/comrade` yöntemi bunun
+yerine çalışır, çünkü checkout'un kendisi o an ana modül olur ve `replace`
+direktifi normal şekilde uygulanır — soğuk başlangıç düzeltmesini de doğru
+şekilde alırsınız (goreleaser'ın kendi derleme adımı da aynı sebeple bu
+yöntemi kullanır ve etkilenmez). Bu yöntem checksum doğrulaması yapmaz;
+üretim ortamlarında yukarıdaki paket yöneticilerinden birini tercih edin.
 
 ### Kurulumdan sonra
 
@@ -171,8 +175,8 @@ comrade upgrade           # indirir, checksum doğrular, kendini günceller
 ```
 
 `comrade`, en fazla haftada bir kez, herhangi bir komutun sonunda daha
-yeni bir sürüm olduğunu sessizce bildirir (`general.update_check =
-false` ile kapatılabilir — bkz. CONFIGURATION.md).
+yeni bir sürüm olduğunu sessizce bildirir (`general.update_check = false`
+ile kapatılabilir — bkz. CONFIGURATION.md).
 
 `comrade upgrade`, indirdiği sürümü kurmadan önce artık bir cosign
 imzasını (offline, ağ erişimi olmadan) doğrular; imza doğrulanamazsa
@@ -196,6 +200,12 @@ below).
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
+```
+
+No `curl`? The script works identically with `wget`:
+
+```sh
+wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh
 ```
 
 This script:
@@ -309,27 +319,26 @@ go build -o comrade ./cmd/comrade   # or: go install ./cmd/comrade
 
 **The `go install github.com/firatkutay/cli-comrade/cmd/comrade@<version>`
 form (installing the module directly from a proxy, with no main-module
-context) is NOT supported at this release.** The reason isn't
-arbitrary — it's the Go toolchain's own, documented constraint: our
-`go.mod` carries a local-filesystem `replace` directive for a
-cold-start performance fix (`replace github.com/atotto/clipboard =>
-./third_party/atotto-clipboard` — see `docs/history/phases/FAZ-11.md`), and per
-Go's own rule, "if the module containing packages named on the command
-line has a go.mod file, it must not contain directives (`replace` and
-`exclude`) that would cause it to be interpreted differently if it
-were the main module" (go.dev/ref/mod). Attempting it does **not**
-silently drop the replace — Go hard-errors (verified directly: running
-`go install .../cmd/foo@v0.0.1` against a go.mod with a local replace
-produces exactly: *"The go.mod file for the module providing named
-packages contains one or more replace directives. It must not contain
-directives that would cause it to be interpreted differently than if
-it were the main module."*). The `git clone` + `go build`/`go install
-./cmd/comrade` method above works instead, because the checkout itself
-becomes the main module and the `replace` directive is honored
-normally — you get the cold-start fix correctly too (goreleaser's own
-build step uses this same method for the same reason, and is
-unaffected). This method does not checksum-verify; prefer one of the
-package managers above for production use.
+context) is NOT supported at this release.** The reason isn't arbitrary —
+it's the Go toolchain's own, documented constraint: our `go.mod` carries a
+local-filesystem `replace` directive for a cold-start performance fix
+(`replace github.com/atotto/clipboard => ./third_party/atotto-clipboard` —
+see `docs/history/phases/FAZ-11.md`), and per Go's own rule, "if the
+module containing packages named on the command line has a go.mod file, it
+must not contain directives (`replace` and `exclude`) that would cause it
+to be interpreted differently if it were the main module"
+(go.dev/ref/mod). Attempting it does **not** silently drop the replace —
+Go hard-errors (verified directly: running `go install .../cmd/foo@v0.0.1`
+against a go.mod with a local replace produces exactly: *"The go.mod file
+for the module providing named packages contains one or more replace
+directives. It must not contain directives that would cause it to be
+interpreted differently than if it were the main module."*). The
+`git clone` + `go build`/`go install ./cmd/comrade` method above works
+instead, because the checkout itself becomes the main module and the
+`replace` directive is honored normally — you get the cold-start fix
+correctly too (goreleaser's own build step uses this same method for the
+same reason, and is unaffected). This method does not checksum-verify;
+prefer one of the package managers above for production use.
 
 ### After installing
 

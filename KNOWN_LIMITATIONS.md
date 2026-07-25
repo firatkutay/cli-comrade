@@ -139,7 +139,7 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   daha geniş (auditor'un korpuslarında 83 vaka). Kabul edilen, kasıtlı bir
   değiş tokuş: bir CRITICAL false-Allow'u kapatmanın dürüst sonucu budur.
 - **Bir döngü gövdesi TEK GEÇİŞTE çözülür — 2. veya sonraki iterasyonda
-  tehlikeli hale gelen bir değişken görünmez kalır** (main'de de AYNI,
+  tehlikeli hale gelen bir değişken görünmez kalır** (issue #33) — (main'de de AYNI,
   bu turun işi tarafından İNTRODUCE EDİLMEMİŞ, önceden var olan bir
   boşluk) — `internal/safety/resolveMayNotExecute`, bir `for`/`while`
   gövdesini KENDİ İÇİNDE tutarlı tek bir sıralı geçişle çözer (döngünün
@@ -346,7 +346,7 @@ validation, redaction coverage, and the destructive-command classifier
   is the honest consequence of closing a CRITICAL false-Allow, not an
   oversight.
 - **A loop body is resolved in a SINGLE PASS — a variable that only
-  becomes dangerous on iteration >= 2 is invisible** (pre-existing on
+  becomes dangerous on iteration >= 2 is invisible** (issue #33) — (pre-existing on
   `origin/main` too — this class was NOT introduced by the may-not-execute
   fix above) — `internal/safety/resolveMayNotExecute` resolves a `for`/
   `while` body with one internally-consistent sequential pass (it has no

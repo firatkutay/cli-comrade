@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-25
+
+### Fixed
+
+- **The `curl … | sh` installer aborted on stock macOS** (#32). It hardcoded `sha256sum -c` — GNU coreutils, which a stock Mac does not have — so the documented one-liner died at "verifying checksum" on a platform `detect_os` explicitly supports. A verifier is now resolved at runtime (`sha256sum` → `shasum -a 256` → `openssl dgst -sha256`), each candidate probed for usability rather than mere presence, and `tar`/`gzip`/`install` are preflighted before any download so a minimal image fails fast with an actionable message instead of a cryptic `tar (child): gzip: Cannot exec`. Verification is never weakened: a hash mismatch aborts on every branch, a missing verifier aborts before anything is downloaded, and both dispatch statements have fail-closed defaults.
+- **`openai_compat` cost estimates were wrong on third-party gateways and missing on legitimate OpenAI ones** (#31). Cost was priced from OpenAI's own table regardless of endpoint, so a gateway serving a `gpt-5.4-mini`-named model was billed at OpenAI's rate; scoping it by `base_url` with a plain string compare then silently un-priced any OpenAI user whose config carried a trailing slash. Both are settled by one shared normalizing predicate, now used at every site that asks "is this still OpenAI's own endpoint" — pricing, `comrade doctor`'s base_url check (where the same blind spot silently suppressed the suspected-vendor-key warning), and both `auth login` prompts.
+- **`comrade doctor` rendered blank rows** when the config failed to load or a dependency seam was nil (#31). Those skips now carry a translated message, guarded by a test asserting every registered check's skip result has one.
+- **The active config profile could disagree with itself** (#26). `COMRADE_GENERAL_PROFILE` set the value without activating the profile overlay, and viper resolves that generic form ahead of the canonical `COMRADE_PROFILE` — so with both set, `general.profile` could name a different profile than the one actually in force, which `config profile list`/`show` and its mandatory `safety.*` override warning all read. `general.profile` now always names the profile actually applied, which also fixes `--profile <name>` never reaching it. Precedence: `--profile` > `COMRADE_PROFILE` > `COMRADE_GENERAL_PROFILE` > the file's own value.
+- **Plan review's TTY check and its input reader could diverge** (#35) — both now derive from the same handle.
+
+### Security
+
+- **The destructive-command classifier now walks control structures** (#34). The AST effect layer modelled only simple commands and `&&`/`||`/`|` chains, so `if true; then R=rm; $R -rf /; fi` classified as `read` and would have run unprompted in `auto` mode. `if`/`elif`/`else`, `while`/`until`, `for`, `case`, `{ }` blocks, subshells and `declare` are now walked, and a binding that a body may or may not have changed is invalidated rather than guessed — so a later use in command-word position fails closed instead of trusting a stale value. The layer stays monotonic (it can only raise risk, never lower it, and never blocks on its own), the denylist block floor is unchanged, and a resource guard bounds environment cloning on hostile input. Two risk-tier trade-offs and one remaining single-pass loop limitation are documented in `KNOWN_LIMITATIONS.md` (#33).
+
+### Added
+
+- **A `wget` install path** (#30). `scripts/install.sh` always supported wget, but every published bootstrap line was curl-only, so a user without curl could not fetch the script at all. README, INSTALL and GUIDE now show both.
+- **A per-package coverage ratchet** (#35): floors in `coverage-floors.txt`, checked by `scripts/check-coverage-floors.sh` (also `make coverage-check`) on CI's Linux leg, so a new file can no longer ship at ~0 % coverage unnoticed.
+
+### Changed
+
+- Documentation (#30): the four-rung config-profile precedence including the previously undocumented `COMRADE_GENERAL_PROFILE`, the cost-display caveat for non-OpenAI endpoints, and a `KNOWN_LIMITATIONS.md` entry for `--profile` on raw-argument subcommands (#27).
+
 ## [0.4.1] - 2026-07-24
 
 ### Fixed

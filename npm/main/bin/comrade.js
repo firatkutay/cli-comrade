@@ -18,6 +18,11 @@ const OTHER_INSTALL_CHANNELS = [
  * Builds the friendly, actionable message printed when no prebuilt binary
  * could be resolved for the current platform/arch — instead of letting a
  * raw `MODULE_NOT_FOUND` stack trace reach the user.
+ *
+ * @param {string} platform - `process.platform` value, e.g. "linux".
+ * @param {string} arch - `process.arch` value, e.g. "x64".
+ * @param {string} reason - why resolution failed, appended to the message.
+ * @returns {string} the full, ready-to-print message.
  */
 function unsupportedPlatformMessage(platform, arch, reason) {
   return [
@@ -34,8 +39,10 @@ function unsupportedPlatformMessage(platform, arch, reason) {
 
 /**
  * Resolves the absolute path to the platform-specific `comrade` binary.
- * Returns `{ binaryPath }` on success or `{ error }` (a ready-to-print
- * message) when no matching, installed platform package could be found.
+ *
+ * @returns {{binaryPath: string, error: undefined}|{binaryPath: undefined, error: string}}
+ *   `{ binaryPath }` on success, or `{ error }` (a ready-to-print message)
+ *   when no matching, installed platform package could be found.
  */
 function resolveBinaryPath() {
   const entry = lookupPlatformPackage(process.platform, process.arch);
@@ -69,9 +76,13 @@ function resolveBinaryPath() {
 
 /**
  * Runs the resolved binary with the given argv, forwarding stdio, exit
- * code, and signal exactly. Returns the process exit code to use (the
- * caller decides whether to `process.exit` with it, so tests can call this
- * without terminating the test runner).
+ * code, and signal exactly.
+ *
+ * @param {string} binaryPath - absolute path to the platform binary.
+ * @param {string[]} argv - arguments to forward, byte-exact.
+ * @returns {number} the process exit code to use. The caller decides
+ *   whether to `process.exit` with it, so tests can call this without
+ *   terminating the test runner.
  */
 function runBinary(binaryPath, argv) {
   const result = spawnSync(binaryPath, argv, { stdio: 'inherit' });

@@ -17,19 +17,27 @@ const PLATFORM_PACKAGES = Object.freeze({
   'win32-x64': Object.freeze({ pkg: '@firatkutay/comrade-win32-x64', binary: 'comrade.exe' }),
 });
 
+/**
+ * @param {string} platform - `process.platform` value, e.g. "linux".
+ * @param {string} arch - `process.arch` value, e.g. "x64".
+ * @returns {string} the "platform-arch" lookup key, e.g. "linux-x64".
+ */
 function platformKey(platform, arch) {
   return `${platform}-${arch}`;
 }
 
 /**
- * Returns `{ pkg, binary }` for a supported platform/arch pair, or `null`
- * when cli-comrade's npm distribution does not cover that combination.
+ * @param {string} platform - `process.platform` value, e.g. "linux".
+ * @param {string} arch - `process.arch` value, e.g. "x64".
+ * @returns {{pkg: string, binary: string}|null} the scoped package name and
+ *   binary filename for a supported platform/arch pair, or `null` when
+ *   cli-comrade's npm distribution does not cover that combination.
  */
 function lookupPlatformPackage(platform, arch) {
   return PLATFORM_PACKAGES[platformKey(platform, arch)] || null;
 }
 
-/** Sorted list of every "os-arch" key the npm distribution supports. */
+/** @returns {string[]} sorted list of every "os-arch" key the npm distribution supports. */
 function supportedPlatformList() {
   return Object.keys(PLATFORM_PACKAGES).sort();
 }

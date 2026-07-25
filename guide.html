@@ -448,8 +448,20 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-en=". Note: ">. Dikkat: </span><code class="inline-code">config set</code><span
                data-tr=" dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil İÇİNDEKİ bir anahtarı değiştirmek için "
                data-en=" writes the file-level value, NOT the active profile — to change a key INSIDE a profile use "> dosya-seviyesi değeri değiştirir, AKTİF PROFİLİ değil — bir profil İÇİNDEKİ bir anahtarı değiştirmek için </span><code class="inline-code">comrade config profile set work llm.provider openai_compat</code><span
-               data-tr=" kullanın."
-               data-en="."> kullanın.</span></li>
+               data-tr=" kullanın. "
+               data-en=". "> kullanın. </span><code class="inline-code">--profile</code><span
+               data-tr=" bayrağı, ham argüman alan alt komutlarda etkili olmaz: "
+               data-en=" has no effect on the subcommands that take raw arguments: "> bayrağı, ham argüman alan alt komutlarda etkili olmaz: </span><code class="inline-code">config set</code><span
+               data-tr=" ve "
+               data-en=" and "> ve </span><code class="inline-code">config profile set</code><span
+               data-tr=" kullanım hatası verir, "
+               data-en=" give a usage error, and "> kullanım hatası verir, </span><code class="inline-code">explain</code><span
+               data-tr=" ise sessizce yok sayar; bu üçünde onun yerine "
+               data-en=" silently ignores it; for those three use "> ise sessizce yok sayar; bu üçünde onun yerine </span><code class="inline-code">COMRADE_PROFILE=work</code><span
+               data-tr=" kullanın ("
+               data-en=" instead ("> kullanın (</span><a href="https://github.com/firatkutay/cli-comrade/issues/27" target="_blank" rel="noopener noreferrer">issue #27</a><span
+               data-tr=")."
+               data-en=").">).</span></li>
             <li><b data-tr="Plan önizlemesi" data-en="Plan preview">Plan önizlemesi</b><span
                data-tr=" — "
                data-en=" — set "> — </span><code class="inline-code">general.plan_review=ask</code><span
@@ -464,8 +476,10 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-en=" — add "> — herhangi bir çalıştırmaya </span><code class="inline-code">--usage</code><span
                data-tr=" ekleyin, ya da kalıcı olarak "
                data-en=" to any run, or make it permanent with "> ekleyin, ya da kalıcı olarak </span><code class="inline-code">comrade config set general.show_usage true</code><span
-               data-tr=" yapın; her çalıştırma sonunda token/maliyet özeti yazılır."
-               data-en="; a token/cost summary prints at the end of every run."> yapın; her çalıştırma sonunda token/maliyet özeti yazılır.</span></li>
+               data-tr=" yapın; her çalıştırma sonunda token/maliyet özeti yazılır. Not: "
+               data-en="; a token/cost summary prints at the end of every run. Caveat: when "> yapın; her çalıştırma sonunda token/maliyet özeti yazılır. Not: </span><code class="inline-code">openai_compat</code><span
+               data-tr=" OpenAI dışı bir uç noktaya (Qwen, Groq, OpenRouter, yerel bir gateway…) işaret ediyorsa maliyet tahmini gösterilmez — fiyat tablosu yalnızca OpenAI'ın kendi barındırdığı modeli kapsar, ve emin görünen ama yanlış bir rakam hiç göstermemekten daha kötü olurdu. Token sayıları her durumda yazılmaya devam eder."
+               data-en=" points at a non-OpenAI endpoint (Qwen, Groq, OpenRouter, a local gateway…), no cost estimate is shown — the price table only covers OpenAI's own hosted model, and a confidently wrong dollar figure would be worse than none. Token counts still print regardless."> OpenAI dışı bir uç noktaya (Qwen, Groq, OpenRouter, yerel bir gateway…) işaret ediyorsa maliyet tahmini gösterilmez — fiyat tablosu yalnızca OpenAI'ın kendi barındırdığı modeli kapsar, ve emin görünen ama yanlış bir rakam hiç göstermemekten daha kötü olurdu. Token sayıları her durumda yazılmaya devam eder.</span></li>
             <li><code class="inline-code">comrade doctor</code><span
                data-tr=" — salt-okunur, uçtan uca bir öz-tanı; "
                data-en=" — a read-only, end-to-end self-diagnostic; "> — salt-okunur, uçtan uca bir öz-tanı; </span><code class="inline-code">--live</code><span

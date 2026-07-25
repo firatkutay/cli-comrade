@@ -42,6 +42,17 @@ if (!packagesDir) {
 
 const tarballDir = fs.mkdtempSync(path.join(os.tmpdir(), 'local-registry-tarballs-'));
 
+// Registered IMMEDIATELY after tarballDir is created, before the `npm
+// pack` loop below (which takes real, multi-second time against ~14 MB
+// binaries): a SIGTERM/SIGINT landing mid-loop must still clean up
+// whatever has been packed so far. `exit` fires synchronously on every
+// termination path (including the process.exit(0) calls below), so this
+// one handler covers all of them -- but only because it is registered
+// before there is anything to leak, not after.
+process.on('exit', () => fs.rmSync(tarballDir, { recursive: true, force: true }));
+process.on('SIGTERM', () => process.exit(0));
+process.on('SIGINT', () => process.exit(0));
+
 // name -> { packument, tarballPath, tarballRoute }
 const registry = new Map();
 
@@ -119,11 +130,3 @@ const server = http.createServer((req, res) => {
 server.listen(0, '127.0.0.1', () => {
   console.log(`PORT=${server.address().port}`);
 });
-
-// `exit` fires synchronously on every termination path (including the
-// process.exit(0) calls below), so a single handler here is enough to
-// remove the tarball staging directory regardless of how this process
-// ends.
-process.on('exit', () => fs.rmSync(tarballDir, { recursive: true, force: true }));
-process.on('SIGTERM', () => process.exit(0));
-process.on('SIGINT', () => process.exit(0));

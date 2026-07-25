@@ -113,9 +113,10 @@ derlenmiş `comrade` binary'sini indirir — herhangi bir Go/derleme araç
 zinciri gerekmez; platforma özgü binary, `optionalDependencies` üzerinden
 otomatik seçilir (linux/macOS amd64+arm64, Windows amd64). Bu nedenle
 `npm ci --ignore-scripts` de sorunsuz çalışır (postinstall script'i
-yoktur). Paket adı ayrılmış/doğrulanmış durumda ancak ilk yayın henüz
-yapılmadı; onaylanana kadar yukarıdaki diğer kurulum yöntemlerini
-kullanın.
+yoktur). Paket adı şu an doğrulanmış şekilde müsait (npm'de bir
+rezervasyon mekanizması yoktur — bu sadece "henüz kimse almamış" demektir,
+bir garanti değil) ancak ilk yayın henüz yapılmadı; onaylanana kadar
+yukarıdaki diğer kurulum yöntemlerini kullanın.
 
 ### winget (Windows) — beklemede
 
@@ -312,8 +313,10 @@ environments that already have Node.js/npm — no Go/build toolchain
 required. The right platform-specific binary (linux/macOS amd64+arm64,
 Windows amd64) is selected automatically via `optionalDependencies`, so
 `npm ci --ignore-scripts` works fine too (there is no postinstall
-script). The package name is reserved/verified available but not yet
-published; use one of the other install methods above until it is.
+script). The package name is currently verified available (npm has no
+reservation mechanism -- this only means "nobody has claimed it yet," not
+a guarantee) but not yet published; use one of the other install methods
+above until it is.
 
 ### winget (Windows) — pending
 

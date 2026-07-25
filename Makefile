@@ -88,13 +88,17 @@ clean:
 # --- npm distribution (stage 1: packaging + dispatcher + assembly only —
 # see docs/PACKAGING.md; nothing here ever runs `npm publish` for real) ---
 
-# npm-test runs the dispatcher/platform-map Node assertion scripts plus the
-# assembly script's own failure-mode tests (bad version, missing binary).
-# No npm dependencies are installed for this — see npm/main/package.json's
-# "engines" floor; the tests use only Node built-ins.
+# npm-test runs the dispatcher/platform-map Node assertion scripts, the
+# assembly script's own failure-mode tests (bad version, missing binary,
+# version/metadata mismatch, dangerous out-dir), and the git-index exec-bit
+# guard (recurrence guard — see npm/test/test-script-permissions.sh). No
+# npm dependencies are installed for the first two — see
+# npm/main/package.json's "engines" floor; those tests use only Node
+# built-ins.
 npm-test:
 	bash npm/test/run-node-tests.sh
 	bash npm/test/test-assemble.sh
+	bash npm/test/test-script-permissions.sh
 
 # npm-package assembles the 6 ready-to-publish package directories from an
 # existing goreleaser dist/ (run `make release-snapshot` first) into
@@ -111,10 +115,13 @@ npm-dry-run: npm-package
 		npm publish --dry-run "$$pkg" || exit 1; \
 	done
 
-# npm-smoke assembles a fresh copy of the packages, `npm pack`s the
-# linux-x64 platform package + the main package, installs both tarballs
-# together into a throwaway prefix, and runs the resulting `comrade`
-# binary — Linux only (see npm/test/test-smoke.sh). NPM_VERSION may be
-# left unset here: test-smoke.sh falls back to the nearest git tag.
+# npm-smoke assembles a fresh copy of the packages, publishes all 6 to a
+# throwaway local-only registry (verdaccio, uplinks disabled — never
+# touches the real npm registry), then runs a real `npm install -g
+# cli-comrade` (cli-comrade as the ONLY direct install target, so its
+# optionalDependency resolves transitively) and asserts the installed bin
+# shim actually resolves to the dispatcher — Linux only (see
+# npm/test/test-smoke.sh). NPM_VERSION may be left unset here:
+# test-smoke.sh falls back to the nearest git tag.
 npm-smoke:
 	bash npm/test/test-smoke.sh "$(DIST_DIR)" "$(NPM_VERSION)"

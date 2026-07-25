@@ -9,6 +9,9 @@
   },
   "license": "MIT",
   "author": "Fırat Kutay",
+  "publishConfig": {
+    "access": "public"
+  },
   "os": [
     "PLATFORM_OS"
   ],
@@ -19,6 +22,7 @@
     "comrade": "bin/PLATFORM_BIN"
   },
   "files": [
-    "bin/"
+    "bin/",
+    "LICENSE"
   ]
 }

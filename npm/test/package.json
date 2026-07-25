@@ -1,0 +1,8 @@
+{
+  "name": "cli-comrade-npm-tests",
+  "private": true,
+  "description": "Dev-only test harness for npm/ -- never published. Provides a throwaway, uplink-disabled local registry (verdaccio) so test-smoke.sh can exercise a real `npm install cli-comrade` (optionalDependency resolved transitively) without ever contacting the real npm registry.",
+  "devDependencies": {
+    "verdaccio": "6.7.4"
+  }
+}

@@ -1,0 +1,47 @@
+# coverage-floors.txt — per-package coverage ratchet (GitHub issue #21).
+#
+# Format: one entry per line, "<go-package-import-path> <integer-floor-percent>".
+# Blank lines and lines starting with # are ignored; trailing "# ..." comments
+# on a data line are also stripped.
+#
+# scripts/check-coverage-floors.sh (wired into `make coverage-check` and CI)
+# fails the build when either:
+#   - a package's CURRENT `go test -cover` coverage falls below its floor here, or
+#   - this file and `go list ./...` have drifted out of sync in EITHER
+#     direction (a package with no floor entry, or a floor entry for a
+#     package that no longer exists).
+#
+# Floors are today's measured coverage, rounded down to the nearest integer,
+# minus a 2-point tolerance — enough slack that normal churn (a line or two
+# of new, tested code shifting the percentage slightly) doesn't flake the
+# gate, while still catching a brand-new file that ships at or near 0%
+# coverage (exactly how the plan-review CLI glue first shipped untested).
+#
+# Re-baselining after intentionally changing a package's coverage:
+#   1. go test ./... -cover
+#   2. For the changed package, take the new coverage%, floor it to an
+#      integer, subtract 2 (minimum 0), and update its line below.
+#   3. Never raise a floor above a package's ACTUAL current coverage — that
+#      would make the gate fail immediately on the next unrelated commit.
+#   4. Adding a brand-new package: add a line here in the same pass (the
+#      guard above fails the build otherwise). A package with genuinely no
+#      tests yet (e.g. a thin main-only package) gets floor 0 with a comment
+#      explaining why, not a fabricated test.
+
+github.com/firatkutay/cli-comrade/cmd/comrade 38
+github.com/firatkutay/cli-comrade/internal/audit 75
+github.com/firatkutay/cli-comrade/internal/cli 81
+github.com/firatkutay/cli-comrade/internal/config 84
+github.com/firatkutay/cli-comrade/internal/context 88
+github.com/firatkutay/cli-comrade/internal/doctor 87
+github.com/firatkutay/cli-comrade/internal/engine 84
+github.com/firatkutay/cli-comrade/internal/executor 91
+github.com/firatkutay/cli-comrade/internal/i18n 95
+github.com/firatkutay/cli-comrade/internal/llm 86
+github.com/firatkutay/cli-comrade/internal/redact 98
+github.com/firatkutay/cli-comrade/internal/safety 93
+github.com/firatkutay/cli-comrade/internal/secrets 83
+github.com/firatkutay/cli-comrade/internal/shellinit 91
+github.com/firatkutay/cli-comrade/internal/tui 80
+github.com/firatkutay/cli-comrade/internal/undo 89
+github.com/firatkutay/cli-comrade/internal/update 82

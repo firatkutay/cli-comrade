@@ -122,8 +122,9 @@ func runDo(cmd *cobra.Command, newLoader loaderFactory, request string, flags *e
 
 	preApproved := false
 	forceOn, forceOff := flags.reviewFlagValue()
-	if shouldShowPlanReview(mode, cfg.General.PlanReview, forceOn, forceOff, isTerminal(int(os.Stdin.Fd())), len(plan.Steps)) {
-		reviewer := &tuiPlanReviewer{in: cmd.InOrStdin(), out: cmd.OutOrStdout(), colorEnabled: colorEnabled, tr: tr}
+	planReviewIn := cmd.InOrStdin()
+	if shouldShowPlanReview(mode, cfg.General.PlanReview, forceOn, forceOff, isReaderTerminal(planReviewIn, isTerminal), len(plan.Steps)) {
+		reviewer := &tuiPlanReviewer{in: planReviewIn, out: cmd.OutOrStdout(), colorEnabled: colorEnabled, tr: tr}
 		reviewedPlan, ok, rerr := reviewPlan(ctx, plan, safetyEngine, reviewer)
 		if rerr != nil {
 			return fmt.Errorf("comrade do: %w", rerr)

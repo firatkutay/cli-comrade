@@ -34,6 +34,16 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # Coverage ratchet (GitHub issue #21): fails when a package's
+      # coverage drops below its recorded floor in coverage-floors.txt,
+      # or when that file drifts out of sync with go list ./... in
+      # either direction — see coverage-floors.txt's own header. Uses
+      # bash explicitly so this step also runs on the windows-latest
+      # leg of this matrix (its default shell is PowerShell).
+      - name: Coverage floors
+        shell: bash
+        run: ./scripts/check-coverage-floors.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:

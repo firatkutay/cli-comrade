@@ -12,6 +12,19 @@ builds:
     binary: comrade
     env:
       - CGO_ENABLED=0
+    # -trimpath strips the build-time absolute source path (e.g.
+    # /home/runner/work/... in CI vs whatever local path a developer built
+    # from) from the compiled binary. Without it, `go build` embeds that
+    # path into the binary's debug/module info, so the exact same source +
+    # toolchain + ldflags built at two different absolute paths produces
+    # two different SHA-256 sums — confirmed by controlled experiment: two
+    # scratch builds of the same commit at different paths diverged before
+    # this flag and became byte-identical after. This is what lets a
+    # locally built binary (e.g. the npm bootstrap publish, built by hand
+    # rather than by this repo's own CI runner) be verified byte-for-byte
+    # against the cosign-signed release checksums.txt.
+    flags:
+      - -trimpath
     ldflags:
       - -s -w -X main.version={{.Version}}
     goos:

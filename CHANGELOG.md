@@ -118,8 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Homebrew, Scoop, winget, and Snap install channels** — `comrade` can now be
-  installed via `brew install comrade`, `scoop install comrade`, `winget install
-  FiratKutay.comrade`, and (once approved) `snap install cli-comrade --classic`,
+  installed via `brew install comrade`, `scoop install comrade`, `winget install FiratKutay.comrade`, and (once approved) `snap install cli-comrade --classic`,
   in addition to the `curl … | sh` / `irm … | iex` scripts. See `docs/PACKAGING.md`.
 
 ### Fixed
@@ -136,17 +135,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `comrade init <shell>` now also installs Tab-completion, alongside the
   existing shell hook: `comrade <Tab>` lists every visible command;
   `comrade auth <Tab>` lists `login`/`logout`/`status`;
-  `comrade auth login <Tab>` lists the known providers; `comrade init
-  <Tab>` lists the supported shells; `comrade config get`/`set <Tab>`
+  `comrade auth login <Tab>` lists the known providers; `comrade init <Tab>` lists the supported shells; `comrade config get`/`set <Tab>`
   lists every real config key (sourced from the config schema itself).
   Free-text commands (`do`, `explain`, `fix`, `chat`) never fall back to
   filename completion. bash/zsh/PowerShell get one added registration
   line inside the existing managed hook block; fish gets its own
   comrade-owned completions file at its native lazy-load location
-  (`~/.config/fish/completions/comrade.fish`, XDG-aware). `comrade init
-  --remove` removes completions along with the hook; `--print` and a
-  declined confirmation write nothing. The underlying `comrade
-  completion <shell>` command stays hidden from `--help` (still fully
+  (`~/.config/fish/completions/comrade.fish`, XDG-aware). `comrade init --remove` removes completions along with the hook; `--print` and a
+  declined confirmation write nothing. The underlying `comrade completion <shell>` command stays hidden from `--help` (still fully
   functional) — completions are meant to be picked up purely via
   `comrade init`. Existing installs need `comrade init <shell>` re-run
   once (idempotent) to pick up completions on top of an already-installed
@@ -164,8 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `comrade auth login` with no provider, `comrade do` with no request, a
   stray argument to a no-arg command) renders a friendly usage error in
   the resolved interface language instead of cobra's raw English
-  "accepts N arg(s), received M". `comrade auth bogus`/`comrade config
-  bogus` (an unmatched subcommand name) now also return a real,
+  "accepts N arg(s), received M". `comrade auth bogus`/`comrade config bogus` (an unmatched subcommand name) now also return a real,
   translated, non-zero-exit error naming every real subcommand — instead
   of silently printing help and exiting `0` as before. Documented side
   effect: `auth`/`config`'s own `--help` output now additionally shows a
@@ -175,10 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **No-API-key error was a novice-hostile internal wrap-chain, always in
   English** (Linux QA MAJOR-1): `comrade do`/`fix`/`explain`/`chat` used
-  to surface `llm`'s raw fallback-chain error verbatim — `comrade do:
-  engine: generate plan: llm: all providers failed: anthropic: no API key
-  found for provider "anthropic"; set one of: COMRADE_ANTHROPIC_API_KEY,
-  ANTHROPIC_API_KEY` — regardless of `general.language`, with no
+  to surface `llm`'s raw fallback-chain error verbatim — `comrade do: engine: generate plan: llm: all providers failed: anthropic: no API key found for provider "anthropic"; set one of: COMRADE_ANTHROPIC_API_KEY, ANTHROPIC_API_KEY` — regardless of `general.language`, with no
   onboarding pointer. `internal/llm`'s existing `*KeyMissingError` (already
   `%w`-wrapped through the whole fallback chain) is now recovered via
   `errors.As` at the CLI boundary (`classifyLLMError`/`translateLLMError`,
@@ -371,8 +363,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ... succeeded"/"still fails" lines — were raw, un-routed English Go
   format strings (not LLM output), now catalog-driven like everything
   else `comrade fix` prints. Real-host re-verification found one residual
-  case in this same fix: `comrade explain` (no arguments) and `comrade
-  config set` (wrong argument count) still rendered their usage errors in
+  case in this same fix: `comrade explain` (no arguments) and `comrade config set` (wrong argument count) still rendered their usage errors in
   English on a host with `general.language = "tr"` set only in the config
   file (no `COMRADE_LANG`/`LANG` env vars) — both paths used
   `envOnlyTranslator` (deliberately config-blind, for paths that must
@@ -436,8 +427,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per ecosystem into a single PR to cut review noise; major bumps stay
   ungrouped so each gets its own reviewable PR. Commit messages use
   `chore(deps)` (gomod) / `chore(ci)` (github-actions) prefixes to match
-  this repo's Conventional Commits convention. The local `replace
-  github.com/atotto/clipboard => ./third_party/atotto-clipboard`
+  this repo's Conventional Commits convention. The local `replace github.com/atotto/clipboard => ./third_party/atotto-clipboard`
   directive in `go.mod` needs no special handling: Dependabot has no
   registry version to propose for a `replace`-redirected module, so it
   is silently skipped. Dependabot's GitHub Actions updater bumps both the
@@ -491,9 +481,7 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
 
 ### Fixed
 
-- **Cold start regression (~600ms → ~4-5ms)**: `github.com/atotto/
-  clipboard` v0.1.4 (pulled in transitively by `charm.land/bubbles/v2/
-  textinput`, used by every confirm prompt and `comrade chat`) ran up to
+- **Cold start regression (~600ms → ~4-5ms)**: `github.com/atotto/clipboard` v0.1.4 (pulled in transitively by `charm.land/bubbles/v2/textinput`, used by every confirm prompt and `comrade chat`) ran up to
   five sequential `exec.LookPath` PATH scans unconditionally at package
   `init()` — paid by every single `comrade` invocation, including
   `--version`/`--help`, whether or not it ever touched the clipboard. On
@@ -617,8 +605,7 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   clear message if neither is present) and a `sudo` fallback when neither
   `~/.local/bin` nor `/usr/local/bin` is writable.
 - FAZ 10: `docs/INSTALL.md`, `docs/CONFIGURATION.md` (every config key,
-  default, and `COMRADE_...` env override in one table), `docs/
-  SECURITY.md`, and `docs/TROUBLESHOOTING.md` — each bilingual (TR
+  default, and `COMRADE_...` env override in one table), `docs/SECURITY.md`, and `docs/TROUBLESHOOTING.md` — each bilingual (TR
   section then EN section, matching `README.md`'s own convention).
   `README.md` gained one-line per-OS install commands and links to all
   four docs.
@@ -708,8 +695,7 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   `ListModels` now surface a friendly "`ollama serve`" message instead of
   a bare transport error. See docs/phases/FAZ-08.md.
 - FAZ 7: `comrade fix` — the main use-case, error-diagnosis flow (replacing the
-  FAZ 0 stub). `internal/engine`: new `Diagnoser.Diagnose(ctx, ErrorContext)
-  (Diagnosis, error)` — a `go:embed`'d diagnose system prompt (root-cause/
+  FAZ 0 stub). `internal/engine`: new `Diagnoser.Diagnose(ctx, ErrorContext) (Diagnosis, error)` — a `go:embed`'d diagnose system prompt (root-cause/
   explanation/plan JSON schema, package-manager-aware install suggestions, a
   16-example TR/EN few-shot grounding block covering command-not-found,
   permission denied, port-in-use, ENOENT, Python `ModuleNotFoundError`, git
@@ -741,8 +727,7 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
 - FAZ 6: executor + three behavior modes (auto/ask/info) — the product's
   core execution loop. `internal/engine`: `Mode` (`auto`/`ask`/`info`) +
   `ResolveMode(flag, env, config)` implementing the exact flag >
-  `COMRADE_MODE` > config precedence; `Execute(ctx, plan, mode, deps)
-  (RunSummary, error)` dispatching to `info` (prints the plan, executes
+  `COMRADE_MODE` > config precedence; `Execute(ctx, plan, mode, deps) (RunSummary, error)` dispatching to `info` (prints the plan, executes
   nothing), `ask` (per-step confirm via a decoupled `PromptUI` interface:
   `[e]vet`/`[h]ayır` run/skip, `[d]üzenle` re-evaluates the edited
   command through `safety.Engine` *before* ever running it — refusing and
@@ -799,8 +784,7 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   one stderr warning at construction, never a crash); ten escalation
   rules (`rm -r`/`-f`, the same Remove-Item alias family with any
   target, `chmod -R 777`, disk-write redirects, registry `Remove-Item*`
-  on `HKLM:`/`HKCU:`, `killall`/`taskkill /F`, `iptables -F`/`netsh
-  advfirewall reset`, `git push --force`, `sudo`/`runas`/`-Verb RunAs`,
+  on `HKLM:`/`HKCU:`, `killall`/`taskkill /F`, `iptables -F`/`netsh advfirewall reset`, `git push --force`, `sudo`/`runas`/`-Verb RunAs`,
   package-manager installs, network verbs) only ever raise a command's
   effective risk, never lower it — a step the LLM declared `destructive`
   stays `destructive` even when nothing else matches. 236 table-driven
@@ -822,8 +806,7 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   marker respectively if the retry doesn't fix it), fails closed to
   `RiskDestructive` for any step whose `risk` label doesn't parse, and
   runs every step through `safety.Engine` before returning — the LLM's
-  declared risk is never the last word. New hidden `comrade do
-  <request...> --dry-run` (execution itself is FAZ 6's job; without
+  declared risk is never the last word. New hidden `comrade do <request...> --dry-run` (execution itself is FAZ 6's job; without
   `--dry-run` this phase refuses to run at all) renders the plan as a
   `STEP|COMMAND|RISK|REVERSIBLE|RATIONALE` table showing the safety
   engine's own verdict — `CONFIRM(<effective risk>)` or
@@ -840,8 +823,7 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   `XDG_CONFIG_HOME`, or a PowerShell `$PROFILE` actually resolved by
   invoking `pwsh`/`powershell` — never guessed); `--print` shows the
   snippet only, `--remove` uninstalls it, `--yes` skips the
-  confirmation prompt. Every hook execs a new hidden `comrade hook
-  record --shell <name> --exit <code> --command <text>` subcommand
+  confirmation prompt. Every hook execs a new hidden `comrade hook record --shell <name> --exit <code> --command <text>` subcommand
   instead of hand-assembling JSON in shell script (unsafe for arbitrary
   command text — see docs/phases/FAZ-04.md), which atomically writes
   `last_command.json` via a new `context.WriteLastCommand` (temp file +

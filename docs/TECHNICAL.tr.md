@@ -45,8 +45,7 @@ enjekte edilen `i18n.Translator`'dan beslenir; katalog mesajları
 | Açıkla | `a` (açıkla) | `x` (explain) | Bu adım için ayrıntılı bir açıklama göster, sonra tekrar sor |
 | Tümü | `t` (tümü) | `a` (all) | Bu adımı ve kalan her read/write/network adımını tekrar sormadan onayla — destructive/elevated adımlar yine de tek tek sorulur |
 
-Render edilen lejantlar, birebir: TR `[e]vet [h]ayır [d]üzenle
-[a]çıkla [t]ümü: `, EN `[y]es [n]o [e]dit [x]plain [a]ll: `. `mapKey`,
+Render edilen lejantlar, birebir: TR `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü: `, EN `[y]es [n]o [e]dit [x]plain [a]ll: `. `mapKey`,
 kabul edilen tuş basımını **kesinlikle aktif dile göre çözer — asla iki
 tuş kümesinin birleşimi olarak değil**: `e` ve `a`, TR/EN genelinde
 tehlikeli tersinmelerle çakışır (TR `e`=Evet vs. EN `e`=Düzenle; TR
@@ -170,8 +169,7 @@ flowchart TD
    §8'e bakın.
 7. **Mod tabanlı yürütme döngüsü** (`internal/engine`,
    `internal/executor`) — §1'deki mod tablosuna göre dağıtır. Yürütmenin
-   kendisi Windows dışında `sh -c <komut>`, Windows'ta `powershell
-   -NoProfile -Command <komut>` çalıştırır
+   kendisi Windows dışında `sh -c <komut>`, Windows'ta `powershell -NoProfile -Command <komut>` çalıştırır
    (`internal/executor/executor.go`, `buildCommand`), bu seçim bir build
    tag yerine kurulum anında `runtime.GOOS`'a göre yapılır (`New`) —
    böylece her üç platformun mantığı tek bir binary'den test edilebilir
@@ -230,8 +228,7 @@ dosyayı okuyarak başlayın.
 
 ### Vendored fork: `third_party/atotto-clipboard`
 
-`go.mod`'da bir `replace github.com/atotto/clipboard =>
-./third_party/atotto-clipboard` satırı var. Upstream `atotto/clipboard`
+`go.mod`'da bir `replace github.com/atotto/clipboard => ./third_party/atotto-clipboard` satırı var. Upstream `atotto/clipboard`
 v0.1.4'ün Unix build'i, **paket seviyesinde bir `init()` içinde
 koşulsuz olarak** beşe kadar sıralı `exec.LookPath` PATH taraması
 yapıyor — bunu `bubbles/v2/textinput`'u import eden her `comrade`
@@ -248,8 +245,7 @@ sonuncusu).
 
 **Sonuç:** modül yerel bir dosya sistemi yoluna `replace` edildiği için,
 `go install github.com/firatkutay/cli-comrade/cmd/comrade@<versiyon>`
-son kullanıcı için **çalışmaz** — Go'nun modül çözümlemesi bir `replace
-... => ./göreli/yol` direktifini bir `go install` modül sınırının
+son kullanıcı için **çalışmaz** — Go'nun modül çözümlemesi bir `replace ... => ./göreli/yol` direktifini bir `go install` modül sınırının
 ötesinde takip edemez. Kurulum, yayınlanmış bir binary üzerinden
 (`scripts/install.sh` / `install.ps1`), bir paket yöneticisi üzerinden
 (Homebrew Cask / Scoop / winget / `.deb`/`.rpm`), veya tam bir yerel
@@ -281,12 +277,10 @@ komutları üç i18n'li grup başlığı altında listeler — Core
 (`do`/`fix`/`explain`/`chat`), Setup (`auth`/`init`/`config`), Info
 (`history`/`upgrade`) — artı `hook`/`help` için cobra'nın varsayılan
 "Additional Commands:" kovası (otomatik üretilen `completion` komutu
-artık help'ten tamamen **gizlidir** — `cobra.CompletionOptions{
-HiddenDefaultCmd: true}` ile; `comrade completion bash` vb. hâlâ
+artık help'ten tamamen **gizlidir** — `cobra.CompletionOptions{HiddenDefaultCmd: true}` ile; `comrade completion bash` vb. hâlâ
 çalışır, sadece reklamı yapılmaz). Cobra'nın kendi yapısal bölüm
 etiketleri (`Usage:`/`Aliases:`/`Examples:`/`Available Commands:`/
-`Additional Commands:`/`Flags:`/`Global Flags:`/`Additional help
-topics:`, artı sondaki "Use `\"...\"` for more information..."
+`Additional Commands:`/`Flags:`/`Global Flags:`/`Additional help topics:`, artı sondaki "Use `\"...\"` for more information..."
 satırı) de artık çevrilidir — `usageTemplateFor(tr)` ile: cobra
 v1.10.2'nin kendi export edilmemiş `defaultUsageTemplate`'inin, yalnızca
 o sekiz etiket `tr.T(...)` çağrılarıyla değiştirilmiş, birebir yapısal
@@ -309,8 +303,7 @@ bloklayıcı bir terminal sorgusu ödememek için sabit ANSI256 kodları
 (§13'ün vendored clipboard fork'u için ele aldığı aynı cold-start
 kaygısı).
 
-**Renk tam olarak tek bir yerde kararlaştırılır**: `internal/cli.
-resolveColorEnabled` (`internal/cli/color.go`). `general.color=false`
+**Renk tam olarak tek bir yerde kararlaştırılır**: `internal/cli.resolveColorEnabled` (`internal/cli/color.go`). `general.color=false`
 her zaman son sözdür — açık bir opt-out. Aksi halde, hedef writer
 üzerinde `colorprofile.Detect` çağrı-başına karar verir: TTY olmayan/
 pipe'lanmış bir çalıştırma için varsayılan düz çıktı,
@@ -378,10 +371,7 @@ render eder — aşağıdaki "`comrade chat` içinde" bölümüne bakın.
 
 ### `comrade` (çıplak, alt komutsuz)
 
-Versiyon banner'ını, ardından cobra help'i yazdırır. `comrade <serbest
-metin>` — hiçbir alt komut adıyla eşleşmeyen metin — `comrade do
-<serbest metin>` ile aynı mantığa dağıtılır (root'un `Args:
-cobra.ArbitraryArgs` + `RunE`'si), böylece örn. `comrade docker kur`
+Versiyon banner'ını, ardından cobra help'i yazdırır. `comrade <serbest metin>` — hiçbir alt komut adıyla eşleşmeyen metin — `comrade do <serbest metin>` ile aynı mantığa dağıtılır (root'un `Args: cobra.ArbitraryArgs` + `RunE`'si), böylece örn. `comrade docker kur`
 `do` yazmaya gerek kalmadan "çalışır". Gerçek bir alt komut yazım hatası
 bu yüzden "şunu mu demek istediniz" önerisiyle reddedilmez — bunun
 yerine serbest-metin olarak dağıtılır, FAZ 6'nın bilinçli bir UX
@@ -527,8 +517,7 @@ argüman-sayısı ve bilinmeyen-alt-komut kullanım hataları" bölümüne
 bakın.
 
 `config set`, `explain` gibi `DisableFlagParsing: true` ayarını
-kullanır (bir değer kendisi bir flag gibi görünebilir, ör. `comrade
-config set safety.denylist_extra --foo`) ve bu yüzden benzer şekilde
+kullanır (bir değer kendisi bir flag gibi görünebilir, ör. `comrade config set safety.denylist_extra --foo`) ve bu yüzden benzer şekilde
 `-h`/`--help`'i ve yanlış argüman sayısını kendisi ele alır — cobra'nın
 ham İngilizce `ExactArgs(2)` mesajı yerine i18n'li bir kullanım hatası
 (`MsgConfigSetUsageError`). **Bilinen kısıtlama**: `config set`,
@@ -610,8 +599,7 @@ Hedef shell'in rc/profile dosyasına shell entegrasyon bloğunu kurar
 olarak hedefler** — Windows PowerShell 5.1 (`powershell.exe`) ve
 PowerShell 7 (`pwsh.exe`), hangisi gerçekten mevcutsa
 (`internal/shellinit/psprofiles.go`'nun `ResolvePowerShellProfiles`'ı).
-Bulunan her varyantın kendi `$PROFILE`'ı sorgulanır ve hook, `comrade
-init`'in diğer her shell için kullandığı aynı idempotent
+Bulunan her varyantın kendi `$PROFILE`'ı sorgulanır ve hook, `comrade init`'in diğer her shell için kullandığı aynı idempotent
 blok-marker mekanizmasıyla oraya kurulur/güncellenir/kaldırılır — her
 profil için bir rapor satırı (varyant etiketi + durum + yol). Yalnızca
 bir varyant kuruluysa sorun yok; hiçbiri bulunamazsa hata verir. Birden
@@ -738,8 +726,7 @@ yukarıdaki `llm.timeout_seconds`'tan ayrı, ikinci bir timeout'tur —
 yerde uygulanır: `Client.Stream`'in `releaseOnClose`'u, her bir chunk'ı
 ilettiğinde tek bir timer'ı sıfırlar — bu, dört connector'ın kendi okuma
 döngülerine ayrı ayrı kopyalanmak yerine yapılır. Timer, başka bir
-chunk gelmeden ateşlenirse, stream son bir `Chunk{Done:true, Err:
-ErrIdleTimeout}` ile biter (`internal/llm/errors.go`). `0` değeri, bu
+chunk gelmeden ateşlenirse, stream son bir `Chunk{Done:true, Err: ErrIdleTimeout}` ile biter (`internal/llm/errors.go`). `0` değeri, bu
 paketin idle-timeout-öncesi davranışını tam olarak yeniden üretir — hiç
 timer başlatılmaz.
 
@@ -836,8 +823,7 @@ uyarısıyla atlanır.
 silme flag'leri (`rm -r`/`-f`, PowerShell `-Recurse`/`-Force`),
 root-benzeri bir hedefte `chmod`/`chown -R`, disk aygıtı yazmaları,
 registry silme (`HKLM:`/`HKCU:`), `killall`/`taskkill /F`, güvenlik
-duvarı sıfırlamaları (`iptables -F`, `netsh advfirewall reset`), `git
-push --force`/`-f`, `sudo`/`runas`/yükseltme, paket yöneticisi
+duvarı sıfırlamaları (`iptables -F`, `netsh advfirewall reset`), `git push --force`/`-f`, `sudo`/`runas`/yükseltme, paket yöneticisi
 kurulumları, ve bir network-erişim fiili içeren herhangi bir komut —
 artı v0.3.0'ın sertleştirme eklemeleri, ki bunlar modelin kendi beyan
 ettiği risk etiketinin önceden hiç kapsamadığı signature-allowlist
@@ -845,10 +831,8 @@ boşluklarını kapatır: `find ... -delete` (kitlesel, `rm`-olmayan
 silme), `shred -u`/`--remove` ve `truncate -s 0` (`rm`-olmayan
 güvenli-silme/sıfırlama), `mv ... /dev/null` (move ile atma), Windows
 storage cmdlet'leri (`Format-Volume`/`Clear-Disk`/`Initialize-Disk`/
-`Remove-Partition`), koşulsuz `reg delete ... /f`, `diskpart /s
-<script>` (opak script dosyası), çıplak `eval`, ve üç bağımsız şekilde
-tanınan fetch-and-execute — bir pipe (`curl|wget|... | sh/bash/zsh/
-python/pwsh`), bir process substitution (`bash <(curl ...)`), ve bir
+`Remove-Partition`), koşulsuz `reg delete ... /f`, `diskpart /s <script>` (opak script dosyası), çıplak `eval`, ve üç bağımsız şekilde
+tanınan fetch-and-execute — bir pipe (`curl|wget|... | sh/bash/zsh/python/pwsh`), bir process substitution (`bash <(curl ...)`), ve bir
 komut ikamesi (`bash -c "$(curl ...)"`, yalnızca `normalizeCommand`
 `$(...)`'i açtığı için yakalanır) — artı bir `base64 -d | sh`
 decode-and-execute pipeline'ı.
@@ -908,8 +892,7 @@ hiçbir kelime sağlamaz.
 ### Audit log (`internal/audit`)
 
 Çalıştırılan her adım için bir JSONL kaydı: `timestamp`, `request`,
-`command`, `risk`, `mode`, `exit_code`, `duration_ms`. `comrade
-history` ile okunur.
+`command`, `risk`, `mode`, `exit_code`, `duration_ms`. `comrade history` ile okunur.
 
 ### `--yolo`
 
@@ -927,8 +910,7 @@ kuralı #5).
 
 ## 9. Shell entegrasyonu
 
-`comrade init [bash|zsh|fish|powershell]`, her komuttan sonra `comrade
-hook record --shell <isim> --exit <kod> --command <metin>`'i exec eden
+`comrade init [bash|zsh|fish|powershell]`, her komuttan sonra `comrade hook record --shell <isim> --exit <kod> --command <metin>`'i exec eden
 shell-başına bir hook kurar — `last_command.json`'un JSON'ını shell
 script içinde elle birleştirmek yerine, ki bu keyfi komut metni için
 (tırnaklar, unicode, satır sonları) shell başına farklı ve güvensiz bir
@@ -953,8 +935,7 @@ profili anlamına gelir.
 Snippet'lerin hiçbiri stderr/stdout'u genel olarak yakalamaz —
 CLAUDE.md, shell'ler genelinde güvenilmez olduğu için genel bir
 stderr-tee'yi reddeder — bu yüzden `last_command.json` yalnızca
-`command`, `exit_code`, `shell`, ve `timestamp` kaydeder. `comrade fix
---rerun`, bunun yerine komutu `internal/executor` üzerinden kontrollü
+`command`, `exit_code`, `shell`, ve `timestamp` kaydeder. `comrade fix --rerun`, bunun yerine komutu `internal/executor` üzerinden kontrollü
 şekilde yeniden çalıştırarak stderr'i kendisi yakalar.
 
 Durum dosyası konumu (`internal/context/lastcommand.go`):
@@ -1062,8 +1043,7 @@ sonraki bir `comrade upgrade`, `PATH`'teki hangi binary olursa olsun
 tamamlamaları otomatik olarak onunla senkron tutar, her upgrade'den
 sonra `comrade init`'i yeniden çalıştırmaya gerek kalmadan.
 
-**Gizli `completion` komutu.** Altta yatan `comrade completion
-<shell>` komutu (cobra'nın kendi otomatik ürettiği) `--help`'ten gizli
+**Gizli `completion` komutu.** Altta yatan `comrade completion <shell>` komutu (cobra'nın kendi otomatik ürettiği) `--help`'ten gizli
 kalır (`root.CompletionOptions.HiddenDefaultCmd = true`) — hiçbir i18n
 kancası olmayan, birkaç KB'lık cobra-üretimi, çevrilmemiş yardım metni
 — bu projenin teknik olmayan hedef kitlesine göstermeye değmediğine
@@ -1071,12 +1051,10 @@ karar verildi (QA kararı D4b, §10). Tamamen işlevsel kalır; kullanıcılar
 tamamlamaları yalnızca `comrade init <shell>` üzerinden alır, asla
 `comrade completion`'ı kendileri yazarak değil.
 
-**Mevcut kurulumlar bir kez yeniden çalıştırma gerektirir.** `comrade
-init <shell>` idempotenttir — değişmemiş bir hook bloğu olduğu gibi
+**Mevcut kurulumlar bir kez yeniden çalıştırma gerektirir.** `comrade init <shell>` idempotenttir — değişmemiş bir hook bloğu olduğu gibi
 bırakılır — ama tamamlamalar yeni içeriktir: bu özellikten önceki bir
 kurulumda rc dosyasında hiçbir tamamlama satırı yoktur (bash/zsh/
-PowerShell) ve hiç tamamlama dosyası yoktur (fish). `comrade init
-<shell>`'i bir kez yeniden çalıştırmak, mevcut hook'un üzerine
+PowerShell) ve hiç tamamlama dosyası yoktur (fish). `comrade init <shell>`'i bir kez yeniden çalıştırmak, mevcut hook'un üzerine
 tamamlamaları da ekler — başka herhangi bir snippet-içeriği
 değişikliğinin zaten kullandığı aynı "eski snippet yeniden yazılır"
 yolu.
@@ -1118,8 +1096,7 @@ shell widget'ları tarafından her tuş vuruşunda bir kez çağrılan, gizli,
   yerindeki herhangi bir hata yutulur ve hiçbir çıktı üretilmez, asla
   yanıltıcı veya yarım bir ipucu değil.
 
-**zsh widget'ı** (`internal/shellinit/snippets/zsh.sh`), `[[ -o
-interactive ]] && zmodload zsh/zle` ile korunur:
+**zsh widget'ı** (`internal/shellinit/snippets/zsh.sh`), `[[ -o interactive ]] && zmodload zsh/zle` ile korunur:
 
 - `add-zle-hook-widget line-pre-redraw __comrade_hint_widget` üzerinden
   bağlanır — bir keybinding değil, her-redraw'da çalışan bir hook, bu
@@ -1152,8 +1129,7 @@ interactive ]] && zmodload zsh/zle` ile korunur:
   `PSReadLineKeyHandler` kayıtlı DEĞİLSE kurulur — özel bir kullanıcı
   boşluk bağlaması tamamen dokunulmadan bırakılır.
 - İşleyici boşluğu kendisi ekler (`PSConsoleReadLine::Insert(' ')`),
-  buffer'ı `GetBufferState` ile geri okur, ve — yalnızca buffer `^\s*
-  comrade(\.exe)?(\s+[\w-]+)*\s$` ile eşleşiyorsa —
+  buffer'ı `GetBufferState` ile geri okur, ve — yalnızca buffer `^\s*comrade(\.exe)?(\s+[\w-]+)*\s$` ile eşleşiyorsa —
   `PSConsoleReadLine::PossibleCompletions()`'ı çağırır, bu da
   PSReadLine'ın kendi tamamlama listesini satırın altında render eder.
   Bu bir liste render'ıdır, satır-içi hayalet metin değil: boşlukta
@@ -1311,8 +1287,7 @@ kapatır. `internal/cli/argvalidation.go`'nun `translatedExactArgs`/
 etrafındaki beş ince sarmalayıcıdır; kalan her komutun `Args` alanı
 artık `cobra.ExactArgs`/`MinimumNArgs`/`MaximumNArgs`/`NoArgs`'ı
 doğrudan kullanmak yerine bunlardan birini kullanıyor — cobra'nın ham
-İngilizce `"accepts N arg(s), received M"` / `"unknown command %q for
-%q"`'sunu, `bestEffortTranslator(cmd, newLoader)` üzerinden render
+İngilizce `"accepts N arg(s), received M"` / `"unknown command %q for %q"`'sunu, `bestEffortTranslator(cmd, newLoader)` üzerinden render
 edilen dostane bir mesajla değiştiriyor — bu ağaçtaki her diğer
 kullanım-hatası yolunun zaten kullandığı aynı `general.language`-öncelikli
 çözümleme. Yedi yeni MessageID bunu kapsıyor: beşi komuta-özel
@@ -1373,8 +1348,7 @@ izlediği "engine/config paketleri sunumdan bağımsız kalır,
 `internal/llm`'in kendi yapılandırılmış hatalarını kapsar:
 `classifyLLMError`/`translateLLMError` (`internal/cli/runtime.go`), bir
 `*llm.KeyMissingError`'ı — bu sınıflandırmanın şu an tek durumu —
-dostane, i18n'li bir "API key bulunamadı — `comrade auth login
-<provider>` çalıştırın" mesajı olarak yeniden render eder, yine
+dostane, i18n'li bir "API key bulunamadı — `comrade auth login <provider>` çalıştırın" mesajı olarak yeniden render eder, yine
 `internal/llm`'in kendi İngilizce hata metnini ayrıştırmak yerine
 `errors.As` kullanarak. `do`/`fix`/`explain`, `translateLLMError`'ı
 doğrudan çağırır; chat'in eşdeğeri, `renderChatLLMError`
@@ -1382,8 +1356,7 @@ doğrudan çağırır; chat'in eşdeğeri, `renderChatLLMError`
 çağırır — çünkü chat'in dispatch'i bir `*cobra.Command` üzerinden
 değil, bir bubbletea modeli içinde çalışır. Her iki durumda da,
 orijinal, çevrilmemiş wrap-zinciri detayı yalnızca (dostane mesajın
-yanında) `COMRADE_DEBUG` ayarlıyken yazılır — `hook.go` ve `comrade
-upgrade`'in fetch-başarısızlığı mesajının (§5) zaten kurduğu aynı
+yanında) `COMRADE_DEBUG` ayarlıyken yazılır — `hook.go` ve `comrade upgrade`'in fetch-başarısızlığı mesajının (§5) zaten kurduğu aynı
 debug-detay kuralı.
 
 **Kimlik-bilgisi-depolama uyarısı, yumuşatılmış + i18n'li**: dosya-
@@ -1419,8 +1392,7 @@ anahtarları yerel bir dosyaya kaydediliyor").
   `Needs-CLA` kapısına takılırdı
 - cosign-imzalı bir `checksums.txt.sig` (`signs:`, key-tabanlı, offline
   — `--tlog-upload=false`, yalnızca doğrulama zamanında değil, imzalama
-  zamanında da Rekor transparency log'unu atlar) — bununla `comrade
-  upgrade`'in ne yaptığı için yukarıdaki paragraflara bakın
+  zamanında da Rekor transparency log'unu atlar) — bununla `comrade upgrade`'in ne yaptığı için yukarıdaki paragraflara bakın
 
 `scripts/install.sh`/`install.ps1` kurulum betikleri, host OS/mimarisine
 uyan release arşivini indirir, release'in yayınladığı `checksums.txt`'e
@@ -1514,8 +1486,7 @@ dördünden herhangi birinin tek başına değişmesinde başarısız olur.
   `make test` (`go test ./...`) hepsi temiz geçmeli.
 
 `golangci-lint` **GPL-3.0 lisanslıdır** — yalnızca harici bir
-geliştirme/CI aracı olarak çağrılır (`go install
-.../cmd/golangci-lint@<pinlenmiş versiyon>` ile `$GOPATH/bin`'e kurulur,
+geliştirme/CI aracı olarak çağrılır (`go install .../cmd/golangci-lint@<pinlenmiş versiyon>` ile `$GOPATH/bin`'e kurulur,
 asla bir Go modül bağımlılığı olarak import edilmez veya `comrade`
 binary'sinin kendisine bağlanmaz).
 

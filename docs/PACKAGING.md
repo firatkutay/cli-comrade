@@ -12,8 +12,7 @@ Every channel below is wired so that **a missing credential degrades
 that one channel to "skip, log why, keep going" — it never fails the
 whole `goreleaser release` run.** homebrew_casks/scoops/winget each carry
 their own `skip_upload: "{{ not (isEnvSet \"...\") }}"`; the Snap channel
-is a wholly separate GitHub Actions workflow (`.github/workflows/
-snap.yml`) that no-ops when its secret is absent, so it can never even
+is a wholly separate GitHub Actions workflow (`.github/workflows/snap.yml`) that no-ops when its secret is absent, so it can never even
 touch the main release job. See the comments in `.goreleaser.yaml` and
 `.github/workflows/release.yml` for the exact mechanism if you're
 debugging why a channel didn't publish — it is almost always "the
@@ -206,9 +205,10 @@ package template + the shared platform-package template) and
 package directories (1 main + 5 platform: linux-x64/arm64,
 darwin-x64/arm64, win32-x64 -- mirrors `.goreleaser.yaml`'s build matrix
 exactly) from goreleaser's `dist/` output. Verified so far via
-`npm publish --dry-run`, `npm pack`, and a local, uplink-disabled
-throwaway registry (verdaccio) -- see `npm/test/test-smoke.sh`. Nothing
-has ever been published to the real npm registry.
+`npm publish --dry-run`, `npm pack`, and a local, dependency-free
+throwaway registry (`npm/test/local-registry.js` -- stdlib `node:http`
+only, no uplink/proxy of any kind) -- see `npm/test/test-smoke.sh`.
+Nothing has ever been published to the real npm registry.
 
 **Package names:** main `cli-comrade` (name verified available on the
 public registry via a 404 lookup at the time this was built -- npm has no
@@ -232,8 +232,7 @@ scoped under the `@firatkutay` npm org/user (not yet created).
    channel cleanly when the token secret is absent, rather than failing
    the whole release).
 4. Decide `comrade upgrade`'s behavior for npm-managed installs (it
-   should almost certainly become a no-op pointing at `npm update -g
-   cli-comrade` rather than attempting its own binary replacement inside
+   should almost certainly become a no-op pointing at `npm update -g cli-comrade` rather than attempting its own binary replacement inside
    `node_modules` -- npm owns that install's lifecycle). Not yet decided
    or implemented.
 
@@ -258,8 +257,7 @@ npm install -g cli-comrade
 The four package-manager channels above are **not** required for
 `firatkutay/cli-comrade`'s next tagged release to succeed — each
 degrades to "skip this channel" when its secret is absent, verified by
-running `goreleaser check` and `goreleaser release --snapshot --clean
---skip=publish` with none of the four secrets set (see the
+running `goreleaser check` and `goreleaser release --snapshot --clean --skip=publish` with none of the four secrets set (see the
 release-engineering handoff notes for that run's output). Cosign
 signing is the one exception to that pattern — see "Supply-chain
 signing (cosign)" above.

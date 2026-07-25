@@ -50,8 +50,7 @@ yakalanır (denylist eşleşmesi → `Block`, escalation eşleşmesi → `Confir
 - disk'i doğrudan yok eden araç ailesi: `mke2fs`/`mkswap`/`mkdosfs`/
   `mkntfs`/`newfs` (her zaman); ve gerçek bir `/dev/<disk>` aygıtına
   yönlendirildiğinde `wipefs`, `blkdiscard`, `sgdisk`, silme
-  bayraklarıyla `sfdisk`, `badblocks -w`, `cryptsetup
-  luksFormat`/`reencrypt`/`erase`
+  bayraklarıyla `sfdisk`, `badblocks -w`, `cryptsetup luksFormat`/`reencrypt`/`erase`
 - kök veya ev dizinini hedefleyen `chmod -R`/`chown -R` (yalnızca `777` değil,
   hangi mod olursa olsun)
 - `mv ... /dev/null` (taşıyarak silme), `shred -u`, `truncate -s 0`
@@ -79,8 +78,7 @@ biçimleri — `sk-`, `ghp_`/`gho_`, `AKIA...`, Slack `xox[baprs]-`, Google
 PEM özel anahtar blokları, `key=value`/`key: value` biçimli kimlik bilgisi
 çiftleri (bileşik/önekli adlar dahil: `DB_PASSWORD=`,
 `AWS_SECRET_ACCESS_KEY=`), `scheme://kullanıcı:parola@` bağlantı dizeleri,
-Azure `AccountKey=...`, ve `Authorization: Bearer ...` / `Authorization:
-Basic ...` başlıkları. İki opsiyonel aile config ile açılır:
+Azure `AccountKey=...`, ve `Authorization: Bearer ...` / `Authorization: Basic ...` başlıkları. İki opsiyonel aile config ile açılır:
 `privacy.redact_emails`, `privacy.redact_ips`. Env var İÇERİKLERİ
 ASLA gönderilmez — yalnızca isimleri, o da `context.send_env_names`
 ile opt-in edilirse.
@@ -244,8 +242,7 @@ key formats — `sk-`, `ghp_`/`gho_`, `AKIA...`, Slack `xox[baprs]-`, Google
 PEM private-key blocks, `key=value`/`key: value`-shaped credential pairs
 (including compound/prefixed names like `DB_PASSWORD=`,
 `AWS_SECRET_ACCESS_KEY=`), `scheme://user:pass@` connection strings, Azure
-`AccountKey=...`, and `Authorization: Bearer ...` / `Authorization: Basic
-...` headers. Two optional families are config-gated: `privacy.redact_emails`,
+`AccountKey=...`, and `Authorization: Bearer ...` / `Authorization: Basic ...` headers. Two optional families are config-gated: `privacy.redact_emails`,
 `privacy.redact_ips`. Environment variable CONTENTS are never sent —
 only their names, and only when `context.send_env_names` is opted in.
 

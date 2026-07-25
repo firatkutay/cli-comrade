@@ -98,31 +98,65 @@ var errUnexpectedProcSubst = errors.New("safety: unexpected process substitution
 // substitution arguments at their safe, accurate "" default.
 //
 // Scope boundary, deliberate and documented rather than an oversight:
-// only *syntax.CallExpr (simple commands) and *syntax.BinaryCmd (&&, ||,
-// |, |& chains) are modeled. Every other Command shape — if/while/for/
-// case, subshells, `{ }` blocks, function bodies, and
-// declare/local/export/readonly/typeset (parsed as *syntax.DeclClause,
-// not CallExpr) — contributes nothing to this analyzer's OWN verdict
-// rather than forcing the whole command indeterminate. This is safe, not
-// just convenient: a dangerous command wrapped in, say, an `if` block is
-// still caught by the pre-existing signature layer's own
-// structure-agnostic, substring/token-based pass over the RAW command,
-// completely independently of this analyzer — see engine.go's Evaluate,
-// which runs both layers unconditionally and takes their max. And a
-// variable assigned only inside one of those unmodeled shapes is simply
+// *syntax.CallExpr (simple commands), *syntax.BinaryCmd (&&, ||, |, |&
+// chains), *syntax.IfClause, *syntax.WhileClause, *syntax.ForClause,
+// *syntax.CaseClause, *syntax.Block (`{ }`), *syntax.Subshell (`( )`), and
+// *syntax.DeclClause (declare/local/export/readonly/typeset) are all
+// walked — see resolveCommand's dispatch and resolveIfClause/
+// resolveWhileClause/resolveCaseClause/resolveDeclClause below — so an
+// assignment made INSIDE one of these constructs is visible to the same
+// resolution logic a top-level assignment already gets, closing the
+// control-structure-plus-indirection gap the security audit flagged
+// (`if true; then R=rm; $R -rf /; fi` used to Allow: R was never added to
+// this analyzer's env at all, since nothing walked into the `if`'s Then
+// branch). Every other Command shape — function bodies (*syntax.FuncDecl),
+// *syntax.ArithmCmd, *syntax.TestClause, *syntax.LetClause,
+// *syntax.TimeClause, *syntax.CoprocClause — still contributes nothing to
+// this analyzer's OWN verdict rather than forcing the whole command
+// indeterminate. This remains safe, not just convenient: a dangerous
+// command wrapped in one of those genuinely unmodeled shapes is still
+// caught by the pre-existing signature layer's own structure-agnostic,
+// substring/token-based pass over the RAW command, completely
+// independently of this analyzer — see engine.go's Evaluate, which runs
+// both layers unconditionally and takes their max. And a variable
+// assigned only inside one of those still-unmodeled shapes is simply
 // never added to this analyzer's env map, so a later command-word
 // reference to it (`$R`) still fails closed via the unresolved-
 // command-word-position rule above — "not modeled" degrades to
-// "indeterminate", never to "silently resolved wrong". The one residual
-// gap this leaves — a dangerous command that BOTH depends on variable
-// indirection AND is reachable only from inside an unmodeled construct
-// (e.g. `if true; then R=rm; fi; $R -rf /` — no, wait, that specific
-// example IS still caught: R is simply never in env, so `$R` is
-// unresolved in command-word position — but a hypothetical shape where
-// the dangerous CallExpr itself sits inside an unmodeled construct AND
-// depends on indirection resolved inside that SAME construct would not
-// be) is a known, narrow limitation, not covered by the RFC's evasion
-// corpus; flagged as follow-up scope, not silently dropped.
+// "indeterminate", never to "silently resolved wrong".
+//
+// Two narrower, deliberate limits inside the now-walked constructs, kept
+// intentionally simple rather than modeling full control-flow:
+//
+//  1. An if/elif/else's Then/Else branches, and each case item's Stmts,
+//     are mutually exclusive at runtime — at most one of them actually
+//     executes — so each is resolved against its OWN CLONE of the env as
+//     of entering the construct (resolveScopedStmts), never chained
+//     sequentially into one another and never leaked back to the
+//     surrounding scope. This is what keeps two mutually exclusive
+//     branches assigning the SAME variable to DIFFERENT literal values
+//     from silently picking whichever branch happened to be visited last
+//     as if it were the only one that could run (a real false-negative
+//     risk a naive shared-env walk would introduce), while still letting
+//     `if true; then R=rm; $R -rf /; fi` resolve correctly: the
+//     assignment and its use are both inside the SAME branch's own clone.
+//     A subshell (`( )`) is forked the same way, since it always runs in
+//     its own child environment and never leaks assignments back out —
+//     real bash semantics, not just a conservative approximation. An
+//     if/while's own Cond, and a while/for's own Do body, are NOT forked
+//     (plain r.resolveStmts): they are not mutually-exclusive
+//     alternatives, they always run in the CURRENT scope in real bash,
+//     exactly like a top-level statement list.
+//  2. A for-loop's own iteration variable (*syntax.WordIter's Name) is
+//     deliberately NEVER added to env: its real value is whichever of
+//     the loop's Items is bound on a given iteration, which this
+//     single-pass analyzer cannot enumerate. Leaving it absent from env
+//     means a reference to it in ARGUMENT position (the common,
+//     idiomatic shape — `for f in *.go; do gofmt -l $f; done`) resolves
+//     to "" and stays inert (safe, see the ARGUMENT-position discussion
+//     below), while a reference to it in COMMAND-WORD position fails
+//     closed via the same unresolved-command-word rule as any other
+//     unknown variable — never silently resolved to a guessed item.
 func analyzeBashEffect(command string) effectVerdict {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	file, err := parser.Parse(strings.NewReader(command), "")
@@ -210,9 +244,12 @@ func (r *bashResolver) resolveStmt(stmt *syntax.Stmt) (text string, indeterminat
 }
 
 // resolveCommand dispatches on the Command's concrete node type — see
-// analyzeBashEffect's "Scope boundary" doc-comment section for why every
-// shape besides CallExpr/BinaryCmd deliberately contributes nothing
-// (returns "", false, "") rather than forcing indeterminate.
+// analyzeBashEffect's "Scope boundary" doc-comment section for exactly
+// which shapes are walked, which are deliberately left unmodeled (and why
+// that degrades safely to indeterminate rather than to a silently wrong
+// resolution), and the two narrower documented limits within the walked
+// set (mutually-exclusive-branch scoping, the for-loop iteration
+// variable).
 func (r *bashResolver) resolveCommand(cmd syntax.Command) (text string, indeterminate bool, reason string) {
 	switch c := cmd.(type) {
 	case *syntax.CallExpr:
@@ -230,9 +267,172 @@ func (r *bashResolver) resolveCommand(cmd syntax.Command) (text string, indeterm
 			return "", true, why
 		}
 		return leftText + " " + c.Op.String() + " " + rightText, false, ""
+	case *syntax.IfClause:
+		return r.resolveIfClause(c)
+	case *syntax.WhileClause:
+		return r.resolveWhileClause(c)
+	case *syntax.ForClause:
+		// The loop body always runs in the CURRENT scope in real bash (no
+		// subshell fork) — see analyzeBashEffect's doc comment on why the
+		// iteration variable itself is deliberately never added to env.
+		return r.resolveStmts(c.Do)
+	case *syntax.CaseClause:
+		return r.resolveCaseClause(c)
+	case *syntax.Block:
+		// `{ }` runs in the CURRENT scope in real bash — no fork, unlike a
+		// subshell — so a plain same-resolver resolveStmts is correct.
+		return r.resolveStmts(c.Stmts)
+	case *syntax.Subshell:
+		return r.resolveScopedStmts(cloneEnv(r.env), c.Stmts)
+	case *syntax.DeclClause:
+		return r.resolveDeclClause(c)
 	default:
 		return "", false, ""
 	}
+}
+
+// resolveScopedStmts resolves stmts against env — which may be r.env
+// itself (a same-scope construct: an if/while's Cond, a while/for's Do
+// body, or a `{ }` block, none of which fork in real bash) or a fresh
+// clone (a construct that forks its own scope: a subshell, or one
+// mutually-exclusive branch of an if/elif/else or case, where at most one
+// of several alternatives actually runs and none may leak an assignment
+// into a sibling alternative or the surrounding scope) — merging any
+// findings (checkFetcherPipeline) the nested resolution accumulates back
+// into r, since those are always worth surfacing regardless of which
+// scope discovered them.
+func (r *bashResolver) resolveScopedStmts(env map[string]string, stmts []*syntax.Stmt) (text string, indeterminate bool, reason string) {
+	child := &bashResolver{env: env}
+	text, indeterminate, reason = child.resolveStmts(stmts)
+	r.findings = append(r.findings, child.findings...)
+	return text, indeterminate, reason
+}
+
+// resolveIfClause resolves one if/elif/else chain: Cond always runs in
+// the CURRENT scope (a real if condition is not a mutually-exclusive
+// alternative — it unconditionally executes when control reaches it), so
+// its own assignments persist into r.env directly via plain
+// r.resolveStmts; Then is resolved against a FRESH CLONE of r.env (see
+// resolveScopedStmts) since at most one of Then/Else ever actually runs.
+// c.Else (either a further "elif" with its own Cond, or a plain "else"
+// with Cond empty) is recursed into with the SAME base r.env — not
+// chained through Then's own clone — so an "elif"/"else" branch forks
+// from the state as of entering the WHOLE chain, never from a sibling
+// branch that (at runtime) would never have run alongside it.
+func (r *bashResolver) resolveIfClause(c *syntax.IfClause) (text string, indeterminate bool, reason string) {
+	condText, indet, why := r.resolveStmts(c.Cond)
+	if indet {
+		return "", true, why
+	}
+	thenText, indet, why := r.resolveScopedStmts(cloneEnv(r.env), c.Then)
+	if indet {
+		return "", true, why
+	}
+	var parts []string
+	parts = appendNonEmpty(parts, condText)
+	parts = appendNonEmpty(parts, thenText)
+	if c.Else != nil {
+		elseText, indet, why := r.resolveIfClause(c.Else)
+		if indet {
+			return "", true, why
+		}
+		parts = appendNonEmpty(parts, elseText)
+	}
+	return strings.Join(parts, " ; "), false, ""
+}
+
+// resolveWhileClause resolves one while/until clause: neither Cond nor Do
+// forks a new scope in real bash (the loop body may run zero or more
+// times, but it is the SAME code path each time, not a mutually-exclusive
+// alternative the way an if/case branch is), so both are resolved via
+// plain r.resolveStmts against the shared, persistent env.
+func (r *bashResolver) resolveWhileClause(w *syntax.WhileClause) (text string, indeterminate bool, reason string) {
+	condText, indet, why := r.resolveStmts(w.Cond)
+	if indet {
+		return "", true, why
+	}
+	doText, indet, why := r.resolveStmts(w.Do)
+	if indet {
+		return "", true, why
+	}
+	var parts []string
+	parts = appendNonEmpty(parts, condText)
+	parts = appendNonEmpty(parts, doText)
+	return strings.Join(parts, " ; "), false, ""
+}
+
+// resolveCaseClause resolves a case/switch clause: exactly one CaseItem's
+// Stmts actually runs at runtime, so — exactly like resolveIfClause's
+// Then/Else — each item is resolved against its OWN fresh clone of the
+// env as of entering the whole case statement (resolveScopedStmts), never
+// chained from one item into the next and never leaked back to the
+// surrounding scope.
+func (r *bashResolver) resolveCaseClause(c *syntax.CaseClause) (text string, indeterminate bool, reason string) {
+	var parts []string
+	for _, item := range c.Items {
+		t, indet, why := r.resolveScopedStmts(cloneEnv(r.env), item.Stmts)
+		if indet {
+			return "", true, why
+		}
+		parts = appendNonEmpty(parts, t)
+	}
+	return strings.Join(parts, " ; "), false, ""
+}
+
+// resolveDeclClause resolves one declare/local/export/readonly/typeset
+// clause. Each Arg is one of three shapes (see syntax.Assign's own doc
+// comment on Naked): a bare option/flag (Naked, Name == nil — "-r", "-x",
+// ...), a bare "NAME" declaration with no assigned value (Naked, Name !=
+// nil, Value == nil), or a normal "NAME=value" assignment (not Naked).
+// The first two contribute nothing this analyzer can resolve — skipping
+// them is safe, not a silently-wrong guess, exactly like any other
+// unmodeled shape: it simply leaves the name (if any) absent from env, so
+// a later reference degrades to strictly-unresolvable/fail-closed rather
+// than resolving to a wrong value. A normal assignment is resolved and
+// persisted into r.env with the exact same strict, fail-closed contract
+// resolveCallExpr's own per-invocation assignments use (unsupported
+// shapes — array, indexed, `+=` — fail closed rather than silently
+// dropping information; see resolveCallExpr's own doc comment for why).
+// declare/local/export/readonly/typeset are all treated identically here:
+// this analyzer does not model function-local scoping (function bodies —
+// *syntax.FuncDecl — are not walked at all, see analyzeBashEffect's
+// "Scope boundary" section), so there is no narrower scope for "local" to
+// mean in the shapes this package actually analyzes (single command
+// lines, not multi-function scripts).
+func (r *bashResolver) resolveDeclClause(d *syntax.DeclClause) (text string, indeterminate bool, reason string) {
+	var parts []string
+	for _, a := range d.Args {
+		if a.Naked {
+			continue
+		}
+		if a.Name == nil || a.Value == nil || a.Index != nil || a.Append || a.Array != nil {
+			return "", true, "unsupported declare assignment shape (array, associative, indexed, or += append)"
+		}
+		val, ok := resolveWord(a.Value, r.env, true)
+		if !ok {
+			why, _ := strictUnresolvableReason(a.Value, r.env)
+			if why == "" {
+				why = "unresolved value"
+			}
+			return "", true, why + " assigned to " + a.Name.Value + " in declare/local/export/readonly/typeset"
+		}
+		r.env[a.Name.Value] = val
+		parts = append(parts, a.Name.Value+"="+val)
+	}
+	return strings.Join(parts, " "), false, ""
+}
+
+// appendNonEmpty appends s to parts only when s is non-empty — the same
+// "a statement with nothing to say contributes no text" filtering
+// resolveStmts already applies to a whole statement list, reused by every
+// compound-command resolver above so an empty branch (e.g. an if with no
+// Else) never leaves a stray, empty joined segment in the reconstructed
+// text.
+func appendNonEmpty(parts []string, s string) []string {
+	if s == "" {
+		return parts
+	}
+	return append(parts, s)
 }
 
 // resolveCallExpr resolves one simple command: its own assignments (both
@@ -268,7 +468,11 @@ func (r *bashResolver) resolveCallExpr(c *syntax.CallExpr) (text string, indeter
 		}
 		val, ok := resolveWord(a.Value, workEnv, true)
 		if !ok {
-			return "", true, "unresolved value assigned to " + a.Name.Value
+			why, _ := strictUnresolvableReason(a.Value, workEnv)
+			if why == "" {
+				why = "unresolved value"
+			}
+			return "", true, why + " assigned to " + a.Name.Value
 		}
 		workEnv[a.Name.Value] = val
 		assignTexts = append(assignTexts, a.Name.Value+"="+val)
@@ -282,7 +486,11 @@ func (r *bashResolver) resolveCallExpr(c *syntax.CallExpr) (text string, indeter
 
 	cmdWord, cmdWordOK := resolveWord(c.Args[0], workEnv, true)
 	if !cmdWordOK {
-		return "", true, "unresolved parameter expansion in command-word position"
+		why, _ := strictUnresolvableReason(c.Args[0], workEnv)
+		if why == "" {
+			why = "unresolved command word"
+		}
+		return "", true, why + " in command-word position"
 	}
 
 	argTexts := make([]string, len(c.Args))
@@ -470,42 +678,113 @@ func isSimpleParamExp(p *syntax.ParamExp) bool {
 		!p.Excl && !p.Length && !p.Width && !p.IsSet
 }
 
-// wordIsStrictlyResolvable reports whether w contains ONLY constructs this
-// analyzer can confidently resolve to a known literal value: plain text
-// (*syntax.Lit/*syntax.SglQuoted/*syntax.DblQuoted) and simple, already-
-// known parameter references (isSimpleParamExp, name present in env).
-// Anything else — a *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp,
-// *syntax.ExtGlob, or a non-simple/unknown *syntax.ParamExp, anywhere
-// within w, including nested inside a *syntax.DblQuoted — makes w
-// unresolvable for STRICT-mode purposes. Used only to gate STRICT
-// (command-word-position and assignment-value) resolution — see
-// resolveWord's doc comment for why non-strict (ordinary argument)
-// resolution does not use this gate at all.
-func wordIsStrictlyResolvable(w *syntax.Word, env map[string]string) bool {
-	ok := true
+// wordHasLeadingUnescapedTilde reports whether w's FIRST word part is a
+// plain, unquoted *syntax.Lit whose value begins with "~" — exactly the
+// shape mvdan.cc/sh/v3/expand's own tilde expansion acts on (see
+// (*expand.Config).expandUser, gated on "i == 0 && ql == quoteNone" in
+// mvdan.cc/sh/v3/expand/expand.go): a bare/current-user tilde ("~",
+// "~/foo") reads the "HOME" entry of whatever expand.Environ it is given,
+// and a named-user tilde ("~name") additionally calls os/user.Lookup — a
+// real host syscall/NSS lookup this package's own resolution has no
+// business making, since analyzeBashEffect's whole contract is being a
+// PURE function of (command, dialect), never of what accounts happen to
+// exist on the machine currently running comrade. Rejecting every leading
+// unescaped tilde in strict position — not only the "~name" spelling that
+// triggers the Lookup — keeps this gate simple (one rule, not "~name only
+// but ~ and ~/foo are fine") and entirely removes the host-dependent
+// branch from the strict path: resolveWord's strict gate is checked
+// BEFORE expand.Literal is ever invoked, so os/user.Lookup is never
+// reached in strict position at all, "dropping the lookup" outright
+// rather than merely tolerating its result.
+//
+// A QUOTED leading tilde ('~name', "~name") parses to a
+// *syntax.SglQuoted/*syntax.DblQuoted node instead of *syntax.Lit and so
+// is never matched here — it is inert literal text to a real shell too,
+// not a tilde expansion. A BACKSLASH-escaped leading tilde (\~name) also
+// fails to match: mvdan.cc/sh's parser keeps the backslash IN the Lit's
+// own Value ("\~name"), which does not have a "~" PREFIX, so
+// expand.Literal's own strings.CutPrefix check already leaves it
+// unexpanded — this function's prefix check agrees with that, rather than
+// fighting it. Deliberately scoped to non-strict (argument) position:
+// item 3's fix is explicitly the STRICT path only — see
+// analyzeBashEffect's doc comment on why an ordinary argument's
+// unresolved substitution is safe to default to "".
+func wordHasLeadingUnescapedTilde(w *syntax.Word) bool {
+	if len(w.Parts) == 0 {
+		return false
+	}
+	lit, ok := w.Parts[0].(*syntax.Lit)
+	return ok && strings.HasPrefix(lit.Value, "~")
+}
+
+// strictUnresolvableReason walks w (exactly as wordIsStrictlyResolvable
+// does — it is this function's sole caller) and reports whether w is
+// strictly resolvable and, when it is not, a short, user-meaningful
+// description of the FIRST construct responsible: a leading unescaped
+// tilde (wordHasLeadingUnescapedTilde), a command/process substitution,
+// an arithmetic expansion, an extended glob, or a non-simple/unknown
+// parameter expansion. This is the single source both
+// wordIsStrictlyResolvable (which only needs the bool) and every STRICT
+// resolveWord failure's audit reason (resolveCallExpr's command-word and
+// assignment-value checks, resolveDeclClause's assignment check) draw
+// from, replacing what used to be one fixed "unresolved parameter
+// expansion in command-word position" string reported for every one of
+// these shapes alike, including the ones that were never actually a
+// parameter expansion at all (CmdSubst/ArithmExp/ExtGlob).
+func strictUnresolvableReason(w *syntax.Word, env map[string]string) (reason string, resolvable bool) {
+	if wordHasLeadingUnescapedTilde(w) {
+		return "unresolved tilde expansion", false
+	}
+	resolvable = true
 	syntax.Walk(w, func(n syntax.Node) bool {
-		if !ok {
+		if !resolvable {
 			return false
 		}
 		switch p := n.(type) {
-		case *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp, *syntax.ExtGlob:
-			ok = false
-			return false
+		case *syntax.CmdSubst:
+			reason, resolvable = "unresolved command substitution", false
+		case *syntax.ProcSubst:
+			reason, resolvable = "unresolved process substitution", false
+		case *syntax.ArithmExp:
+			reason, resolvable = "unresolved arithmetic expansion", false
+		case *syntax.ExtGlob:
+			reason, resolvable = "unresolved extended glob", false
 		case *syntax.ParamExp:
 			if !isSimpleParamExp(p) {
-				ok = false
+				reason, resolvable = "unresolved parameter expansion", false
 				return false
 			}
 			if _, known := env[p.Param.Value]; !known {
-				ok = false
+				reason, resolvable = "unresolved parameter expansion", false
 				return false
 			}
 			return true
 		default:
 			return true
 		}
+		return false
 	})
-	return ok
+	return reason, resolvable
+}
+
+// wordIsStrictlyResolvable reports whether w contains ONLY constructs this
+// analyzer can confidently resolve to a known literal value: plain text
+// (*syntax.Lit/*syntax.SglQuoted/*syntax.DblQuoted) and simple, already-
+// known parameter references (isSimpleParamExp, name present in env) — and
+// does NOT begin with an unescaped tilde (wordHasLeadingUnescapedTilde).
+// Anything else — a *syntax.CmdSubst, *syntax.ProcSubst, *syntax.ArithmExp,
+// *syntax.ExtGlob, or a non-simple/unknown *syntax.ParamExp, anywhere
+// within w, including nested inside a *syntax.DblQuoted — makes w
+// unresolvable for STRICT-mode purposes. Used only to gate STRICT
+// (command-word-position and assignment-value) resolution — see
+// resolveWord's doc comment for why non-strict (ordinary argument)
+// resolution does not use this gate at all. Delegates to
+// strictUnresolvableReason (this function's only caller that discards the
+// reason) so the bool and the audit-reason classification can never drift
+// apart.
+func wordIsStrictlyResolvable(w *syntax.Word, env map[string]string) bool {
+	_, resolvable := strictUnresolvableReason(w, env)
+	return resolvable
 }
 
 // resolveWord resolves w to its literal value using expand.Literal,

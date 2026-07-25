@@ -60,11 +60,16 @@ func FuzzAnalyzeBashEffect(f *testing.F) {
 }
 
 // FuzzEngineEvaluateNeverAllowsDenylistedLiteral pins the RFC's second
-// fuzz property: this package's real Engine must never return Allow for
-// input that literally contains a known-denylisted command shape,
-// however much unrelated noise the fuzzer wraps around it — and must
-// never panic either (go test's fuzzing engine already fails the run on
-// any unrecovered panic, so no explicit check is needed for that half).
+// fuzz property, tightened per the correctness review from "never Allow"
+// to the stronger "always Block": this package's real Engine must Block
+// (not merely escalate to Confirm) input that literally contains a
+// known-denylisted command shape, however much unrelated noise the
+// fuzzer wraps around it — and must never panic either (go test's
+// fuzzing engine already fails the run on any unrecovered panic, so no
+// explicit check is needed for that half). Denylist matching runs against
+// the whole normalized command string/tokens (denylist.go), so wrapping
+// noise around a denylisted literal can never suppress the match the way
+// it might for a narrower, position-sensitive rule.
 //
 // Deliberately uses the AMBIENT NewEngine(config.Default()) — this is the
 // one test in the effect-layer suite that genuinely wants "whatever this
@@ -99,8 +104,8 @@ func FuzzEngineEvaluateNeverAllowsDenylistedLiteral(f *testing.F) {
 		for _, lit := range denylistedLiterals {
 			command := noise + " " + lit
 			got := engine.Evaluate(command, RiskRead)
-			if got.Action == Allow {
-				t.Fatalf("command %q contains denylisted literal %q but Evaluate returned Allow", command, lit)
+			if got.Action != Block {
+				t.Fatalf("command %q contains denylisted literal %q; want Block, got %v", command, lit, got.Action)
 			}
 		}
 	})

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-07-27
+
+### Fixed
+
+- **npm packages now publish successfully after Trusted Publisher registrations on npmjs.com completed.** v0.4.7's release fixed the workflow's technical layer (the `actions/setup-node` placeholder token that pre-empted OIDC), but npm returned a `404 — package not found` error because the per-package Trusted Publisher configurations had not yet been saved on npmjs.com. Those registrations are complete, and this patch re-runs the publish without code changes. Both v0.4.6 and v0.4.7's GitHub release sides fully succeeded (archives, checksums, cosign signature, source SBOM); only npm was affected.
+
 ## [0.4.7] - 2026-07-26
 
 ### Fixed
@@ -933,9 +939,10 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
+[0.4.8]: https://github.com/firatkutay/cli-comrade/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/firatkutay/cli-comrade/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/firatkutay/cli-comrade/compare/v0.4.5...v0.4.6
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.7...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.8...HEAD
 [0.4.5]: https://github.com/firatkutay/cli-comrade/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/firatkutay/cli-comrade/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/firatkutay/cli-comrade/compare/v0.4.2...v0.4.3

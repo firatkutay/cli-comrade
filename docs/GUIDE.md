@@ -311,6 +311,10 @@ göre değişir:
 | Denetim kaydı + son komut | `~/.local/state/cli-comrade/` (ya da `$XDG_STATE_HOME`) | `%LOCALAPPDATA%\cli-comrade\` |
 | API anahtarları | İşletim sistemi keychain'i (yoksa 0600 izinli dosya) — asla config'e düz metin yazılmaz | Aynı |
 
+`comrade`'ı tamamen kaldırmak istiyorsanız (kullandığınız kurulum
+kanalına özel komut + yukarıdaki tüm dosyaların temizlenmesi, API
+anahtarları dahil): [docs/INSTALL.md](INSTALL.md#kaldırma-uninstall).
+
 Bir sorunla karşılaşırsanız (Ollama bağlanmıyor, hayalet ipucu çıkmıyor,
 PATH bulunamıyor, checksum hatası vb.): [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
@@ -614,6 +618,10 @@ What happens when you type `comrade ` and hit space varies by shell:
 | Config | `~/.config/cli-comrade/config.toml` (or `$XDG_CONFIG_HOME`) | `%APPDATA%\cli-comrade\config.toml` |
 | Audit log + last command | `~/.local/state/cli-comrade/` (or `$XDG_STATE_HOME`) | `%LOCALAPPDATA%\cli-comrade\` |
 | API keys | OS keychain (falls back to a 0600-permission file) — never plaintext in config | Same |
+
+Want to remove `comrade` entirely? Per-channel uninstall command plus
+cleanup for every file above, including API keys:
+[docs/INSTALL.md](INSTALL.md#uninstalling).
 
 If something goes wrong (Ollama won't connect, no ghost hint, PATH not
 found, a checksum error, ...): [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md).

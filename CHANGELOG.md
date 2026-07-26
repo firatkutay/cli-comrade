@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`release.yml` now publishes all 6 npm packages automatically, using npm Trusted Publishing (OIDC) — no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, ever.** The 5 `@firatkutay/comrade-<os>-<cpu>` platform packages publish first, then the `cli-comrade` dispatcher, assembled from the same `dist/` this job's own goreleaser step just built and cosign-signed (no separate rebuild), after the GitHub Release and its SBOM are already attached. The workflow's `permissions:` block gains `id-token: write`; each package still needs a one-time "Trusted Publisher" configured by hand on npmjs.com (see `docs/PACKAGING.md`'s npm section for the exact click-path) before this step can succeed against it. Idempotent on re-run: an `npm view <name>@<version>` check skips any package/version already published instead of failing the job, so retrying an already-released tag is safe.
+
 ## [0.4.5] - 2026-07-26
 
 ### Security

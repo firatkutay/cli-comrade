@@ -196,47 +196,81 @@ snap install cli-comrade --classic
 
 ---
 
-## 5. npm (`npm install -g cli-comrade`) — ⏳ STAGE 1 DONE (packaging only, not wired into release.yml)
+## 5. npm (`npm install -g cli-comrade`) — ✅ SHIPPED (automated via Trusted Publishing, OIDC)
 
-**Not wired into `release.yml` at all yet** -- this is deliberately a
-separate, later step. What exists today: `npm/` (the main dispatcher
-package template + the shared platform-package template) and
-`scripts/build-npm-packages.sh`, which assembles the 6 ready-to-publish
-package directories (1 main + 5 platform: linux-x64/arm64,
-darwin-x64/arm64, win32-x64 -- mirrors `.goreleaser.yaml`'s build matrix
-exactly) from goreleaser's `dist/` output. Verified so far via
-`npm publish --dry-run`, `npm pack`, and a local, dependency-free
-throwaway registry (`npm/test/local-registry.js` -- stdlib `node:http`
-only, no uplink/proxy of any kind) -- see `npm/test/test-smoke.sh`.
-Nothing has ever been published to the real npm registry.
+**Wired into `release.yml`** as the final two steps of the `goreleaser`
+job, run in the SAME job (not a downstream job) right after goreleaser
+succeeds -- so the npm packages are assembled from the exact `dist/`
+this job's own goreleaser step just built and cosign-signed, never a
+separately rebuilt copy. All 6 packages (`cli-comrade` + the 5
+`@firatkutay/comrade-<os>-<cpu>` platform packages) are already
+published at v0.4.4 (created via a one-time manual bootstrap publish
+before this automation existed); this wiring is what makes every
+release **from here on** automatic.
 
-**Package names:** main `cli-comrade` (name verified available on the
-public registry via a 404 lookup at the time this was built -- npm has no
-package-name *reservation* mechanism, so this is "nobody has claimed it
-yet," not a hold; claim it for real as early as possible in stage 2 to
-close that race). Platform packages: `@firatkutay/comrade-<os>-<cpu>`,
-scoped under the `@firatkutay` npm org/user (not yet created).
+**Auth mechanism: npm Trusted Publishing (OIDC) -- no token, ever.**
+No `NPM_TOKEN`, no `NODE_AUTH_TOKEN`, no secret of any kind for this
+channel. The workflow's `permissions:` block grants `id-token: write`;
+npm CLI >=11.5.1 detects it is running in GitHub Actions with that
+permission and exchanges the job's short-lived OIDC token for a
+one-off, per-publish npm registry credential
+(docs.npmjs.com/trusted-publishers/, verified 2026-07-26). Each of the
+6 packages must have a **Trusted Publisher** configured on npmjs.com
+first (one-time, per package, done by hand below) -- npm refuses the
+publish with a 404 if that configuration is missing or doesn't match
+this repo + this exact workflow filename.
 
-**To wire stage 2:**
-1. Create/verify the `@firatkutay` npm org or user account.
-2. Decide the publish auth mechanism -- a classic automation token
-   (`NPM_TOKEN` secret) or npm's registry-side OIDC "trusted publishing"
-   (check current npm docs at adoption time; this option didn't exist
-   when several of this repo's other channels were wired, so it's worth
-   a fresh look rather than assuming the classic-token pattern is still
-   the best available).
-3. Add a step to `.github/workflows/release.yml` that runs
-   `scripts/build-npm-packages.sh` against the just-built `dist/` and
-   `npm publish`'s all 6 assembled packages, gated the same
-   never-break-the-release way as Homebrew/Scoop/winget above (skip this
-   channel cleanly when the token secret is absent, rather than failing
-   the whole release).
-4. Decide `comrade upgrade`'s behavior for npm-managed installs (it
-   should almost certainly become a no-op pointing at `npm update -g cli-comrade` rather than attempting its own binary replacement inside
-   `node_modules` -- npm owns that install's lifecycle). Not yet decided
-   or implemented.
+**Owner click-path -- do this once, for EACH of the 6 packages:**
 
-**End-user install command (once live):**
+1. Sign in to <https://www.npmjs.com/> as an owner/maintainer of the
+   package (the `firatkutay` user for `cli-comrade`; the `firatkutay`
+   org for the 5 scoped `@firatkutay/comrade-*` packages).
+2. Go to `https://www.npmjs.com/package/<name>/access` -- e.g.
+   `https://www.npmjs.com/package/cli-comrade/access` and
+   `https://www.npmjs.com/package/@firatkutay/comrade-linux-x64/access`
+   (repeat for `comrade-linux-arm64`, `comrade-darwin-x64`,
+   `comrade-darwin-arm64`, `comrade-win32-x64`).
+3. Find the **Trusted Publisher** section and click **Add trusted publisher**
+   (wording may read "GitHub Actions").
+4. Fill in exactly:
+   - **Organization or user:** `firatkutay`
+   - **Repository:** `cli-comrade`
+   - **Workflow filename:** `release.yml` (filename only, no path, no
+     leading `.github/workflows/` -- this MUST byte-match the file in
+     this repo)
+   - **Environment name:** leave blank (this workflow does not use a
+     GitHub Environment)
+   - **Allowed actions / events:** select `npm publish` (not `npm stage
+     publish`)
+5. Save. npm does **not** validate this configuration when you save it
+   -- a typo'd repo or workflow filename only surfaces as a failed
+   publish on the next tagged release. Double-check all 6 before
+   trusting it.
+6. Repeat for all 6 packages. There is no bulk/org-wide toggle; each
+   package's Trusted Publisher is configured independently.
+
+Once all 6 are configured, every future `git push --tags` (or the
+existing `task`/`make`-driven tagging flow) publishes to npm
+automatically as part of the same release run that already handles
+Homebrew/Scoop/winget/Snap/cosign -- no further manual step.
+
+**`comrade upgrade` under an npm-managed install:** already handled
+(v0.4.3, GitHub issue #37/PR #37) -- `comrade upgrade` refuses under a
+Node-package-manager-managed install and points at that package
+manager's own update command instead of attempting to replace a binary
+`npm`/`pnpm`/`yarn`/`bun` itself owns the lifecycle of. See
+`internal/cli`'s upgrade-guard tests and CHANGELOG's `[0.4.3]` entry --
+nothing left to decide here.
+
+**Idempotent on re-run:** the publish step checks `npm view
+<name>@<version>` before every one of the 6 publishes and skips
+(logging a notice) any package/version already on the registry, rather
+than failing the whole job -- a re-run of an already-released tag (e.g.
+a transient failure in an earlier step) does not need the tag moved or
+the version bumped to retry cleanly. A genuine publish failure (auth,
+network, registry error) still fails the job.
+
+**End-user install command:**
 ```sh
 npm install -g cli-comrade
 ```
@@ -251,7 +285,7 @@ npm install -g cli-comrade
 | Scoop | ✅ shipped (since v0.1.3) | `SCOOP_BUCKET_TOKEN` | Nothing (bucket repo already exists) | Instant, next tag |
 | winget | ⏳ pending | `WINGET_TOKEN` | Fork `microsoft/winget-pkgs` to your account | Hours–days (MS moderator merges the auto-opened PR; commit now passes the CLA gate, see above) |
 | Snap | ⏳ pending | `SNAPCRAFT_STORE_CREDENTIALS` | `snapcraft register cli-comrade` + a passed classic-confinement `store-requests` forum review | Multi-week (Canonical manual review), then instant per-release after |
-| npm | ⏳ stage 1 done, not wired | (none yet -- `NPM_TOKEN` or OIDC, TBD) | Packaging exists (`npm/`, `scripts/build-npm-packages.sh`); `release.yml` wiring, account creation, and auth mechanism all still pending | Not yet wired -- see "5. npm" above |
+| npm | ✅ shipped (wired into `release.yml`) | none -- Trusted Publishing (OIDC), no token | A "Trusted Publisher" configured per package on npmjs.com (see "5. npm" above for the exact click-path) | Instant, next tag, once all 6 packages' Trusted Publisher config is saved |
 | Cosign signing | ✅ shipped (v0.3.0) | `COSIGN_PRIVATE_KEY` + `COSIGN_PASSWORD` | Key pair generated, public half committed at `internal/update/cosign.pub` (already done) | Instant, next tag — but **fails the whole release** if the secrets are missing, unlike the four channels above |
 
 The four package-manager channels above are **not** required for
@@ -260,4 +294,9 @@ degrades to "skip this channel" when its secret is absent, verified by
 running `goreleaser check` and `goreleaser release --snapshot --clean --skip=publish` with none of the four secrets set (see the
 release-engineering handoff notes for that run's output). Cosign
 signing is the one exception to that pattern — see "Supply-chain
-signing (cosign)" above.
+signing (cosign)" above. npm is a *third* pattern: it needs no repo
+secret at all (Trusted Publishing/OIDC), but it DOES need per-package
+configuration done by hand on npmjs.com before it can succeed -- until
+that's done for all 6 packages, the npm publish step will fail loudly
+(by design; there is no silent-skip for this channel, since it carries
+no missing-secret signal to gate on).

@@ -403,29 +403,27 @@ test_fetch_url_to_file_uses_wget_when_curl_absent() {
   home="$1"
   fakebin="$(mktemp -d)"
   wget_log="$(mktemp)"
-  fixture="$(mktemp)"
   outdest="$(mktemp)"
-  printf 'fixture-content\n' >"$fixture"
 
-  # The stub itself needs `cp` to stand in for the "download" — link the
-  # real one in, since $fakebin only omits curl on purpose, not every
-  # basic utility.
-  ln -s "$(command -v cp)" "$fakebin/cp"
-
+  # The stub writes its fixture content with a plain shell builtin
+  # (printf + redirection) rather than shelling out to `cp` — deliberately
+  # no external-tool dependency beyond sh itself. An earlier version of
+  # this stub used `ln -s "$(command -v cp)" "$fakebin/cp"` to give the
+  # stub a `cp`, which is what actually broke on windows-latest CI:
+  # symlink creation needs a privilege Windows doesn't grant by default,
+  # so the "cp" inside the stub silently produced no output there.
   cat >"$fakebin/wget" <<'STUB'
 #!/bin/sh
 # Records its own invocation, then stands in for a real network fetch by
-# copying a fixed fixture file to the requested output path ($2, per
+# writing fixed fixture content to the requested output path ($2, per
 # fetch_url_to_file's `wget -qO "$2" "$1"` call).
 echo "$@" >"$WGET_LOG"
-cp "$WGET_FIXTURE" "$2"
+printf 'fixture-content\n' >"$2"
 STUB
   chmod +x "$fakebin/wget"
 
   WGET_LOG="$wget_log"
   export WGET_LOG
-  WGET_FIXTURE="$fixture"
-  export WGET_FIXTURE
 
   real_path="$PATH"
   PATH="$fakebin"
@@ -456,26 +454,23 @@ test_fetch_url_to_file_uses_curl_when_available() {
   home="$1"
   fakebin="$(mktemp -d)"
   curl_log="$(mktemp)"
-  fixture="$(mktemp)"
   outdest="$(mktemp)"
-  printf 'fixture-content\n' >"$fixture"
 
-  ln -s "$(command -v cp)" "$fakebin/cp"
-
+  # See test_fetch_url_to_file_uses_wget_when_curl_absent's comment above
+  # for why this writes its fixture with a plain shell builtin instead of
+  # shelling out to `cp` via a symlink.
   cat >"$fakebin/curl" <<'STUB'
 #!/bin/sh
 # Records its own invocation, then stands in for a real network fetch by
-# copying a fixed fixture file to the requested output path ($3, per
+# writing fixed fixture content to the requested output path ($3, per
 # fetch_url_to_file's `curl -fsSL -o "$2" "$1"` call).
 echo "$@" >"$CURL_LOG"
-cp "$CURL_FIXTURE" "$3"
+printf 'fixture-content\n' >"$3"
 STUB
   chmod +x "$fakebin/curl"
 
   CURL_LOG="$curl_log"
   export CURL_LOG
-  CURL_FIXTURE="$fixture"
-  export CURL_FIXTURE
 
   real_path="$PATH"
   PATH="$fakebin"

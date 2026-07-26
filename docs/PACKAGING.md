@@ -236,16 +236,28 @@ irreversible, in-repo steps by the time npm -- whose published versions
 are themselves immutable -- is even attempted).
 
 **Auth mechanism: npm Trusted Publishing (OIDC) -- no token, ever.**
-No `NPM_TOKEN`, no `NODE_AUTH_TOKEN`, no secret of any kind for this
-channel. The workflow's `permissions:` block grants `id-token: write`;
-npm CLI >=11.5.1 detects it is running in GitHub Actions with that
-permission and exchanges the job's short-lived OIDC token for a
-one-off, per-publish npm registry credential
-(docs.npmjs.com/trusted-publishers/, verified 2026-07-26). Each of the
-6 packages must have a **Trusted Publisher** configured on npmjs.com
-first (one-time, per package, done by hand below) -- npm refuses the
-publish with a 404 if that configuration is missing or doesn't match
-this repo + this exact workflow filename.
+No `NPM_TOKEN`, no secret of any kind for this channel. The workflow's
+`permissions:` block grants `id-token: write`; npm CLI >=11.5.1 detects
+it is running in GitHub Actions with that permission and exchanges the
+job's short-lived OIDC token for a one-off, per-publish npm registry
+credential (docs.npmjs.com/trusted-publishers/, verified 2026-07-26).
+Each of the 6 packages must have a **Trusted Publisher** configured on
+npmjs.com first (one-time, per package, done by hand below) -- npm
+refuses the publish with a 404 if that configuration is missing or
+doesn't match this repo + this exact workflow filename.
+
+**A real `NODE_AUTH_TOKEN` gotcha (hit on the v0.4.6 release, run
+30210611779):** `actions/setup-node`'s `registry-url` input -- needed so
+`.npmrc` points at the real npm registry -- makes the action write a
+*placeholder* `NODE_AUTH_TOKEN` (`XXXXX-XXXXX-XXXXX-XXXXX`) for every
+later step whenever no real token is supplied, on every setup-node
+release through v6.5.0 (fixed only in v7.0.0, too new for this repo's
+>=15-day version-selection floor as of this writing). `release.yml`'s
+"Publish npm packages" step overrides that placeholder to an explicit
+empty string for itself; see that step's inline comment for the full
+citation trail. This is why you may see `NODE_AUTH_TOKEN: ""` in that
+step even though this channel is tokenless -- it is not a credential,
+it is a guard against the third-party action's own fallback.
 
 **Owner click-path -- do this once, for EACH of the 6 packages
 (organization/user `firatkutay`, repository `cli-comrade`, workflow

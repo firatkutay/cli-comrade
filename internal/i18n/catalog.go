@@ -1360,6 +1360,13 @@ const (
 	// file's own general.profile (see config.ResolveActiveProfile).
 	MsgFlagProfile MessageID = "flag_profile"
 
+	// MsgProfileFlagMissingValue is printed when a trailing, valueless
+	// "--profile" token is found while hand-parsing --profile out of a
+	// DisableFlagParsing leaf's raw args (config set, config profile set,
+	// explain — see internal/cli/profileflag.go's extractProfileFlag and
+	// issue #27). No args.
+	MsgProfileFlagMissingValue MessageID = "profile_flag_missing_value"
+
 	// MsgFlagProfileFromCurrent is `comrade config profile add`'s
 	// --from-current flag's --help description.
 	MsgFlagProfileFromCurrent MessageID = "flag_profile_from_current"
@@ -1769,8 +1776,9 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUndoPlanSummary:        "Reverses %d step(s) from run %s, newest first.",
 
 	// --- config profiles ---
-	MsgFlagProfile:            "use this named config profile for this invocation (overrides COMRADE_PROFILE and general.profile)",
-	MsgFlagProfileFromCurrent: "seed the new profile with the current file-level [llm] section's values",
+	MsgFlagProfile:             "use this named config profile for this invocation (overrides COMRADE_PROFILE and general.profile)",
+	MsgProfileFlagMissingValue: "--profile requires a value, e.g. --profile work",
+	MsgFlagProfileFromCurrent:  "seed the new profile with the current file-level [llm] section's values",
 
 	MsgConfigProfileListHeader: "PROFILE\tACTIVE\tKEYS",
 	MsgConfigProfileUsageError: "usage: %s %s",
@@ -2105,8 +2113,9 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUndoPlanSummary:        "%d adımı, %s çalıştırmasından en yeniden en eskiye doğru geri alır.",
 
 	// --- config profiles ---
-	MsgFlagProfile:            "bu çalıştırma için bu adlandırılmış config profilini kullan (COMRADE_PROFILE ve general.profile'ı geçersiz kılar)",
-	MsgFlagProfileFromCurrent: "yeni profili mevcut dosya seviyesindeki [llm] bölümünün değerleriyle doldur",
+	MsgFlagProfile:             "bu çalıştırma için bu adlandırılmış config profilini kullan (COMRADE_PROFILE ve general.profile'ı geçersiz kılar)",
+	MsgProfileFlagMissingValue: "--profile bir değer gerektirir, ör. --profile work",
+	MsgFlagProfileFromCurrent:  "yeni profili mevcut dosya seviyesindeki [llm] bölümünün değerleriyle doldur",
 
 	MsgConfigProfileListHeader: "PROFİL\tAKTİF\tANAHTAR",
 	MsgConfigProfileUsageError: "kullanım: %s %s",

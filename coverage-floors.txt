@@ -129,7 +129,7 @@
 
 github.com/firatkutay/cli-comrade/cmd/comrade 39.5
 github.com/firatkutay/cli-comrade/internal/audit 76.6
-github.com/firatkutay/cli-comrade/internal/cli 83.1
+github.com/firatkutay/cli-comrade/internal/cli 83.4 # re-baselined for issue #27: new --profile handling (profileflag.go) added 43 new statements, all fully covered, raising measured coverage from 83.6296% to 83.9523%
 github.com/firatkutay/cli-comrade/internal/config 86.9
 github.com/firatkutay/cli-comrade/internal/context 90.1
 github.com/firatkutay/cli-comrade/internal/doctor 92.4

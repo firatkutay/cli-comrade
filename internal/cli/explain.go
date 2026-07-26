@@ -58,6 +58,26 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		// --profile is hand-parsed out of args here for the same reason
+		// config.go's "set" and configprofile.go's "profile set" do:
+		// DisableFlagParsing (below) means cobra never parses ANY flag
+		// for this command — including root's own inherited persistent
+		// --profile — so without this it would silently fold into the
+		// text being explained instead of erroring OR selecting a
+		// profile (issue #27's most dangerous case: no error, no
+		// indication --profile did nothing). Runs BEFORE the --usage/--
+		// handling below, since extractProfileFlag scans for --profile
+		// regardless of where it falls relative to those tokens, and
+		// itself already stops at a literal "--" separator — see its own
+		// doc comment (profileflag.go) for why that keeps `comrade
+		// explain -- --profile weird` explaining the literal string
+		// "--profile weird" untouched.
+		profile, args, err := extractProfileFlag(args)
+		if err != nil {
+			return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgProfileFlagMissingValue))
+		}
+		effectiveLoader := loaderWithProfileOverride(newLoader, profile)
+
 		// --usage: DisableFlagParsing (above) means cobra never registers
 		// or parses any flag for this command at all — the "command being
 		// explained" argument routinely starts with a dash itself, which
@@ -86,19 +106,19 @@ func newExplainCmd(newLoader loaderFactory) *cobra.Command {
 		if len(args) > 0 && args[0] == "--" {
 			args = args[1:]
 			if len(args) == 0 {
-				return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgExplainUsageError))
+				return fmt.Errorf("%s", bestEffortTranslator(cmd, effectiveLoader).T(i18n.MsgExplainUsageError))
 			}
-			return runExplain(cmd, newLoader, strings.Join(args, " "), usageFlag)
+			return runExplain(cmd, effectiveLoader, strings.Join(args, " "), usageFlag)
 		}
 
 		if len(args) == 0 {
-			return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgExplainUsageError))
+			return fmt.Errorf("%s", bestEffortTranslator(cmd, effectiveLoader).T(i18n.MsgExplainUsageError))
 		}
 		if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
 			return cmd.Help()
 		}
 
-		return runExplain(cmd, newLoader, strings.Join(args, " "), usageFlag)
+		return runExplain(cmd, effectiveLoader, strings.Join(args, " "), usageFlag)
 	}
 	return cmd
 }

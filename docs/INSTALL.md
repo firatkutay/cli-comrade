@@ -81,9 +81,14 @@ davranış varsayılan olarak **kapalı-hata**dır (kurulum durur) —
 imza UYUŞMAZLIĞI bu override'a asla tabi değildir, her zaman koşulsuz
 durur. Ayrıntılar için bkz. [SECURITY.md](SECURITY.md).
 
-**`install.ps1` (Windows) henüz aynı korumaya sahip değil** —
-[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
-olarak takip ediliyor (bkz. SECURITY.md).
+**`install.ps1` (Windows) artık aynı korumaya sahip** (GitHub issue #43):
+`checksums.txt`'i, `internal/update/cosign.pub`'daki gerçek anahtarla
+birebir aynı, script içine gömülü bir cosign genel anahtarına karşı
+doğrular — aynı kapalı-hata varsayılanı ve `COMRADE_INSTALL_ALLOW_UNSIGNED`
+override'ı ile. Windows PowerShell 5.1 ile PowerShell 7 arasındaki ECDSA
+API farklılıkları nedeniyle `install.sh`'ın openssl yaklaşımının birebir
+kopyası değildir — bkz. SECURITY.md'nin "curl | sh bootstrap yolunun güven
+modeli" bölümü.
 
 ### Yeniden üretilebilir (reproducible) derlemeler
 
@@ -350,9 +355,13 @@ install aborts) — override explicitly with
 subject to that override; it always aborts unconditionally. See
 [SECURITY.md](SECURITY.md) for the full writeup.
 
-**`install.ps1` (Windows) does not have this protection yet** — tracked as
-[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
-(see SECURITY.md).
+**`install.ps1` (Windows) now has the same protection** (GitHub issue #43):
+it authenticates `checksums.txt` against a cosign public key embedded in
+the script, byte-identical to `internal/update/cosign.pub` — the same
+fail-closed default and `COMRADE_INSTALL_ALLOW_UNSIGNED` override. It isn't
+a straight port of `install.sh`'s openssl approach, though, because of the
+ECDSA API differences between Windows PowerShell 5.1 and PowerShell 7 — see
+SECURITY.md's "Trust model of the `curl | sh` bootstrap path" section.
 
 ### Reproducible builds
 

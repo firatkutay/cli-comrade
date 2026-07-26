@@ -1437,6 +1437,23 @@ anahtarları yerel bir dosyaya kaydediliyor").
   — `--tlog-upload=false`, yalnızca doğrulama zamanında değil, imzalama
   zamanında da Rekor transparency log'unu atlar) — bununla `comrade upgrade`'in ne yaptığı için yukarıdaki paragraflara bakın
 
+**Yeniden üretilebilir (reproducible) derlemeler**: her `builds:` girdisi
+`flags: [-trimpath]` taşır, ve `Makefile`'ın `build`/`cross` hedefleri
+aynı bayrağı paylaşılan bir `GOBUILDFLAGS` değişkeni üzerinden geçirir
+(CI'nin salt `go build ./...` derleme kontrolü etkilenmez, çünkü hiçbir
+zaman diske bir binary yazmaz). `-trimpath`, derlemenin mutlak kaynak
+yolunu derlenmiş binary'den çıkarır — bu olmadan, aynı kaynak +
+toolchain + ldflags iki farklı mutlak yolda derlenirse (bir CI runner'ı,
+bir geliştiricinin makinesi, tek seferlik elle yapılan bir yayın adımı)
+iki farklı SHA-256 sonucu üretir — kontrollü bir deneyle doğrulandı.
+Bununla, verilen bir commit/toolchain'in herhangi bir temiz checkout
+derlemesi, goreleaser'ın o release için ürettiğiyle byte-byte aynıdır —
+bu da yerel olarak derlenen bir binary'nin cosign-imzalı
+`checksums.txt`'e karşı doğrulanabilmesini sağlayan şeydir (kullanıcı
+tarafı doğrulama tarifi için bkz. docs/SECURITY.md'nin "Yeniden
+üretilebilir (reproducible) release binary'leri" ve docs/INSTALL.md'nin
+"Yeniden üretilebilir derlemeler" bölümleri).
+
 `scripts/install.sh`/`install.ps1` kurulum betikleri, host OS/mimarisine
 uyan release arşivini indirir, release'in yayınladığı `checksums.txt`'e
 karşı doğrular, ve binary'yi çıkarır — hiçbir paket yöneticisi

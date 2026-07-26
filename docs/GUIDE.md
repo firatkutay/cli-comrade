@@ -54,7 +54,8 @@ scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
 scoop install comrade
 ```
 
-Node.js/npm zaten kuruluysa (⏳ beklemede — henüz yayınlanmadı, bkz.
+Node.js/npm zaten kuruluysa, bu bir **alternatif** kurulum yoludur (yukarıdaki
+script/Homebrew/Scoop kanalları birincil kalır; ayrıntılar için bkz.
 [docs/INSTALL.md](INSTALL.md)):
 
 ```sh
@@ -62,7 +63,9 @@ npm install -g cli-comrade
 ```
 
 Bu, önceden derlenmiş binary'yi kurar — derleme araç zinciri gerekmez ve
-`npm ci --ignore-scripts` ile de çalışır.
+`npm ci --ignore-scripts` ile de çalışır. Dikkat: bu şekilde kurulursa
+`comrade upgrade` kendi kendini güncellemeyi reddeder — bkz. aşağıdaki
+"Günlük yardımcılar" bölümündeki `comrade upgrade` maddesi.
 
 Script'ler indirdiği paketi kurmadan **önce** checksum'a karşı doğrular;
 kurulum dizini `PATH`'inizde değilse otomatik olarak ekler (yeni bir
@@ -362,15 +365,18 @@ scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
 scoop install comrade
 ```
 
-Already have Node.js/npm (⏳ pending — not published yet, see
-[docs/INSTALL.md](INSTALL.md)):
+Already have Node.js/npm? This is an **alternative** install path (the
+script/Homebrew/Scoop channels above remain primary; see
+[docs/INSTALL.md](INSTALL.md) for details):
 
 ```sh
 npm install -g cli-comrade
 ```
 
 This installs a prebuilt binary — no build toolchain required, and it
-works with `npm ci --ignore-scripts` too.
+works with `npm ci --ignore-scripts` too. Note: installed this way,
+`comrade upgrade` refuses to self-update — see the `comrade upgrade` entry
+under "Everyday helpers" below.
 
 The scripts verify the downloaded package against its checksum **before**
 installing anything, and add the install directory to your `PATH`

@@ -156,10 +156,32 @@ const fishWorkingComradeScript = `if [ "$1" = "completion" ]; then
 fi
 exit 0`
 
-func runSourcingShell(t *testing.T, shellPath, sourceLine string, pathDirs []string) (stdout, stderr string, exitCode int) {
+// runShellScript feeds script to shellPath entirely over STDIN -- never as
+// a `-c`-embedded string, and never by writing it to a temp file and
+// passing that file's PATH as command-line text. This is the fix for a
+// real Windows-CI failure: t.TempDir() there returns a native path like
+// `C:\Users\RUNNER~1\AppData\Local\Temp\...\snippet.sh`; embedding that
+// text inside a `-c "source <path>"` string handed the backslashes to the
+// shell's OWN lexer, which consumes them as escape characters (bash's -c
+// argument is parsed exactly like a script line), mangling the path to
+// `C:UsersRUNNER~1AppData...` and breaking "No such file or directory" --
+// the shell hooks under test were fine; the test harness's path handling
+// was not. Piping the script body over stdin removes the path (and its
+// backslashes) from the equation entirely: nothing about the snippet's
+// own content is ever re-lexed as shell-quoted argument text. A plain
+// `PATH=...` env value is unaffected by this class of bug (env vars are
+// read verbatim via getenv, never re-parsed as shell syntax), so fakeBinDir
+// below is passed via cmd.Env exactly as before.
+//
+// None of bash.sh/zsh.sh/fish-completions.fish reference $0, BASH_SOURCE,
+// or fish's (status --current-filename) -- confirmed by grep -- so
+// executing them as a piped script instead of a sourced file changes no
+// behavior under test.
+func runShellScript(t *testing.T, shellPath, script string, pathDirs []string) (stdout, stderr string, exitCode int) {
 	t.Helper()
-	cmd := exec.Command(shellPath, "-c", sourceLine)
+	cmd := exec.Command(shellPath)
 	cmd.Env = []string{"PATH=" + strings.Join(pathDirs, string(os.PathListSeparator)), "HOME=" + t.TempDir()}
+	cmd.Stdin = strings.NewReader(script)
 	var outBuf, errBuf strings.Builder
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
@@ -176,31 +198,23 @@ func runSourcingShell(t *testing.T, shellPath, sourceLine string, pathDirs []str
 	return outBuf.String(), errBuf.String(), code
 }
 
-func writeSnippetFile(t *testing.T, shell shellinit.Shell) string {
-	t.Helper()
-	body, err := shellinit.Snippet(shell)
-	require.NoError(t, err)
-	path := filepath.Join(t.TempDir(), "snippet.sh")
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
-	return path
-}
-
 func TestBashSnippetSilentWhenComradeAbsentFromPath(t *testing.T) {
-	snippetPath := writeSnippetFile(t, shellinit.Bash)
-	stdout, stderr, code := runSourcingShell(t, "bash",
-		"source "+snippetPath, []string{"/usr/bin", "/bin"})
+	snippet, err := shellinit.Snippet(shellinit.Bash)
+	require.NoError(t, err)
+
+	stdout, stderr, code := runShellScript(t, "bash", snippet, []string{"/usr/bin", "/bin"})
 
 	assert.Equal(t, 0, code, "stdout: %s\nstderr: %s", stdout, stderr)
-	assert.Empty(t, stderr, "sourcing the hook with comrade entirely absent from PATH must never print anything")
+	assert.Empty(t, stderr, "running the hook with comrade entirely absent from PATH must never print anything")
 }
 
 func TestBashSnippetSilentWhenComradeBrokenOnPath(t *testing.T) {
 	fakeBinDir := t.TempDir()
 	writeFakeComrade(t, fakeBinDir, brokenComradeScript)
-	snippetPath := writeSnippetFile(t, shellinit.Bash)
+	snippet, err := shellinit.Snippet(shellinit.Bash)
+	require.NoError(t, err)
 
-	stdout, stderr, code := runSourcingShell(t, "bash",
-		"source "+snippetPath, []string{fakeBinDir, "/usr/bin", "/bin"})
+	stdout, stderr, code := runShellScript(t, "bash", snippet, []string{fakeBinDir, "/usr/bin", "/bin"})
 
 	assert.Equal(t, 0, code, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Empty(t, stderr, "a comrade that is on PATH but broken (npm dispatcher without a platform binary) must never spam the shell on every startup -- this is the exact field-reported bug")
@@ -209,11 +223,11 @@ func TestBashSnippetSilentWhenComradeBrokenOnPath(t *testing.T) {
 func TestBashSnippetLoadsCompletionWhenComradeWorks(t *testing.T) {
 	fakeBinDir := t.TempDir()
 	writeFakeComrade(t, fakeBinDir, workingComradeScript)
-	snippetPath := writeSnippetFile(t, shellinit.Bash)
+	snippet, err := shellinit.Snippet(shellinit.Bash)
+	require.NoError(t, err)
+	script := snippet + "\ntype __comrade_fake_completion_marker >/dev/null 2>&1 && echo DEFINED || echo NOT_DEFINED\n"
 
-	stdout, stderr, code := runSourcingShell(t, "bash",
-		"source "+snippetPath+"; type __comrade_fake_completion_marker >/dev/null 2>&1 && echo DEFINED || echo NOT_DEFINED",
-		[]string{fakeBinDir, "/usr/bin", "/bin"})
+	stdout, stderr, code := runShellScript(t, "bash", script, []string{fakeBinDir, "/usr/bin", "/bin"})
 
 	assert.Equal(t, 0, code, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Empty(t, stderr)
@@ -228,10 +242,10 @@ func TestZshSnippetSilentWhenComradeBrokenOnPath(t *testing.T) {
 
 	fakeBinDir := t.TempDir()
 	writeFakeComrade(t, fakeBinDir, brokenComradeScript)
-	snippetPath := writeSnippetFile(t, shellinit.Zsh)
+	snippet, err := shellinit.Snippet(shellinit.Zsh)
+	require.NoError(t, err)
 
-	stdout, stderr, code := runSourcingShell(t, zshPath,
-		"source "+snippetPath, []string{fakeBinDir, "/usr/bin", "/bin"})
+	stdout, stderr, code := runShellScript(t, zshPath, snippet, []string{fakeBinDir, "/usr/bin", "/bin"})
 
 	assert.Equal(t, 0, code, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Empty(t, stderr, "a comrade that is on PATH but broken must never spam the shell on every startup")
@@ -245,11 +259,11 @@ func TestZshSnippetLoadsCompletionWhenComradeWorks(t *testing.T) {
 
 	fakeBinDir := t.TempDir()
 	writeFakeComrade(t, fakeBinDir, workingComradeScript)
-	snippetPath := writeSnippetFile(t, shellinit.Zsh)
+	snippet, err := shellinit.Snippet(shellinit.Zsh)
+	require.NoError(t, err)
+	script := snippet + "\ntype __comrade_fake_completion_marker >/dev/null 2>&1 && echo DEFINED || echo NOT_DEFINED\n"
 
-	stdout, stderr, code := runSourcingShell(t, zshPath,
-		"source "+snippetPath+"; type __comrade_fake_completion_marker >/dev/null 2>&1 && echo DEFINED || echo NOT_DEFINED",
-		[]string{fakeBinDir, "/usr/bin", "/bin"})
+	stdout, stderr, code := runShellScript(t, zshPath, script, []string{fakeBinDir, "/usr/bin", "/bin"})
 
 	assert.Equal(t, 0, code, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Empty(t, stderr)
@@ -264,11 +278,8 @@ func TestFishCompletionsScriptSilentWhenComradeBrokenOnPath(t *testing.T) {
 
 	fakeBinDir := t.TempDir()
 	writeFakeComrade(t, fakeBinDir, brokenComradeScript)
-	path := filepath.Join(t.TempDir(), "completions.fish")
-	require.NoError(t, os.WriteFile(path, []byte(shellinit.FishCompletionsScript()), 0o644))
 
-	stdout, stderr, code := runSourcingShell(t, fishPath,
-		"source "+path, []string{fakeBinDir, "/usr/bin", "/bin"})
+	stdout, stderr, code := runShellScript(t, fishPath, shellinit.FishCompletionsScript(), []string{fakeBinDir, "/usr/bin", "/bin"})
 
 	assert.Equal(t, 0, code, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Empty(t, stderr, "a comrade that is on PATH but broken must never spam the shell on every startup")
@@ -282,12 +293,9 @@ func TestFishCompletionsScriptLoadsCompletionWhenComradeWorks(t *testing.T) {
 
 	fakeBinDir := t.TempDir()
 	writeFakeComrade(t, fakeBinDir, fishWorkingComradeScript)
-	path := filepath.Join(t.TempDir(), "completions.fish")
-	require.NoError(t, os.WriteFile(path, []byte(shellinit.FishCompletionsScript()), 0o644))
+	script := shellinit.FishCompletionsScript() + "\nfunctions -q __comrade_fake_completion_marker; and echo DEFINED; or echo NOT_DEFINED\n"
 
-	stdout, stderr, code := runSourcingShell(t, fishPath,
-		"source "+path+"; functions -q __comrade_fake_completion_marker; and echo DEFINED; or echo NOT_DEFINED",
-		[]string{fakeBinDir, "/usr/bin", "/bin"})
+	stdout, stderr, code := runShellScript(t, fishPath, script, []string{fakeBinDir, "/usr/bin", "/bin"})
 
 	assert.Equal(t, 0, code, "stdout: %s\nstderr: %s", stdout, stderr)
 	assert.Empty(t, stderr)

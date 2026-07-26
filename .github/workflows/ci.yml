@@ -147,3 +147,77 @@ jobs:
 
       - name: govulncheck
         run: govulncheck ./...
+
+  # GitHub issue #29: static analysis for the shell scripts that actually
+  # run on users' machines, most critically scripts/install.sh -- the
+  # exact script piped through `curl | sh` by the README's one-liner, and
+  # (as of PR #45) the one that now performs cosign ECDSA signature
+  # verification via openssl. There was previously zero shell linting of
+  # any kind between a commit and that code executing on a real machine.
+  #
+  # Preinstalled binary, not a third-party Action: ShellCheck ships
+  # already installed on the GitHub-hosted ubuntu-latest runner image
+  # (confirmed via actions/runner-images's Ubuntu2404-Readme.md software
+  # list, which is what ubuntu-latest currently resolves to) — using it
+  # directly keeps this job's supply-chain surface at zero beyond the
+  # runner image itself: no new `uses:` step to pin/audit, no download to
+  # checksum-verify.
+  #
+  # Dialect picked per file from its own shebang, not one blanket
+  # setting: scripts/install.sh and scripts/install_test.sh are
+  # `#!/bin/sh`/`#!/usr/bin/env sh` (install.sh is invoked via
+  # `curl | sh`, so it must stay POSIX-sh-clean) and are linted with
+  # `-s sh`; everything else under scripts/ and npm/test/ is
+  # `#!/usr/bin/env bash` and linted with `-s bash`. `-x` lets
+  # install_test.sh's `# shellcheck source=SCRIPTDIR/install.sh` directive
+  # actually follow install.sh regardless of the job's invocation cwd.
+  #
+  # Run at DEFAULT severity (no `-S error` downgrade) so new warnings,
+  # not just errors, block merge — the info-level SC2016 hits this
+  # already found (deliberately literal, unexpanded "$HOME"/"$PATH" text
+  # written into a user's rc file) are suppressed narrowly, per-line, in
+  # the scripts themselves, with a comment explaining why; nothing is
+  # downgraded at the job level.
+  #
+  # File set enumerated dynamically (find, not a hardcoded list) so a
+  # future script under scripts/ or npm/test/ is covered automatically
+  # instead of silently going unlinted.
+  #
+  # Secret scanning (gitleaks) and SBOM/SCA (Syft/Grype) decision, per
+  # this issue's acceptance criteria: explicitly DECLINED in this PR.
+  # This repo has no dependency manifest that changes often enough yet to
+  # justify a recurring SCA job (a single go.sum, already covered for
+  # known CVEs by the vulncheck job above), and no secret-scanning gate
+  # exists at all today, so there's nothing for gitleaks to regress
+  # against without a dedicated rollout (baseline scan, allowlist for any
+  # existing false positives). Both are real, valuable, separate work —
+  # tracked in issue #47 — not bundled into this shell-linting change.
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck --version
+
+          status=0
+          while IFS= read -r -d '' file; do
+            case "$(head -n1 "$file")" in
+              '#!/bin/sh' | '#!/usr/bin/env sh')
+                dialect=sh
+                ;;
+              *)
+                dialect=bash
+                ;;
+            esac
+            echo "::group::shellcheck -x -s ${dialect} ${file}"
+            if ! shellcheck -x -s "${dialect}" "${file}"; then
+              status=1
+            fi
+            echo "::endgroup::"
+          done < <(find scripts npm/test -name '*.sh' -print0 | sort -z)
+
+          exit "${status}"

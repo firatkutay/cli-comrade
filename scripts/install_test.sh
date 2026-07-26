@@ -27,14 +27,14 @@
 # without adding a second, shell-only command surface.
 set -eu
 
-script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+script_dir="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 
 # Source install.sh with COMRADE_INSTALL_SH_TEST=1 so its trailing
 # `main "$@"` call is skipped — this only defines functions and the
 # PATH_MARKER variable, it does not download or install anything.
 COMRADE_INSTALL_SH_TEST=1
 export COMRADE_INSTALL_SH_TEST
-# shellcheck source=./install.sh
+# shellcheck source=SCRIPTDIR/install.sh
 . "${script_dir}/install.sh"
 
 failures=0
@@ -99,6 +99,10 @@ test_bash_appends_marked_line_once() {
     return 1
   fi
 
+  # Matching the literal, unexpanded rc-file text that
+  # path_export_line_for_shell writes (see install.sh); this is not an
+  # accidental missed expansion.
+  # shellcheck disable=SC2016
   export_count="$(count_matches 'export PATH="$HOME/.local/bin:$PATH"' "$rc")"
   if [ "$export_count" -ne 1 ]; then
     echo "  expected the export line once in $rc, got $export_count" >&2
@@ -185,6 +189,10 @@ test_fish_selects_config_fish() {
     return 1
   fi
 
+  # Matching the literal, unexpanded rc-file text that
+  # path_export_line_for_shell writes (see install.sh); this is not an
+  # accidental missed expansion.
+  # shellcheck disable=SC2016
   fish_line_count="$(count_matches 'set -gx PATH $HOME/.local/bin $PATH' "$rc")"
   if [ "$fish_line_count" -ne 1 ]; then
     echo "  expected the fish PATH line once in $rc, got $fish_line_count" >&2

@@ -33,6 +33,10 @@ run_build_script() {
 }
 
 TMP_DIR="$(mktemp -d)"
+# Only invoked indirectly via the trap below; ShellCheck's own wiki
+# (SC2329) notes it "is currently bad at figuring out functions that are
+# invoked via trap" and recommends this directive.
+# shellcheck disable=SC2329
 cleanup() { rm -rf "${TMP_DIR}"; }
 trap cleanup EXIT
 

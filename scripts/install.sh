@@ -408,10 +408,21 @@ path_export_line_for_shell() {
   shell_arg="$1"
   dir_arg="$2"
   if [ "$dir_arg" = "$HOME/.local/bin" ]; then
+    # Deliberately literal: written verbatim into the rc file (see the
+    # function comment above) so it re-expands correctly even under a
+    # different $HOME later -- not an accidental missed expansion.
+    # shellcheck disable=SC2016
     dir_expr='$HOME/.local/bin'
   else
     dir_expr="$dir_arg"
   fi
+  # Both branches below deliberately print a literal, unexpanded "$PATH"
+  # (and "fish"'s %s placeholder may itself carry a literal "$HOME" from
+  # above) -- the rc-file text must stay unexpanded until it is sourced
+  # later, so this is not an accidental missed expansion. ShellCheck
+  # directives only attach to whole commands, not individual case
+  # branches (SC1124), so this covers the full case statement.
+  # shellcheck disable=SC2016
   case "$shell_arg" in
     fish) printf 'set -gx PATH %s $PATH\n' "$dir_expr" ;;
     *) printf 'export PATH="%s:$PATH"\n' "$dir_expr" ;;

@@ -6,8 +6,11 @@ Binary name: `comrade`
 
 ## Türkçe
 
-v0.3.x için **birincil kurulum yolu** aşağıdaki `install.sh`/`install.ps1`
-tek satırlık komutlarıdır. Tüm kurulum yöntemleri her release'de aynı
+**Birincil kurulum yolu** aşağıdaki `install.sh`/`install.ps1`
+tek satırlık komutlarıdır (Homebrew, Scoop ve doğrudan `.deb`/`.rpm`
+paketleri de eşit derecede canlı ve desteklenen kanallardır — npm ise
+zaten Node.js kurulu olan geliştiriciler için bir **alternatiftir**, bkz.
+aşağıdaki "npm" bölümü). Tüm kurulum yöntemleri her release'de aynı
 imzalanmış/checksum'lı arşivlerden ve paketlerden üretilir (bkz.
 `.goreleaser.yaml`). Hiçbiri `sudo curl | bash` gibi bir "kör" script
 çalıştırmaz; kurulum script'lerinin kendisi bile indirdiği arşivi
@@ -82,6 +85,27 @@ durur. Ayrıntılar için bkz. [SECURITY.md](SECURITY.md).
 [GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
 olarak takip ediliyor (bkz. SECURITY.md).
 
+### Yeniden üretilebilir (reproducible) derlemeler
+
+Release binary'leri `-trimpath` ile derlenir (bkz. `.goreleaser.yaml`),
+bu yüzden aynı commit'ten aynı Go araç zinciriyle **herhangi bir** temiz
+checkout'ta yapılan bir derleme, resmi release arşivinin içindeki
+binary'yle byte-byte aynıdır — hangi mutlak dosya yolunda derlendiğinden
+bağımsız olarak. `checksums.txt` arşivlerin (binary'nin kendisinin değil)
+SHA-256'sını listeler, bu yüzden karşılaştırma indirilen arşivi açıp
+yapılmalıdır:
+
+```sh
+# indirilen resmi arşivden binary'yi çıkarın (örn. comrade_<sürüm>_linux_amd64.tar.gz)
+tar -xzf comrade_<sürüm>_linux_amd64.tar.gz comrade
+sha256sum comrade > /tmp/released.sha256
+
+git clone https://github.com/firatkutay/cli-comrade.git
+cd cli-comrade && git checkout v<sürüm>
+make build   # -> ./comrade, aynı -trimpath bayrağıyla
+sha256sum comrade   # /tmp/released.sha256 ile karşılaştırın — aynı olmalı
+```
+
 ### Kurulum script'i (Windows PowerShell) — önerilen yöntem
 
 ```powershell
@@ -129,21 +153,37 @@ scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
 scoop install comrade
 ```
 
-### npm — beklemede
+### npm — canlı (alternatif kanal)
 
 ```sh
 npm install -g cli-comrade
 ```
 
-`cli-comrade` paketi Node.js/npm zaten kurulu ortamlar için önceden
+Bu, terminalle uğraşmak istemeyen ana kitlemiz için değil, zaten Node.js
+kurulu geliştiriciler için bir **alternatif** kurulum yoludur — yukarıdaki
+`install.sh`/`install.ps1`/Homebrew/Scoop kanalları birincil kalır.
+
+`cli-comrade` paketi, Node.js/npm zaten kurulu ortamlar için önceden
 derlenmiş `comrade` binary'sini indirir — herhangi bir Go/derleme araç
-zinciri gerekmez; platforma özgü binary, `optionalDependencies` üzerinden
-otomatik seçilir (linux/macOS amd64+arm64, Windows amd64). Bu nedenle
-`npm ci --ignore-scripts` de sorunsuz çalışır (postinstall script'i
-yoktur). Paket adı şu an doğrulanmış şekilde müsait (npm'de bir
-rezervasyon mekanizması yoktur — bu sadece "henüz kimse almamış" demektir,
-bir garanti değil) ancak ilk yayın henüz yapılmadı; onaylanana kadar
-yukarıdaki diğer kurulum yöntemlerini kullanın.
+zinciri gerekmez; platforma özgü binary, 5 `@firatkutay/comrade-<os>-<cpu>`
+paketinden (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
+`win32-x64`) biri, `optionalDependencies` üzerinden otomatik seçilir. Bu
+nedenle `npm ci --ignore-scripts` de sorunsuz çalışır (postinstall
+script'i yoktur).
+
+**Önemli sınır: `comrade upgrade` bir npm kurulumunda kendi kendini
+güncellemeyi reddeder** (aynı davranış pnpm/yarn/bun'la kurulduğunda da
+geçerlidir — hepsi aynı dispatcher'ı çalıştırır) — ikili dosyayı yerinde
+değiştirmek, paket yöneticisinin kendi kayıtlı sürümünü diskteki gerçek
+durumdan koparır. Bunun yerine paket yöneticinizle güncelleyin:
+
+```sh
+npm update -g cli-comrade
+```
+
+`comrade upgrade --check` bu durumda reddedilmez — hiçbir şey indirmez
+veya değiştirmez, yalnızca daha yeni bir sürüm olup olmadığını bildirir.
+Ayrıntılar için bkz. [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ### winget (Windows) — beklemede
 
@@ -221,6 +261,10 @@ comrade upgrade           # indirir, checksum doğrular, kendini günceller
 yeni bir sürüm olduğunu sessizce bildirir (`general.update_check = false`
 ile kapatılabilir — bkz. CONFIGURATION.md).
 
+npm/pnpm/yarn/bun ile kurduysanız `comrade upgrade` kendi kendini
+güncellemeyi reddeder — yukarıdaki "npm" bölümüne ve
+[docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md)'a bakın.
+
 `comrade upgrade`, indirdiği sürümü kurmadan önce artık bir cosign
 imzasını (offline, ağ erişimi olmadan) doğrular; imza doğrulanamazsa
 kurulum iptal edilir. Ayrıntılar için bkz.
@@ -231,13 +275,15 @@ kurulum iptal edilir. Ayrıntılar için bkz.
 
 ## English
 
-The **primary install path for v0.3.x** is the `install.sh`/`install.ps1`
-one-liners below. Every install method is built from the exact same
-signed/checksummed archives and packages on every release (see
-`.goreleaser.yaml`). None of them is a blind `curl | sudo bash` — even
-the install scripts themselves verify the downloaded archive against
-that release's own `checksums.txt` before installing anything (see
-below).
+The **primary install path** is the `install.sh`/`install.ps1` one-liners
+below (Homebrew, Scoop, and the direct `.deb`/`.rpm` packages are equally
+live, supported channels too — npm is an **alternative** for developers who
+already have Node.js installed, see the "npm" section below). Every install
+method is built from the exact same signed/checksummed archives and
+packages on every release (see `.goreleaser.yaml`). None of them is a blind
+`curl | sudo bash` — even the install scripts themselves verify the
+downloaded archive against that release's own `checksums.txt` before
+installing anything (see below).
 
 ### Install script (macOS / Linux) — recommended
 
@@ -308,6 +354,25 @@ subject to that override; it always aborts unconditionally. See
 [GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
 (see SECURITY.md).
 
+### Reproducible builds
+
+Release binaries are built with `-trimpath` (see `.goreleaser.yaml`), so a
+build from a clean checkout of the same commit, with the same Go toolchain,
+is byte-identical to the binary inside the official release archive —
+regardless of the absolute path it was built at. `checksums.txt` hashes the
+archives, not the raw binary, so verify by extracting first:
+
+```sh
+# extract the binary from the downloaded official archive (e.g. comrade_<version>_linux_amd64.tar.gz)
+tar -xzf comrade_<version>_linux_amd64.tar.gz comrade
+sha256sum comrade > /tmp/released.sha256
+
+git clone https://github.com/firatkutay/cli-comrade.git
+cd cli-comrade && git checkout v<version>
+make build   # -> ./comrade, with the same -trimpath flag
+sha256sum comrade   # compare against /tmp/released.sha256 — should match
+```
+
 ### Install script (Windows PowerShell) — recommended
 
 ```powershell
@@ -355,21 +420,38 @@ scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket
 scoop install comrade
 ```
 
-### npm — pending
+### npm — live (alternative channel)
 
 ```sh
 npm install -g cli-comrade
 ```
 
+This is an **alternative** install path for developers who already have
+Node.js installed — not our primary channel for the terminal-averse
+audience this project targets. The `install.sh`/`install.ps1`/Homebrew/
+Scoop channels above remain primary.
+
 The `cli-comrade` package installs a prebuilt `comrade` binary for
 environments that already have Node.js/npm — no Go/build toolchain
-required. The right platform-specific binary (linux/macOS amd64+arm64,
-Windows amd64) is selected automatically via `optionalDependencies`, so
-`npm ci --ignore-scripts` works fine too (there is no postinstall
-script). The package name is currently verified available (npm has no
-reservation mechanism -- this only means "nobody has claimed it yet," not
-a guarantee) but not yet published; use one of the other install methods
-above until it is.
+required. The right platform-specific binary is selected automatically via
+`optionalDependencies`, resolving to one of 5 scoped packages —
+`@firatkutay/comrade-linux-x64`, `-linux-arm64`, `-darwin-x64`,
+`-darwin-arm64`, `-win32-x64` — so `npm ci --ignore-scripts` works fine too
+(there is no postinstall script).
+
+**Important limitation: `comrade upgrade` refuses to self-update on an npm
+install** (the same holds for pnpm/yarn/bun installs — all of them run the
+same distribution dispatcher) — replacing the binary in place would desync
+the package manager's own recorded version from what's actually on disk.
+Update it with your package manager instead:
+
+```sh
+npm update -g cli-comrade
+```
+
+`comrade upgrade --check` is not refused in this case — it downloads and
+changes nothing, and still reports whether a newer version is available.
+See [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md) for details.
 
 ### winget (Windows) — pending
 
@@ -448,6 +530,10 @@ comrade upgrade           # download, checksum-verify, and self-update
 `comrade` also prints a single, silent, at-most-once-a-week notice at
 the end of any command when a newer version is available (disable with
 `general.update_check = false` — see CONFIGURATION.md).
+
+If you installed via npm/pnpm/yarn/bun, `comrade upgrade` refuses to
+self-update — see the "npm" section above and
+[docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 `comrade upgrade` now verifies a cosign signature (offline, no network
 lookup) on the downloaded release before installing it — the upgrade

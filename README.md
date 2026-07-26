@@ -105,12 +105,23 @@ together — and doing so prints a loud warning on every use.
 - **Self-update signature verification** — `comrade upgrade` verifies a
   cosign signature of the release's `checksums.txt` against a public key
   embedded in the binary, fully offline, before trusting the checksum or
-  replacing the running executable.
-- **v0.3.0 hardening** — `base_url` validation (an LLM API key can no
-  longer be sent to a cloud-metadata / link-local address, and a
-  plaintext-`http` destination is flagged with a warning that the key
-  would travel unencrypted), broader redaction coverage, and a hardened
-  destructive-command classifier.
+  replacing the running executable. `scripts/install.sh` verifies the same
+  signature with the same embedded key before it ever installs anything
+  (`scripts/install.ps1` doesn't have this yet — tracked as
+  [issue #43](https://github.com/firatkutay/cli-comrade/issues/43)).
+- **Reproducible release binaries** — release builds pass `-trimpath`, so a
+  binary built from a clean checkout at a release tag is byte-identical to
+  the signed release artifact — anyone can verify it independently instead
+  of trusting the download.
+- **`base_url` validation** — an LLM API key can no longer be sent to a
+  cloud-metadata / link-local address, and a plaintext-`http` destination is
+  flagged with a warning that the key would travel unencrypted.
+- Broader redaction coverage and a hardened destructive-command classifier
+  — see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for the honest,
+  precisely-scoped residual gaps (e.g. loop-carried variable reassignment
+  is now resolved to a fixpoint, but only for command-word sinks — an
+  argument-position sink such as `sh -c "$X ..."` is a separate, still-open
+  case).
 
 Full model: [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -151,7 +162,7 @@ Full setup (remote Ollama hosts, fallback-chain syntax) and the
 | Homebrew | `brew install firatkutay/tap/comrade` | ✅ live |
 | Scoop | `scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket`<br>`scoop install comrade` | ✅ live |
 | .deb / .rpm / raw archives | [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases) | ✅ live |
-| npm | `npm install -g cli-comrade` | ⏳ pending — packaging done, not yet published (no npm account/token yet); installs a prebuilt binary, no build toolchain needed, `npm ci --ignore-scripts` safe |
+| npm (alternative, for Node users) | `npm install -g cli-comrade` | ✅ live — installs a prebuilt binary via 5 platform-specific `@firatkutay/comrade-*` packages, no build toolchain needed, `npm ci --ignore-scripts` safe. `comrade upgrade` refuses to self-update on an npm/pnpm/yarn/bun install — use that package manager's own update command instead (`comrade upgrade --check` still works) |
 | winget | `winget install cli.comrade` | ⏳ pending — PR open against `microsoft/winget-pkgs`, awaiting moderator review |
 | Snap | `sudo snap install cli-comrade --classic` | ⏳ pending — awaiting Snap Store registration + classic-confinement approval |
 
@@ -357,12 +368,24 @@ basılır.
 - **Kendi kendini güncelleme imza doğrulaması** — `comrade upgrade`,
   binary'ye gömülü bir public key'e karşı release'in `checksums.txt`'inin
   cosign imzasını, tamamen offline olarak, checksum'a güvenmeden veya
-  çalışan executable'ı değiştirmeden önce doğrular.
-- **v0.3.0 sertleştirmesi** — `base_url` doğrulaması (bir LLM API
-  anahtarı artık bir cloud-metadata / link-local adresine gönderilemez;
-  düz-metin bir `http` hedefi, anahtarın şifresiz gideceğine dair bir
-  uyarıyla işaretlenir), daha geniş redaction kapsamı, ve sertleştirilmiş
-  bir destructive-komut sınıflandırıcısı.
+  çalışan executable'ı değiştirmeden önce doğrular. `scripts/install.sh`
+  da aynı gömülü anahtarla aynı imzayı, herhangi bir şey kurmadan önce
+  doğrular (`scripts/install.ps1`'de bu henüz yok —
+  [issue #43](https://github.com/firatkutay/cli-comrade/issues/43) olarak
+  takip ediliyor).
+- **Yeniden üretilebilir (reproducible) release binary'leri** — release
+  derlemeleri `-trimpath` ile yapılır, bu yüzden temiz bir checkout'tan bir
+  release tag'inde derlenen binary, imzalanmış release artifact'iyle byte-
+  byte aynıdır — herkes indirmeye güvenmek yerine bağımsızca doğrulayabilir.
+- **`base_url` doğrulaması** — bir LLM API anahtarı artık bir cloud-metadata
+  / link-local adresine gönderilemez; düz-metin bir `http` hedefi,
+  anahtarın şifresiz gideceğine dair bir uyarıyla işaretlenir.
+- Daha geniş redaction kapsamı ve sertleştirilmiş bir destructive-komut
+  sınıflandırıcısı — dürüst, kesin kapsamlı kalan boşluklar için bkz.
+  [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) (ör. döngü-taşımalı değişken
+  yeniden atamaları artık bir sabit noktaya (fixpoint) çözülüyor, ama
+  yalnızca komut-sözcüğü sink'leri için — `sh -c "$X ..."` gibi bir argüman-
+  konumu sink'i ayrı, hâlâ açık bir vaka).
 
 Tam model: [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -403,7 +426,7 @@ Tam kurulum (uzak Ollama sunucuları, fallback-zinciri sözdizimi) ve
 | Homebrew | `brew install firatkutay/tap/comrade` | ✅ canlı |
 | Scoop | `scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket`<br>`scoop install comrade` | ✅ canlı |
 | .deb / .rpm / ham arşivler | [GitHub Releases](https://github.com/firatkutay/cli-comrade/releases) | ✅ canlı |
-| npm | `npm install -g cli-comrade` | ⏳ beklemede — paketleme tamam, henüz yayınlanmadı (npm hesabı/token'ı yok); önceden derlenmiş binary kurar, derleme araç zinciri gerekmez, `npm ci --ignore-scripts` güvenli |
+| npm (alternatif, Node kullanıcıları için) | `npm install -g cli-comrade` | ✅ canlı — önceden derlenmiş binary'yi 5 platforma özgü `@firatkutay/comrade-*` paketi üzerinden kurar, derleme araç zinciri gerekmez, `npm ci --ignore-scripts` güvenli. `comrade upgrade`, bir npm/pnpm/yarn/bun kurulumunda kendi kendini güncellemeyi reddeder — bunun yerine o paket yöneticisinin kendi güncelleme komutunu kullanın (`comrade upgrade --check` yine çalışır) |
 | winget | `winget install cli.comrade` | ⏳ beklemede — `microsoft/winget-pkgs`'e açılan PR, moderatör incelemesi bekliyor |
 | Snap | `sudo snap install cli-comrade --classic` | ⏳ beklemede — Snap Store kaydı + classic-confinement onayı bekliyor |
 

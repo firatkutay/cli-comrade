@@ -1386,6 +1386,21 @@ previous, blunter "no OS keychain available on this machine").
   too, not just at verify time) — see the paragraphs above for what
   `comrade upgrade` does with it
 
+**Reproducible builds**: every `builds:` entry carries `flags: [-trimpath]`,
+and `Makefile`'s `build`/`cross` targets pass the same flag via a shared
+`GOBUILDFLAGS` var (CI's plain `go build ./...` compile check is untouched
+since it never writes a binary to disk). `-trimpath` strips the build's
+absolute source path from the compiled binary — without it, the exact same
+source + toolchain + ldflags built at two different absolute paths (a CI
+runner vs. a developer's machine vs. a one-time manual publish step)
+produces two different SHA-256 sums, confirmed by controlled experiment.
+With it, any clean-checkout build of a given commit/toolchain is
+byte-identical to the one goreleaser produced for that release, which is
+what lets a locally built binary be verified against the cosign-signed
+`checksums.txt` (see docs/SECURITY.md's "Reproducible release binaries"
+and docs/INSTALL.md's "Reproducible builds" for the user-facing
+verification recipe).
+
 Install scripts `scripts/install.sh`/`install.ps1` download the release
 archive matching the host OS/arch, verify it against the release's
 published `checksums.txt`, and extract the binary — no package manager

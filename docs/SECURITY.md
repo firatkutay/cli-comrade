@@ -230,6 +230,23 @@ olarak takip ediliyor.
   triyaj edilmiş bu bulguda her PR'ı kırardı — tam olarak bu işin
   kaçınmaya çalıştığı "yok sayılan gate" durumu.
 
+### Yeniden üretilebilir (reproducible) release binary'leri
+
+İmza doğrulaması yalnızca `checksums.txt`'in bütünlüğünü kanıtlar; kimin
+derlediğini kanıtlamaz. Bu boşluğu kapatmak için release binary'leri
+`-trimpath` (`.goreleaser.yaml`, `Makefile`) ile derlenir — bu, derlemenin
+mutlak kaynak yolunu ikili dosyaya gömülmekten çıkarır. Sonuç: aynı
+commit'ten aynı Go araç zinciriyle yapılan **herhangi bir** temiz
+checkout derlemesi, hangi mutlak yolda çalıştırıldığından bağımsız olarak
+resmi release'deki binary'yle byte-byte aynıdır (iki farklı mutlak yolda
+yapılan derlemeyle doğrudan doğrulandı — bkz. `docs/INSTALL.md`'nin
+"Yeniden üretilebilir derlemeler" bölümü). Bu özellik, `install.sh`'ın
+cosign imza doğrulamasıyla birlikte, elle yapılan bir derlemenin
+(örneğin npm paketinin ilk kez yayınlanması için kullanılan tek seferlik
+elle derleme) imzalı release'e karşı bağımsızca doğrulanabilmesini sağlar
+— aksi halde npm sürümleri değişmez olduğundan böyle bir derleme hiçbir
+zaman doğrulanamaz kalırdı.
+
 ### `--yolo` flag'i
 
 Her kullanımda kırmızı bir uyarı basar (CLAUDE.md güvenlik kuralı #6).
@@ -472,6 +489,23 @@ The `gitleaks` and `sbom-scan` jobs in `.github/workflows/ci.yml`:
   Making grype blocking at `--fail-on high` would fail every PR on this
   one already-triaged finding — exactly the "gate people learn to ignore"
   outcome this job is designed to avoid.
+
+### Reproducible release binaries
+
+Signature verification only proves `checksums.txt`'s integrity, not who
+built the artifacts it describes. To close that gap, release binaries are
+built with `-trimpath` (`.goreleaser.yaml`, `Makefile`) — this strips the
+build's absolute source path from being embedded in the binary. The
+result: any clean-checkout build of the same commit with the same Go
+toolchain is byte-identical to the binary inside the official release,
+regardless of the absolute path it was built at (directly verified with
+two builds at two different absolute paths — see docs/INSTALL.md's
+"Reproducible builds" section). Combined with `install.sh`'s cosign
+signature check, this means a manually built binary — such as the
+one-time manual build used to first publish the npm package — can be
+independently verified against the signed release, which would otherwise
+be permanently unverifiable once published, since npm package versions are
+immutable.
 
 ### The `--yolo` flag
 

@@ -159,6 +159,24 @@ scoop install comrade</code></pre>
           </div>
 
           <p class="gp"><span
+             data-tr="Node.js/npm zaten kuruluysa, bu bir "
+             data-en="Already have Node.js/npm? This is an ">Node.js/npm zaten kuruluysa, bu bir </span><b data-tr="alternatif" data-en="alternative">alternatif</b><span
+             data-tr=" kurulum yoludur (yukarıdaki script/Homebrew/Scoop kanalları birincil kalır):"
+             data-en=" install path (the script/Homebrew/Scoop channels above remain primary):"> kurulum yoludur (yukarıdaki script/Homebrew/Scoop kanalları birincil kalır):</span></p>
+          <p class="gcode-label">npm</p>
+          <div class="code">
+            <code>npm install -g cli-comrade</code>
+            <button type="button" class="copy" data-copy="npm install -g cli-comrade"><span class="copy-label">Kopyala</span></button>
+          </div>
+          <p class="gp"><span
+             data-tr="Önceden derlenmiş binary kurar — derleme araç zinciri gerekmez. Dikkat: bu şekilde kurulursa "
+             data-en="Installs a prebuilt binary — no build toolchain required. Note: installed this way, ">Önceden derlenmiş binary kurar — derleme araç zinciri gerekmez. Dikkat: bu şekilde kurulursa </span><code class="inline-code">comrade upgrade</code><span
+             data-tr=" kendi kendini güncellemeyi reddeder — bunun yerine "
+             data-en=" refuses to self-update — update with "> kendi kendini güncellemeyi reddeder — bunun yerine </span><code class="inline-code">npm update -g cli-comrade</code><span
+             data-tr=" kullanın."
+             data-en=" instead."> kullanın.</span></p>
+
+          <p class="gp"><span
              data-tr="Script'ler indirdiği paketi kurmadan önce checksum'a karşı doğrular; kurulum dizini PATH'inizde değilse otomatik olarak ekler (yeni bir terminal gerekir). Diğer kanallar (.deb/.rpm, ham arşivler, kaynaktan derleme) ve ortam değişkeni referansı için: "
              data-en="The scripts verify the downloaded package against its checksum before installing anything, and add the install directory to your PATH automatically if it's missing (a new terminal is required). For other channels (.deb/.rpm, raw archives, building from source) and the full env-var reference: ">Script'ler indirdiği paketi kurmadan önce checksum'a karşı doğrular; kurulum dizini PATH'inizde değilse otomatik olarak ekler (yeni bir terminal gerekir). Diğer kanallar (.deb/.rpm, ham arşivler, kaynaktan derleme) ve ortam değişkeni referansı için: </span><a href="https://github.com/firatkutay/cli-comrade/blob/main/docs/INSTALL.md" target="_blank" rel="noopener noreferrer">docs/INSTALL.md</a><span data-tr="." data-en=".">.</span></p>
 
@@ -491,7 +509,11 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
                data-tr=" sadece rapor verir, kurmaz. Yalnızca resmi paket kanallarından kurulmuş sürümlerde çalışır (kaynaktan "
                data-en=" only reports, never installs. Only works on versions installed via the official package channels (not a local "> sadece rapor verir, kurmaz. Yalnızca resmi paket kanallarından kurulmuş sürümlerde çalışır (kaynaktan </span><code class="inline-code">go build</code><span
                data-tr=" ile yapılan yerel derlemelerde değil)."
-               data-en=" from source)."> ile yapılan yerel derlemelerde değil).</span></li>
+               data-en=" from source)."> ile yapılan yerel derlemelerde değil).</span><span
+               data-tr=" npm (veya aynı dağıtımı kullanan pnpm/yarn/bun) ile kurduysanız kendi kendini güncellemeyi reddeder — bunun yerine o paket yöneticisiyle güncelleyin ("
+               data-en=" Installed via npm (or pnpm/yarn/bun, which use the same distribution)? It refuses to self-update — update with that package manager instead ("> npm (veya aynı dağıtımı kullanan pnpm/yarn/bun) ile kurduysanız kendi kendini güncellemeyi reddeder — bunun yerine o paket yöneticisiyle güncelleyin (</span><code class="inline-code nowrap">--check</code><span
+               data-tr=" bu durumda reddetmez)."
+               data-en=" is not refused in this case)."> bu durumda reddetmez).</span></li>
           </ul>
         </section>
 
@@ -629,7 +651,7 @@ comrade doctor --live  <span class="c-comment" data-tr="# + gerçek, doğrulanm�
         <a href="https://github.com/firatkutay/cli-comrade/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
       </div>
       <p class="footer__meta">
-        <span class="footer__ver">v0.4.2</span>
+        <span class="footer__ver">v0.4.5</span>
         <span class="sep">·</span>
         <span data-tr="Terminalde yoldaşlıkla yapıldı." data-en="Built with terminal camaraderie.">Terminalde yoldaşlıkla yapıldı.</span>
       </p>

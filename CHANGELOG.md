@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-07-26
+
+### Fixed
+
+- **v0.4.6's npm publish failed with a misleading E404, leaving all 6 npm packages unpublished; this release fixes it with a targeted workaround.** `actions/setup-node`'s `registry-url` input writes `.npmrc` with `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` AND exports a hardcoded placeholder (`XXXXX-XXXXX-XXXXX-XXXXX`) for every later step in the workflow whenever no real token is supplied — confirmed in v0.4.6's own run logs and in setup-node's source (`src/authutil.ts`) through v6.5.0. npm then attempted token authentication instead of the OIDC Trusted Publishing token exchange, failing with a misleading 404 rather than the ENEEDAUTH that would surface the real issue. The fix is upstream only in setup-node v7.0.0 (12 days old as of this diagnosis, short of this repo's ≥15-day version-selection floor), so this release works around it locally: the npm publish step now overrides `NODE_AUTH_TOKEN` to an explicit empty string (which cannot break OIDC, since npm/cli overwrites it on success) and adds `--loglevel=verbose` so npm's own OIDC diagnostic lines surface if this ever fails again, enabling the next run to tell a workflow bug from a Trusted Publisher registry-config mismatch — which could not be determined from v0.4.6's logs alone. **v0.4.6's GitHub release side fully succeeded:** the archives, `checksums.txt`, cosign signature, and source SBOM all published correctly to this repository's GitHub release. Only the npm packages failed to publish.
+
 ## [0.4.6] - 2026-07-26
 
 ### Added
@@ -927,8 +933,9 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
+[0.4.7]: https://github.com/firatkutay/cli-comrade/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/firatkutay/cli-comrade/compare/v0.4.5...v0.4.6
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.6...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.7...HEAD
 [0.4.5]: https://github.com/firatkutay/cli-comrade/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/firatkutay/cli-comrade/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/firatkutay/cli-comrade/compare/v0.4.2...v0.4.3

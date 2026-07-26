@@ -194,6 +194,42 @@ farklılıkları ayrı bir araştırma/test döngüsü gerektiriyor; bu
 [GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
 olarak takip ediliyor.
 
+### CI güvenlik taraması: secret scanning + SBOM/SCA (GitHub issue #47)
+
+`.github/workflows/ci.yml`'deki `gitleaks` ve `sbom-scan` işleri:
+
+- **gitleaks** (`gitleaks dir`, v8.30.1) her push/PR'da ÇALIŞMA AĞACINI
+  tarar — tam git geçmişini değil. Bu depoya özgü gerekçe: değişiklikler
+  doğrudan push/self-merge ile gelir (trunk-based), bu yüzden "bir sırrı
+  ekleyip merge'den önce sil" tehdidi burada gerçekçi değil; ayrıca bu
+  deponun bilinen iki gerçek-sır-benzeri olayı (cosign özel anahtarı —
+  yalnızca bir GitHub Actions secret'ı olarak tutulur; sohbet üzerinden
+  sızan ve iptal edilen bir npm token'ı) hiçbiri git'e hiç commit
+  edilmedi, dolayısıyla herhangi bir tarama derinliği bunları zaten
+  yakalayamazdı. Gate'i kablolamadan ÖNCE, bir defalık tam geçmiş taraması
+  (`gitleaks git --redact --log-opts="--all"`, tüm commit'ler/tüm ref'ler)
+  yerel olarak çalıştırıldı ve gerçek hiçbir kimlik bilgisi bulunamadı —
+  yalnızca `.gitleaks.toml`'da kural+dosya yolu bazında allowlist'lenen,
+  `internal/redact`'in test fixture'larındaki bilinçli sahte değerler
+  (AWS'nin kendi örnek anahtarı, jwt.io'nun örnek JWT'si, vb.). Bu tam
+  geçmiş taraması periyodik olarak (örn. yıllık) veya bir dış katkıcı
+  onboard edilmeden önce elle tekrarlanmalı — CI gate'ine dahil değil.
+- **sbom-scan**: `syft` her push/PR'da bir CycloneDX kaynak SBOM'u üretir
+  (CI artifact'i olarak yüklenir — `release.yml`'in kendi SBOM adımı
+  bugün üretilen dosyayı hiçbir yere yüklemediği için, bu depo şu anda
+  bunun dışında erişilebilir bir SBOM'a sahip değil). `grype` bu SBOM'u
+  tarar ama BİLGİLENDİRİCİ modda çalışır (`fail-build: false`) — merge'i
+  bloke etmez. Neden: bu depoda tek bağımlılık manifestosu (`go.mod`/
+  `go.sum`) için `govulncheck` (yukarıdaki `vulncheck` işi) zaten
+  call-graph tabanlı, ulaşılabilirlik-farkında bir tarama yapıyor; grype
+  ise yalnızca sürüm eşleştirmesi yapar ve ulaşılabilirlik analizi yoktur.
+  Ampirik kanıt: bu iş yazılırken grype tam olarak GO-2026-5970'i (High,
+  `golang.org/x/text` v0.28.0) buldu — govulncheck aynı ID'yi zaten
+  biliyor ve kodun o sembollere hiç erişmediğini kanıtlayarak güvenli
+  sayıyor. `grype`'ı `--fail-on high` ile bloke edici yapmak, zaten
+  triyaj edilmiş bu bulguda her PR'ı kırardı — tam olarak bu işin
+  kaçınmaya çalıştığı "yok sayılan gate" durumu.
+
 ### `--yolo` flag'i
 
 Her kullanımda kırmızı bir uyarı basar (CLAUDE.md güvenlik kuralı #6).
@@ -399,6 +435,43 @@ which needs its own research/test cycle on an actual Windows machine;
 this is tracked as
 [GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
 rather than silently left unaddressed.
+
+### CI security scanning: secret scanning + SBOM/SCA (GitHub issue #47)
+
+The `gitleaks` and `sbom-scan` jobs in `.github/workflows/ci.yml`:
+
+- **gitleaks** (`gitleaks dir`, v8.30.1) scans the WORKING TREE on every
+  push/PR — not full git history. Rationale specific to this repo:
+  changes land via direct push/self-merge (trunk-based), so the "add a
+  secret then remove it before merge" threat a history scan defends
+  against doesn't really apply; and neither of this repo's two known
+  real-secret-adjacent incidents (the cosign signing key, held only as a
+  GitHub Actions secret; an npm token leaked via chat and revoked) was
+  ever committed to git, so no scan depth would have caught either. A
+  one-off FULL history scan (`gitleaks git --redact --log-opts="--all"`,
+  every commit / every ref) was run locally before wiring the gate, per
+  issue #47's mandatory baseline, and found zero real credentials — only
+  the golden-test-fixture false positives allowlisted per rule + exact
+  file path in `.gitleaks.toml` (deliberately fake values in
+  `internal/redact`'s own test fixtures — AWS's own example key, jwt.io's
+  example JWT, etc.). Re-run that full-history scan manually on a
+  standing cadence (e.g. annually) or before onboarding an external
+  contributor — it is not wired into the per-PR gate.
+- **sbom-scan**: `syft` generates a CycloneDX source SBOM on every
+  push/PR (uploaded as a CI artifact — `release.yml`'s own SBOM step
+  currently generates a file it never uploads anywhere, so this repo has
+  no other retrievable SBOM today). `grype` scans that SBOM but runs
+  INFORMATIONAL-only (`fail-build: false`) — it does not block merge.
+  Why: this repo's one dependency manifest (`go.mod`/`go.sum`) is already
+  covered by `govulncheck` (the `vulncheck` job above), which is
+  call-graph-aware and reachability-checked; grype only matches versions
+  and has no reachability analysis. Empirical evidence: when this job was
+  written, grype found exactly GO-2026-5970 (High, `golang.org/x/text`
+  v0.28.0) — a vulnerability govulncheck already knows about and already
+  excludes, having proven the code never calls the affected symbols.
+  Making grype blocking at `--fail-on high` would fail every PR on this
+  one already-triaged finding — exactly the "gate people learn to ignore"
+  outcome this job is designed to avoid.
 
 ### The `--yolo` flag
 

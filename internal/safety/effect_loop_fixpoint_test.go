@@ -152,11 +152,14 @@ func relayChainCommand(n int) string {
 // change at all -- `changed` never contained "V1", so V1 kept its stale
 // pre-loop "echo" and the command classified read/Allow despite real
 // bash ending with V1=rm and genuinely running `rm -rf /` unprompted in
-// auto mode. The fix (the `!converged` branch in resolveLoopBody)
-// invalidates the ENTIRE parent env whenever the cap is hit without
-// converging, not merely the observed `changed` subset. n=9 is the
-// audit's own minimal exploit; n=12 additionally proves the fix holds
-// well past the exact boundary, not merely at it.
+// auto mode. The fix propagates INDETERMINATE for the whole
+// resolveLoopBody call whenever the cap is hit without converging (a
+// SECOND security audit found and rejected an earlier version of this
+// same fix that instead deleted every name in the parent env -- see
+// TestEvaluateEffectLoopCapExhaustionEraserGadgetFailsClosed directly
+// below for that regression and its own fix). n=9 is the audit's own
+// minimal exploit; n=12 additionally proves the fix holds well past the
+// exact boundary, not merely at it.
 func TestEvaluateEffectLoopCapExhaustionFailsClosed(t *testing.T) {
 	engine := newEngineForGOOS(config.Default(), "linux")
 	cases := []evalCase{
@@ -167,6 +170,104 @@ func TestEvaluateEffectLoopCapExhaustionFailsClosed(t *testing.T) {
 		{
 			"n=12 relay chain: well past the exact cap boundary, proving the fix isn't a boundary-only patch",
 			relayChainCommand(12), RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectLoopCapExhaustionEraserGadgetFailsClosed is the
+// regression test for a SECOND, independently-found CRITICAL regression:
+// the FIRST fix for cap-exhaustion (delete every name in the parent env
+// when the cap is hit without converging) was itself unsound. Deleting a
+// name is fail-closed only in STRICT (command-word/assignment-value)
+// position; in ARGUMENT position a deleted name resolves to "" exactly
+// like an unset variable (resolveWord's non-strict branch) -- which is
+// NOT fail-closed. So the whole-env wipe silently ERASED a dangerous
+// TARGET already fully assembled before the loop, turning an interposed
+// non-converging loop into a general-purpose eraser gadget: every case
+// below is a known-destructive command (drawn from this repo's own
+// evasion corpus in effect_differential_test.go -- `dd of=$A$B`,
+// `rm $A $B`, `shred`, `wipefs`, and the `rm -${a}${b} /` flag-cluster
+// form) with an interposed, deliberately non-converging loop (Z grows by
+// one character every simulated pass -- `Z=${Z}a` -- so it can never
+// reach maxLoopFixpointIterations=8 without stabilizing). Every one of
+// these classified Allow/read under the whole-env-wipe fix despite real
+// bash running the fully destructive command -- worse than the
+// loop-carried-dependency bug this whole fix exists to close, since it
+// actively erases an already-known-dangerous argv rather than merely
+// failing to model a loop. The fix: propagate indeterminate for the
+// WHOLE resolveLoopBody call on cap exhaustion instead of returning any
+// resolved/reconstructed text -- there is then nothing for an
+// argument-position reference anywhere in the command to exploit.
+func TestEvaluateEffectLoopCapExhaustionEraserGadgetFailsClosed(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"dd of= split-disk-path eraser: a non-converging loop must not erase dd's own destructive target",
+			"A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a; done; dd of=$A$B",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"rm -rf / split-flags eraser: a non-converging loop must not erase rm's own destructive arguments",
+			"A=-rf; B=/; Z=a; for i in 1 2; do Z=${Z}a; done; rm $A $B",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"shred split-disk-path eraser",
+			"A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a; done; shred -n 1 $A$B",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"wipefs split-disk-path eraser",
+			"A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a; done; wipefs -a $A$B",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+		{
+			"rm -rf / flag-cluster eraser: two single-letter vars concatenated into the flag cluster, per the pre-existing evasion corpus shape",
+			"a=r b=f; Z=a; for i in 1 2; do Z=${Z}a; done; rm -${a}${b} /",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectLoopCapExhaustionPostLoopUnaffected proves property
+// #4 the second audit asked to confirm: cap-exhaustion failing the
+// analysis closed must not corrupt or selectively erase state -- it
+// fails the WHOLE command indeterminate (Confirm) rather than reaching
+// past the loop to any variable assigned or referenced afterward. This
+// is automatically true by construction now (indeterminate propagates
+// through resolveStmts and halts all further processing), which is a
+// STRONGER guarantee than the deleted whole-env-wipe fix ever offered.
+func TestEvaluateEffectLoopCapExhaustionPostLoopUnaffected(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"a completely unrelated post-loop assignment-and-use must not leak past a non-converging loop as a false Allow",
+			"A=echo; B=rm; for i in 1 2; do T=$A; A=$B; B=$T; done; AFTER=echo; $AFTER hello",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
+		},
+	}
+	runEvalCases(t, engine, cases)
+}
+
+// TestEvaluateEffectLoopCapExhaustionPrecisionCost pins the ONE
+// synthetic precision cost the indeterminate-on-cap-exhaustion fix
+// carries (a MEDIUM finding, accepted as safe-direction and recorded in
+// KNOWN_LIMITATIONS.md): a non-converging loop invalidates the WHOLE
+// command, not just the names it actually touches, so a totally
+// unrelated command word elsewhere in the same command also falls to
+// Confirm even though it was never ambiguous on its own. `Z` here grows
+// by one character every pass and can never stabilize within
+// maxLoopFixpointIterations, so this loop never converges -- `CMD`,
+// completely unrelated to `Z`, still falls to Confirm as a result.
+func TestEvaluateEffectLoopCapExhaustionPrecisionCost(t *testing.T) {
+	engine := newEngineForGOOS(config.Default(), "linux")
+	cases := []evalCase{
+		{
+			"CMD is wholly unrelated to the non-converging Z loop, yet still falls to Confirm -- the documented precision cost",
+			"Z=a; CMD=echo; for i in 1 2; do Z=${Z}a; done; $CMD hi",
+			RiskRead, Confirm, RiskElevated, "effect: indeterminate",
 		},
 	}
 	runEvalCases(t, engine, cases)

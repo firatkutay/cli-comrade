@@ -160,11 +160,45 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   — gerçek bash `V1=rm` ile biter) bunu somut olarak kanıtladı: sekiz
   geçişlik sınırla, zincir yalnızca 9. (gözlemlenemeyen) geçişte değişiyordu,
   bu yüzden `V1` asla "değişti" kümesine girmiyor ve `read`/`Allow` olarak
-  sınıflanıyordu. Düzeltme (artık uygulanmış durumda): sınır sabit noktaya
-  ULAŞMADAN dolduğunda, yalnızca gözlemlenen "değişti" kümesi değil,
-  döngünün dokunduğu TÜM üst ortam geçersiz kılınır. Regresyon testleri
-  `internal/safety/effect_loop_fixpoint_test.go`'da n=9 ve n=12 röle
-  zincirleriyle sabitlenmiştir.
+  sınıflanıyordu.
+
+  **Bu ilk düzeltmenin İLK sürümü (sınır dolduğunda TÜM üst ortamı silmek)
+  bağımsız bir İKİNCİ güvenlik denetiminde KENDİSİ KRİTİK bir gerileme
+  olarak bulundu**: bir ismi silmek yalnızca KATI (komut-sözcüğü/atama-
+  değeri) konumda başarısız-kapalıdır — ARGÜMAN konumunda silinmiş bir isim,
+  ayarlanmamış bir değişken gibi `""`e çözülür, bu ise başarısız-kapalı
+  DEĞİLDİR. Bu yüzden tüm ortamı silmek, araya sokulan, yakınsamayan bir
+  döngüyü genel amaçlı bir SİLME ARACINA çeviriyordu: `A=/dev/; B=sda;
+  Z=a; for i in 1 2; do Z=${Z}a; done; dd of=$A$B` (Z her geçişte bir
+  karakter büyüdüğü için hiç yakınsamaz) `A` ve `B`yi yan hasar olarak
+  siliyordu (döngü onlara hiç dokunmuyor olsa bile), bu yüzden `dd`'nin
+  kendi `of=` hedefi sessizce `""`e dönüşüyor ve zararsız görünen
+  `dd of=` yeniden inşa ediliyordu — `dd of=/dev/sda` yerine. Bu, tüm bu
+  düzeltmenin kapatmaya çalıştığı hatadan DAHA KÖTÜYDÜ: döngüyü
+  modellemekte başarısız olmak yerine, döngüden önce zaten tamamen
+  bilinen tehlikeli bir argv'yi aktif olarak siliyordu.
+
+  Düzeltme (artık uygulanmış durumda): sınır sabit noktaya ULAŞMADAN
+  dolduğunda, `resolveLoopBody`'nin TÜM çağrısı için ÇÖZÜLEMEZ
+  (indeterminate) yayılır — hiçbir çözülmüş/yeniden inşa edilmiş metin
+  DÖNDÜRÜLMEZ, bu yüzden argüman konumundaki hiçbir referansın istismar
+  edebileceği bir silme yoktur. Bu, komutun TAMAMINI `Confirm`'e düşürür
+  (yalnızca döngünün dokunduğu isimleri değil). Regresyon testleri
+  `internal/safety/effect_loop_fixpoint_test.go`'da n=9/n=12 röle
+  zincirleriyle VE beş "silme aracı" vakasıyla (split disk-path `dd`/
+  `shred`/`wipefs`, split `rm -rf /` bayrakları, split `rm` bayrak-kümesi)
+  sabitlenmiştir.
+
+  **Kabul edilen, dürüstçe kaydedilen kesinlik maliyeti (GÜVENLİ yönde)**:
+  yakınsamayan bir döngü artık TÜM komutu geçersiz kılıyor, yalnızca
+  döngünün dokunduğu isimleri değil — bu yüzden döngüyle hiç ilgisi
+  olmayan bir komut-sözcüğü de `Confirm`'e düşebilir:
+  `Z=a; CMD=echo; for i in 1 2; do Z=${Z}a; done; $CMD hi` artık
+  `Confirm`'e düşüyor, önceden (silme-tabanlı düzeltmede) `Allow` kalırdı,
+  sadece çünkü `Z`nin döngüsü hiç yakınsamıyor — `CMD` `Z`den tamamen
+  bağımsız olsa bile. Ölçülen maliyet küçüktür (bu paketin tüm test
+  korpusunda tek bir sentetik vaka), ve yön her zaman güvenlidir (yalnızca
+  fazladan `Confirm`, asla kaçırılan bir `Allow` değil).
 
   **Kapsam sınırı (düzeltilmedi, dürüstçe kaydedildi)**: geçersiz kılma
   yalnızca bir KOMUT-SÖZCÜĞÜ konumundaki referansı başarısız kılar; bir
@@ -377,15 +411,49 @@ validation, redaction coverage, and the destructive-command classifier
   (`V1=echo;...;V9=echo; for i in 1..9; do V1=$V2;...;V9=rm; done; $V1 -rf /`
   — real bash ends with `V1=rm`) proved this concretely: with the 8-pass
   cap, the chain's sink only changed on the (unobservable) 9th pass, so it
-  never entered the "changed" set and classified `read`/`Allow`. The fix
-  (now shipped): when the cap is hit without converging, the ENTIRE
-  loop-touched parent env is invalidated, not merely the observed
-  "changed" subset. See `resolveLoopBody`'s own doc comment for the full
-  mechanism and `internal/safety/effect_loop_fixpoint_test.go` for the
-  regression suite (the exact repro, a 3-iteration relay chain, a
+  never entered the "changed" set and classified `read`/`Allow`.
+
+  **That first fix's OWN first version (delete the entire parent env on
+  cap exhaustion) was itself found CRITICALLY regressed by an
+  INDEPENDENT second security audit**: deleting a name is fail-closed
+  only in STRICT (command-word/assignment-value) position — in ARGUMENT
+  position a deleted name resolves to `""`, exactly like an unset
+  variable, which is NOT fail-closed. Wiping the whole env therefore
+  turned an interposed, deliberately non-converging loop into a
+  general-purpose ERASER GADGET: `A=/dev/; B=sda; Z=a; for i in 1 2; do
+  Z=${Z}a; done; dd of=$A$B` (`Z` grows by one character every simulated
+  pass, so this loop never converges) deleted `A` and `B` as collateral
+  damage — the loop never touches them at all — so `dd`'s own `of=`
+  target silently vanished to `""`, reconstructing the safe-looking
+  `dd of=` instead of `dd of=/dev/sda`. This was WORSE than the bug the
+  whole fix exists to close: instead of merely failing to model a loop,
+  it actively erased an already-fully-assembled destructive argv.
+
+  The fix (now shipped): when the cap is hit without converging,
+  `resolveLoopBody` propagates INDETERMINATE for its WHOLE call instead
+  of returning any resolved/reconstructed text — this fails the ENTIRE
+  command closed (`Confirm`) rather than selectively deleting names, so
+  there is nothing left for an argument-position reference anywhere in
+  the command to exploit. See `resolveLoopBody`'s own doc comment for the
+  full mechanism and `internal/safety/effect_loop_fixpoint_test.go` for
+  the regression suite (the exact repro, a 3-iteration relay chain, a
   while-loop equivalent, a two-variable swap, a nested loop,
-  over-invalidation negative controls, and the n=9/n=12 cap-exhaustion
-  regression cases).
+  over-invalidation negative controls, the n=9/n=12 cap-exhaustion
+  regression cases, and five "eraser gadget" cases drawn from this
+  repo's own evasion corpus — split-path `dd`/`shred`/`wipefs`, and two
+  split-flag `rm -rf /` forms).
+
+  **Accepted, honestly recorded precision cost (safe direction)**: since
+  cap exhaustion now fails the WHOLE command closed, a non-converging
+  loop invalidates every name in the command, not merely the ones it
+  actually touches — a command-word completely unrelated to the
+  non-converging loop can also fall to `Confirm`.
+  `Z=a; CMD=echo; for i in 1 2; do Z=${Z}a; done; $CMD hi` now falls to
+  `Confirm` (previously stayed `Allow` under the whole-env-delete fix)
+  purely because `Z`'s own loop never converges, even though `CMD` has
+  nothing to do with `Z`. Measured cost: one synthetic case across this
+  package's entire test corpus; the direction is always safe (an extra
+  `Confirm`, never a missed `Allow`).
 
   **Scope limit (not fixed here, honestly recorded)**: invalidation only
   makes a COMMAND-WORD-position reference fail closed; an ARGUMENT-position

@@ -584,11 +584,27 @@ const maxLoopFixpointIterations = 8
 // changes its SINK variable on the 9th application never shows that sink
 // changing in any OBSERVED pass, so a "changed" set built only from
 // observed passes silently omits it — even though it is exactly as
-// ambiguous as any name that did visibly change. The only sound response
-// to "the search did not complete" is to treat EVERY name in the parent
-// env as ambiguous, not just the subset caught changing before the cap
-// — see the `!converged` branch below, which discards the whole parent
-// env rather than reusing the (necessarily incomplete) `changed` set.
+// ambiguous as any name that did visibly change.
+//
+// The response is NOT to invalidate every name in the parent env either
+// — a SECOND follow-up security audit found that a first version of
+// THIS fix did exactly that, and it was itself a CRITICAL regression:
+// deleting a name is fail-closed only in STRICT (command-word/
+// assignment-value) position; in ARGUMENT position a deleted name
+// resolves to "" (resolveWord's non-strict branch), which is NOT
+// fail-closed. Wiping the whole parent env therefore turned an
+// interposed non-converging loop into a general-purpose ERASER GADGET:
+// `A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a; done; dd of=$A$B`
+// deleted A and B as collateral damage (the loop never touches them),
+// so dd's own of= target silently vanished to "", reconstructing the
+// safe-looking "dd of=" instead of "dd of=/dev/sda" — worse than the
+// bug this fix exists to close, since it actively erases an
+// already-fully-assembled destructive argv rather than merely failing
+// to model the loop. See the `!converged` branch below: the only sound
+// response to "the search did not complete" is to fail the WHOLE
+// resolveLoopBody call closed (propagate indeterminate), never to
+// return any resolved/reconstructed text at all — there is then nothing
+// for an argument-position reference anywhere in the command to exploit.
 //
 // Tracing the repro: pass 1 seeded from {X:echo,R:echo} produces
 // {X:echo,R:rm} (R changed: echo->rm, not yet stable). Pass 2, seeded
@@ -601,7 +617,10 @@ const maxLoopFixpointIterations = 8
 // reference to `$X` therefore fails closed via the existing unresolved-
 // command-word rule, exactly as it should for a genuinely ambiguous,
 // iteration-dependent value — never silently resolved to either "echo"
-// or "rm".
+// or "rm". (This per-name deletion path is unaffected by the
+// `!converged` fix above: it only ever runs when `converged` is true —
+// a real fixpoint was reached — so every name in `changed` is one this
+// analyzer actually observed differing, not a guess.)
 //
 // Every pass's own reconstructed text is preserved and joined into the
 // returned text (not just the final pass's) — so a value that is only
@@ -658,15 +677,34 @@ func (r *bashResolver) resolveLoopBody(stmts []*syntax.Stmt) (text string, indet
 	// within the passes actually run — a name that happens to be stable
 	// through every one of those passes but would first change on the
 	// NEXT (unobserved) iteration is indistinguishable, from here, from a
-	// name that is genuinely constant forever. The only sound response is
-	// to invalidate the ENTIRE parent env, not merely `changed` — see this
-	// function's own doc comment for the CRITICAL false-Allow (a 9-link
-	// relay chain past an 8-pass cap) this specifically closes.
+	// name that is genuinely constant forever.
+	//
+	// An earlier version of this fix responded by DELETING every name in
+	// the parent env instead of just `changed`. A follow-up security
+	// audit found that this was itself a CRITICAL regression: deletion is
+	// fail-closed only in STRICT (command-word/assignment-value)
+	// position — a deleted name in ARGUMENT position resolves to "",
+	// exactly like an unset variable (see resolveWord's non-strict
+	// branch), which is NOT fail-closed. Wiping the whole env therefore
+	// turned an interposed non-converging loop into a general-purpose
+	// ERASER GADGET: `A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a;
+	// done; dd of=$A$B` deleted A and B (collateral damage from the
+	// wipe, despite the loop never touching them) and dd's own of=
+	// target silently vanished to "", reconstructing the safe-looking
+	// "dd of=" instead of "dd of=/dev/sda" — a false-ALLOW strictly
+	// worse than the false-Allow this whole fix exists to close, since
+	// it actively erases a destructive argv already fully assembled
+	// before the loop, rather than merely failing to model the loop.
+	//
+	// The sound response: propagate INDETERMINATE for the whole
+	// resolveLoopBody call instead of returning a (mangled) resolved
+	// text. This fails the ENTIRE command closed via the same
+	// "effect: indeterminate" path as any other genuinely unresolvable
+	// construct — never silently dropping or reconstructing any argument
+	// anywhere in the command, so there is no deletion for an
+	// argument-position reference to exploit.
 	if !converged {
-		for name := range r.env {
-			delete(r.env, name)
-		}
-		return strings.Join(texts, " ; "), false, ""
+		return "", true, "loop body did not reach a fixpoint within this analyzer's iteration bound"
 	}
 
 	for name := range changed {

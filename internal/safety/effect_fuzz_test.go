@@ -49,6 +49,12 @@ func FuzzAnalyzeBashEffect(f *testing.F) {
 		"${",
 		";;;;;",
 		"a=r b=f rm -${a}${b} /",
+		// Loop-carried variable dependency (issue #33): biases mutation
+		// toward resolveLoopBody's own fixpoint-iteration logic, the same
+		// way the sibling control-structure work (commit b1f6d7b) added
+		// seeds for its own new resolveMayNotExecute/resolveIfClauseChain
+		// walk.
+		"X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /",
 	}
 	for _, s := range seeds {
 		f.Add(s)

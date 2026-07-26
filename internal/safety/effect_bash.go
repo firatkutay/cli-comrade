@@ -570,21 +570,38 @@ const maxLoopFixpointIterations = 8
 // until either (a) a pass produces an env IDENTICAL to the one that fed
 // it (a genuine fixpoint: further iterations, however many the loop
 // really runs, cannot change anything further, so it is safe to stop), or
-// (b) maxLoopFixpointIterations is reached without stabilizing, in which
-// case every name that ever changed must be treated as still-changing,
-// not resolved to whichever pass's value happened to be computed last.
+// (b) maxLoopFixpointIterations is reached WITHOUT stabilizing.
+//
+// Case (b) is NOT "invalidate whichever names happened to change within
+// the passes actually run" — a follow-up security audit found and fixed
+// a CRITICAL false-Allow in an earlier version of this function that did
+// exactly that. Once the cap is hit without reaching a genuine fixpoint,
+// this analysis is INCOMPLETE: a name that stayed stable through every
+// pass observed so far could still be the next one to change on the very
+// next (unobserved) iteration — "stable for 8 passes" is not "stable
+// forever" the way a genuine fixpoint is. The audit's own 9-link relay
+// chain proves this concretely: with an 8-pass cap, a chain that only
+// changes its SINK variable on the 9th application never shows that sink
+// changing in any OBSERVED pass, so a "changed" set built only from
+// observed passes silently omits it — even though it is exactly as
+// ambiguous as any name that did visibly change. The only sound response
+// to "the search did not complete" is to treat EVERY name in the parent
+// env as ambiguous, not just the subset caught changing before the cap
+// — see the `!converged` branch below, which discards the whole parent
+// env rather than reusing the (necessarily incomplete) `changed` set.
 //
 // Tracing the repro: pass 1 seeded from {X:echo,R:echo} produces
 // {X:echo,R:rm} (R changed: echo->rm, not yet stable). Pass 2, seeded
 // from pass 1's OWN result, resolves `X=$R` against R="rm" this time —
 // producing {X:rm,R:rm} (X now ALSO changed relative to pass 1: echo->rm)
 // — not yet stable. Pass 3, seeded from {X:rm,R:rm}, reproduces the exact
-// same env {X:rm,R:rm} — a fixpoint — so iteration stops. Both X and R
-// changed at some point along that chain, so BOTH are invalidated
-// (deleted from the parent env): a later command-word reference to `$X`
-// therefore fails closed via the existing unresolved-command-word rule,
-// exactly as it should for a genuinely ambiguous, iteration-dependent
-// value — never silently resolved to either "echo" or "rm".
+// same env {X:rm,R:rm} — a fixpoint — so iteration stops (`converged`).
+// Both X and R changed at some point along that chain, so BOTH are
+// invalidated (deleted from the parent env): a later command-word
+// reference to `$X` therefore fails closed via the existing unresolved-
+// command-word rule, exactly as it should for a genuinely ambiguous,
+// iteration-dependent value — never silently resolved to either "echo"
+// or "rm".
 //
 // Every pass's own reconstructed text is preserved and joined into the
 // returned text (not just the final pass's) — so a value that is only
@@ -609,6 +626,7 @@ func (r *bashResolver) resolveLoopBody(stmts []*syntax.Stmt) (text string, indet
 	prev := r.env
 	changed := map[string]bool{}
 	var texts []string
+	converged := false
 
 	for pass := 0; pass < maxLoopFixpointIterations; pass++ {
 		clone, ok := safeCloneEnv(prev, r.budget)
@@ -629,9 +647,26 @@ func (r *bashResolver) resolveLoopBody(stmts []*syntax.Stmt) (text string, indet
 			}
 		}
 		if envsEqual(prev, clone) {
+			converged = true
 			break
 		}
 		prev = clone
+	}
+
+	// The cap was hit WITHOUT reaching a genuine fixpoint: this analysis
+	// is incomplete, and `changed` only reflects names observed to differ
+	// within the passes actually run — a name that happens to be stable
+	// through every one of those passes but would first change on the
+	// NEXT (unobserved) iteration is indistinguishable, from here, from a
+	// name that is genuinely constant forever. The only sound response is
+	// to invalidate the ENTIRE parent env, not merely `changed` — see this
+	// function's own doc comment for the CRITICAL false-Allow (a 9-link
+	// relay chain past an 8-pass cap) this specifically closes.
+	if !converged {
+		for name := range r.env {
+			delete(r.env, name)
+		}
+		return strings.Join(texts, " ; "), false, ""
 	}
 
 	for name := range changed {

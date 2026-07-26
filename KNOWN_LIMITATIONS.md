@@ -138,17 +138,43 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   bulgusundaki AYNI `--yolo` etkileşimi burada da geçerli — ve kapsamı çok
   daha geniş (auditor'un korpuslarında 83 vaka). Kabul edilen, kasıtlı bir
   değiş tokuş: bir CRITICAL false-Allow'u kapatmanın dürüst sonucu budur.
-- ~~**Bir döngü gövdesi TEK GEÇİŞTE çözülür**~~ — **DÜZELTİLDİ (issue #33)**:
-  `internal/safety/effect_bash.go`'nun `resolveLoopBody`'si artık bir
-  `for`/`while`/`until` gövdesini TEK bir sıralı geçiş yerine bir
-  SABİT NOKTAYA (fixpoint) kadar çözer — gövdeyi kendi önceki sonucuna
-  tekrar tekrar uygular (`maxLoopFixpointIterations` ile sınırlı, aynı
-  paylaşılan `resolverBudget`/`maxScopeForks`/`maxEnvSize` koruması
-  altında), ve bu zincir boyunca herhangi bir noktada değişen HER ismi
-  geçersiz kılar. `X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /` artık `X`i ÇÖZÜLEMEZ olarak işaretleyip `Confirm`'e düşüyor
-  (önceden main'de `Allow` idi). Detaylar için `resolveLoopBody`'nin kendi
-  doc yorumuna ve `internal/safety/effect_loop_fixpoint_test.go`'daki
-  regresyon testlerine bakın.
+- ~~**Bir döngü gövdesi TEK GEÇİŞTE çözülür**~~ — **DÜZELTİLDİ, ama tam kapsam
+  aşağıda not edildiği kadar dar (issue #33)**: `internal/safety/effect_bash.go`'nun
+  `resolveLoopBody`'si artık bir `for`/`while`/`until` gövdesini TEK bir
+  sıralı geçiş yerine bir SABİT NOKTAYA (fixpoint) kadar çözer — gövdeyi
+  kendi önceki sonucuna tekrar tekrar uygular (`maxLoopFixpointIterations`
+  = 8 ile sınırlı, aynı paylaşılan `resolverBudget`/`maxScopeForks`/
+  `maxEnvSize` koruması altında), ve bu zincir boyunca herhangi bir
+  noktada değişen HER ismi geçersiz kılar.
+  `X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /` artık
+  `X`i ÇÖZÜLEMEZ olarak işaretleyip `Confirm`'e düşüyor (önceden main'de
+  `Allow` idi). **Bir bağımsız güvenlik denetimi, bu düzeltmenin İLK
+  sürümünde bir KRİTİK açık daha buldu**: sabit noktaya ulaşılamadan
+  `maxLoopFixpointIterations` sınırına ulaşıldığında, ilk sürüm yalnızca
+  gözlemlenen geçişler İÇİNDE fiilen değiştiği GÖZLEMLENEN isimleri
+  geçersiz kılıyordu — ama sınır dolduğunda analiz zaten EKSİKTİR;
+  gözlemlenen her geçişte sabit kalıp yalnızca bir SONRAKİ (gözlemlenmemiş)
+  geçişte değişecek bir isim, görünürde değişen bir isimle TAM OLARAK AYNI
+  derecede belirsizdir. Denetimin 9 halkalı zincir sömürüsü
+  (`V1=echo;...;V9=echo; for i in 1..9; do V1=$V2;...;V9=rm; done; $V1 -rf /`
+  — gerçek bash `V1=rm` ile biter) bunu somut olarak kanıtladı: sekiz
+  geçişlik sınırla, zincir yalnızca 9. (gözlemlenemeyen) geçişte değişiyordu,
+  bu yüzden `V1` asla "değişti" kümesine girmiyor ve `read`/`Allow` olarak
+  sınıflanıyordu. Düzeltme (artık uygulanmış durumda): sınır sabit noktaya
+  ULAŞMADAN dolduğunda, yalnızca gözlemlenen "değişti" kümesi değil,
+  döngünün dokunduğu TÜM üst ortam geçersiz kılınır. Regresyon testleri
+  `internal/safety/effect_loop_fixpoint_test.go`'da n=9 ve n=12 röle
+  zincirleriyle sabitlenmiştir.
+
+  **Kapsam sınırı (düzeltilmedi, dürüstçe kaydedildi)**: geçersiz kılma
+  yalnızca bir KOMUT-SÖZCÜĞÜ konumundaki referansı başarısız kılar; bir
+  ARGÜMAN konumundaki referans hâlâ `""`e çözülüp sessiz kalır — bu paketin
+  genel, döngüye özel olmayan argüman-konumu tasarımının doğrudan sonucudur.
+  `X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; sh -c "$X -rf /"`
+  hâlâ `Allow`/`read` — gerçek bash `sh -c "rm -rf /"` çalıştırdığı halde.
+  Yani issue #33 yalnızca KOMUT-SÖZCÜĞÜ konumundaki sink'ler için
+  kapatılmıştır, argüman konumundaki sink'ler için değil. Detaylar için
+  `resolveLoopBody`'nin kendi doc yorumuna bakın.
 
 ### CLI bayrağı — `--profile`, ham-argümanlı komutlarda çalışmıyor (issue #27)
 
@@ -330,20 +356,46 @@ validation, redaction coverage, and the destructive-command classifier
   tilde entry's narrower scope). Accepted as a deliberate trade-off: this
   is the honest consequence of closing a CRITICAL false-Allow, not an
   oversight.
-- ~~**A loop body is resolved in a SINGLE PASS**~~ — **FIXED (issue #33)**:
+- ~~**A loop body is resolved in a SINGLE PASS**~~ — **FIXED, but narrower
+  than "closed" — see the scope limit below (issue #33)**:
   `internal/safety/effect_bash.go`'s `resolveLoopBody` now resolves a
   `for`/`while`/`until` body to a FIXPOINT instead of a single pass — it
   repeatedly re-applies the body to its own prior result (bounded by
-  `maxLoopFixpointIterations`, under the same shared
+  `maxLoopFixpointIterations` = 8, under the same shared
   `resolverBudget`/`maxScopeForks`/`maxEnvSize` guard), and invalidates
   every name that ever changes anywhere along that chain.
   `X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /` now
   correctly invalidates `X` and falls to `Confirm` (previously `Allow` on
-  main). See `resolveLoopBody`'s own doc comment for the full mechanism
-  and `internal/safety/effect_loop_fixpoint_test.go` for the regression
-  suite (the exact repro, a 3-iteration relay chain, a while-loop
-  equivalent, a two-variable swap, a nested loop, and over-invalidation
-  negative controls).
+  main). **An independent security audit of this fix's FIRST version
+  found a further CRITICAL gap**: when `maxLoopFixpointIterations` was hit
+  WITHOUT the search reaching a genuine fixpoint, that version only
+  invalidated names OBSERVED to change within the passes actually run —
+  but once the cap is hit incomplete, a name that stayed stable through
+  every observed pass and would only change on the NEXT (unobserved) one
+  is exactly as ambiguous as one that visibly changed. The audit's 9-link
+  relay-chain exploit
+  (`V1=echo;...;V9=echo; for i in 1..9; do V1=$V2;...;V9=rm; done; $V1 -rf /`
+  — real bash ends with `V1=rm`) proved this concretely: with the 8-pass
+  cap, the chain's sink only changed on the (unobservable) 9th pass, so it
+  never entered the "changed" set and classified `read`/`Allow`. The fix
+  (now shipped): when the cap is hit without converging, the ENTIRE
+  loop-touched parent env is invalidated, not merely the observed
+  "changed" subset. See `resolveLoopBody`'s own doc comment for the full
+  mechanism and `internal/safety/effect_loop_fixpoint_test.go` for the
+  regression suite (the exact repro, a 3-iteration relay chain, a
+  while-loop equivalent, a two-variable swap, a nested loop,
+  over-invalidation negative controls, and the n=9/n=12 cap-exhaustion
+  regression cases).
+
+  **Scope limit (not fixed here, honestly recorded)**: invalidation only
+  makes a COMMAND-WORD-position reference fail closed; an ARGUMENT-position
+  reference still resolves to `""` and stays inert — this package's
+  general, non-loop-specific argument-position design (see
+  `analyzeBashEffect`'s own doc comment). So
+  `X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; sh -c "$X -rf /"`
+  still classifies `Allow`/`read`, even though real bash runs
+  `sh -c "rm -rf /"`. **Issue #33 is therefore closed for COMMAND-WORD
+  sinks only, not argument-position sinks.**
 
 ### CLI flag — `--profile` doesn't work on raw-arg commands (issue #27)
 

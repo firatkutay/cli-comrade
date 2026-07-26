@@ -139,7 +139,7 @@ github.com/firatkutay/cli-comrade/internal/executor 92.7
 github.com/firatkutay/cli-comrade/internal/i18n 96.5
 github.com/firatkutay/cli-comrade/internal/llm 88.4
 github.com/firatkutay/cli-comrade/internal/redact 99.5
-github.com/firatkutay/cli-comrade/internal/safety 93.3
+github.com/firatkutay/cli-comrade/internal/safety 93.7
 github.com/firatkutay/cli-comrade/internal/secrets 85.3
 github.com/firatkutay/cli-comrade/internal/shellinit 93.0
 github.com/firatkutay/cli-comrade/internal/tui 82.3

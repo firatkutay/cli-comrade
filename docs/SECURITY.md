@@ -154,6 +154,46 @@ zorunludur: imzasız ya da geçersiz imzalı bir sürüm yükseltmeyi durdurur
 (kapalı-hata/fail-closed). Ayrıntılar için bkz.
 [UPDATE_SIGNING.md](UPDATE_SIGNING.md).
 
+### `curl | sh` bootstrap yolunun güven modeli (GitHub issue #28)
+
+v0.4.x'e kadar `scripts/install.sh`, indirdiği `checksums.txt`'i **hiç
+doğrulamadan** güvenilir sayıyordu — arşivin kendisi o dosyaya karşı
+`sha256sum`/`shasum`/`openssl dgst` ile doğrulanıyordu, ama
+`checksums.txt`'in KENDİSİNİ kimin yazdığı hiç kontrol edilmiyordu. Bu,
+`comrade upgrade`'in zaten kapattığı tam olarak aynı boşluktu: bir checksum
+yalnızca arşivin manifestoyla eşleştiğini kanıtlar, manifestoyu kimin
+yazdığını kanıtlamaz. `install.sh` — projeyle stranger bir makinede,
+incelemeden çalışan tek script — bu boşluğa sahipti; `comrade upgrade`
+sahip değildi.
+
+Bu artık kapatıldı: `install.sh`, `checksums.txt`'i `comrade upgrade` ile
+**birebir aynı mekanizmayla** doğrular — `internal/update/cosign.pub`'daki
+gerçek anahtarın birebir aynı baytları script içine PEM literal olarak
+gömülüdür (`COSIGN_PUB` değişkeni; drift'e karşı
+`internal/update/install_sh_mirror_test.go` ile korunur), ve
+`checksums.txt.sig`, `openssl dgst -sha256 -verify` ile (saf openssl,
+cosign CLI'sine gerek yok) doğrulanır. Sıra `comrade upgrade` ile aynı:
+imza → checksum → çıkarma/kurulum.
+
+**openssl bulunamazsa veya bir release `checksums.txt.sig` yayınlamamışsa**
+(imza hiç KONTROL EDİLEMEZse — geçersiz bir imzadan farklı bir durum),
+davranış varsayılan olarak **kapalı-hata**dır: kurulum durur. Bu bilinçli
+bir seçimdir — sessizce checksum-only doğrulamaya geri dönmek, bu
+özelliğin kapatmaya çalıştığı tam olarak aynı zayıf garantiyi yeniden
+açardı. Openssl'siz minimal bir imaj gibi gerçek bir alternatifi olmayan
+kullanıcılar için tek çıkış yolu `COMRADE_INSTALL_ALLOW_UNSIGNED=1`
+ortam değişkenidir — her kullanımda yüksek sesle bir uyarı basar
+(`--yolo` ile aynı "asla sessiz değil" ilkesi). Bir imza gerçekten
+DOĞRULANAMAZSA (indirilen `checksums.txt` gerçekten imzasıyla eşleşmiyorsa)
+bu override GEÇERLİ DEĞİLDİR — bu her zaman koşulsuz olarak durur.
+
+**Kapsam notu:** Bu değişiklik yalnızca `scripts/install.sh`'ı kapsar.
+`scripts/install.ps1` (Windows) aynı asimetriye sahiptir ve henüz
+düzeltilmedi — PowerShell 5.1/7 arasındaki ECDSA doğrulama API
+farklılıkları ayrı bir araştırma/test döngüsü gerektiriyor; bu
+[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
+olarak takip ediliyor.
+
 ### `--yolo` flag'i
 
 Her kullanımda kırmızı bir uyarı basar (CLAUDE.md güvenlik kuralı #6).
@@ -316,6 +356,49 @@ binary. Releases are signed in CI via goreleaser's `signs` block + cosign.
 As of v0.3.0 a real key is embedded and signing is enforced: a missing or
 invalid signature aborts the upgrade (fail-closed). See
 [UPDATE_SIGNING.md](UPDATE_SIGNING.md) for details.
+
+### Trust model of the `curl | sh` bootstrap path (GitHub issue #28)
+
+Through v0.4.x, `scripts/install.sh` trusted the `checksums.txt` it
+downloaded outright — the archive itself was verified against that file
+(`sha256sum`/`shasum`/`openssl dgst`), but nothing verified WHO WROTE
+`checksums.txt` in the first place. That was exactly the gap
+`comrade upgrade` had already closed: a checksum only proves the archive
+matches the manifest, never who authored the manifest. `install.sh` — the
+one script guaranteed to run, unreviewed, on a stranger's machine over a
+public one-liner — had this weaker guarantee; `comrade upgrade` didn't.
+
+This is now closed: `install.sh` authenticates `checksums.txt` with
+**the exact same mechanism** `comrade upgrade` uses. The project's real
+cosign public key — byte-identical to `internal/update/cosign.pub` — is
+embedded as a literal PEM block in the script itself (the `COSIGN_PUB`
+variable; guarded against drift by
+`internal/update/install_sh_mirror_test.go`), and `checksums.txt.sig` is
+verified with `openssl dgst -sha256 -verify` (plain openssl, no cosign
+CLI required). Order matches `comrade upgrade`: signature → checksum →
+extract/install.
+
+**If openssl is missing, or a release has no published
+`checksums.txt.sig`** (the signature can't be CHECKED at all — distinct
+from an actual signature mismatch), the default is **fail-closed**: the
+install aborts. This is deliberate — silently falling back to
+checksum-only verification would quietly reopen exactly the weaker
+guarantee this feature exists to close. The one escape hatch, for users
+with no real alternative (e.g. a minimal image with no openssl), is the
+`COMRADE_INSTALL_ALLOW_UNSIGNED=1` environment variable — it prints a
+loud warning on every use (the same never-silent principle already
+applied to `--yolo`). This override does NOT apply when a signature is
+actually checked and fails to verify (a real mismatch) — that always
+aborts unconditionally, with no override.
+
+**Scope note:** this change covers `scripts/install.sh` only.
+`scripts/install.ps1` (Windows) has the identical asymmetry and has not
+been fixed yet — the ECDSA-verification API differs meaningfully between
+Windows PowerShell 5.1 (.NET Framework) and PowerShell 7 (.NET Core),
+which needs its own research/test cycle on an actual Windows machine;
+this is tracked as
+[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
+rather than silently left unaddressed.
 
 ### The `--yolo` flag
 

@@ -35,25 +35,52 @@ Bu script:
    `releases/latest/download/checksums.txt` yönlendirmesini indirir, o
    dosyadan işletim sistemi/mimarinize uyan satırı bulur ve gerçek
    arşiv dosya adını (sürüm numarası dahil) oradan okur;
-3. indirilen arşivi aynı `checksums.txt` satırına karşı `sha256sum -c`
+3. `checksums.txt`'in **kendisini**, indirilen `checksums.txt.sig`'e karşı
+   bir cosign imzası olarak doğrular — `comrade upgrade`'in kullandığı
+   birebir aynı gömülü genel anahtar ve mekanizmayla (bkz. aşağıdaki
+   "Güven modeli"); yalnızca bu doğrulama geçtikten sonra dosyanın
+   içeriğine güvenilir;
+4. indirilen arşivi aynı `checksums.txt` satırına karşı `sha256sum -c`
    ile doğrular — doğrulama başarısız olursa kurulum iptal edilir;
-4. `$HOME/.local/bin`'e (yazılamıyorsa `/usr/local/bin`'e, o da
+5. `$HOME/.local/bin`'e (yazılamıyorsa `/usr/local/bin`'e, o da
    yazılamıyorsa `sudo` ile) kurar;
-5. kurulum dizini PATH'inizde değilse, kabuğunuza uygun bir PATH export
+6. kurulum dizini PATH'inizde değilse, kabuğunuza uygun bir PATH export
    satırını rc dosyanıza (bash → `~/.bashrc`, zsh → `~/.zshrc`, fish →
    `~/.config/fish/config.fish`, diğerleri → `~/.profile`) **otomatik
    olarak** ve idempotent şekilde ekler (script'i tekrar çalıştırmak
    satırı ikinci kez eklemez), ardından kabuğunuzu yeniden başlatmanızı
    veya ekrana yazdırılan `export ...` komutunu doğrudan çalıştırmanızı
    söyler;
-6. `comrade init <shell>` çalıştırmanızı önerir.
+7. `comrade init <shell>` çalıştırmanızı önerir.
 
 Ortam değişkenleri: `COMRADE_VERSION` (belirli bir sürümü, örn. `v0.1.4`,
 sabitler — bu durumda script o tag'e özel `checksums.txt`'i kullanır),
 `COMRADE_INSTALL_DIR` (kurulum dizinini değiştirir), `COMRADE_NO_MODIFY_PATH`
 (herhangi bir değere ayarlanırsa, script rc dosyanızı OTOMATİK
 DÜZENLEMEZ — bunun yerine eski davranışa döner: sadece PATH'e elle
-eklemeniz gerektiğini bildiren bir not basar).
+eklemeniz gerektiğini bildiren bir not basar), `COMRADE_INSTALL_ALLOW_UNSIGNED`
+(openssl yoksa veya bir release imza yayınlamamışsa checksum-only
+doğrulamaya geri dönmeyi açıkça kabul eder — her kullanımda yüksek sesle
+uyarır; bkz. [SECURITY.md](SECURITY.md)).
+
+### Güven modeli
+
+`checksums.txt`, arşivle **aynı kanaldan** indirilir — bu yüzden bir
+SHA-256 checksum tek başına yalnızca arşivin manifestoyla eşleştiğini
+kanıtlar, manifestoyu kimin yazdığını KANITLAMAZ. Bu yüzden script artık
+`checksums.txt`'in kendisini, `internal/update/cosign.pub`'daki gerçek
+anahtarla birebir aynı, script içine gömülü bir cosign genel anahtarına
+karşı doğrular — `comrade upgrade`'in Go tarafında zaten yaptığı tam
+olarak aynı ECDSA P-256/SHA-256 doğrulaması, burada saf `openssl` ile.
+openssl yoksa veya bir release `checksums.txt.sig` yayınlamamışsa,
+davranış varsayılan olarak **kapalı-hata**dır (kurulum durur) —
+`COMRADE_INSTALL_ALLOW_UNSIGNED=1` ile açıkça atlatılabilir. Gerçek bir
+imza UYUŞMAZLIĞI bu override'a asla tabi değildir, her zaman koşulsuz
+durur. Ayrıntılar için bkz. [SECURITY.md](SECURITY.md).
+
+**`install.ps1` (Windows) henüz aynı korumaya sahip değil** —
+[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
+olarak takip ediliyor (bkz. SECURITY.md).
 
 ### Kurulum script'i (Windows PowerShell) — önerilen yöntem
 
@@ -234,18 +261,22 @@ This script:
    GitHub's `releases/latest/download/checksums.txt` redirect directly,
    finds the line matching your OS/arch, and reads the real archive
    filename (version number included) out of that;
-3. verifies the downloaded archive against that same `checksums.txt`
+3. authenticates `checksums.txt` **itself** against the downloaded
+   `checksums.txt.sig`, as a cosign signature — the exact same embedded
+   public key and mechanism `comrade upgrade` uses (see "Trust model"
+   below) — before any of that file's content is trusted;
+4. verifies the downloaded archive against that same `checksums.txt`
    line via `sha256sum -c` — installation is aborted if verification
    fails;
-4. installs to `$HOME/.local/bin` (falling back to `/usr/local/bin`,
+5. installs to `$HOME/.local/bin` (falling back to `/usr/local/bin`,
    then to `sudo` if neither is writable);
-5. if the install directory isn't already on your PATH, **automatically**
+6. if the install directory isn't already on your PATH, **automatically**
    appends a shell-appropriate PATH export line to your rc file (bash →
    `~/.bashrc`, zsh → `~/.zshrc`, fish → `~/.config/fish/config.fish`,
    anything else → `~/.profile`), idempotently (re-running the script
    never appends it twice), then tells you to restart your shell or run
    the printed `export ...` command directly;
-6. suggests running `comrade init <shell>`.
+7. suggests running `comrade init <shell>`.
 
 Env overrides: `COMRADE_VERSION` (pin an exact version, e.g. `v0.1.4` —
 this switches the script to that tag's own `checksums.txt` instead of
@@ -253,7 +284,29 @@ this switches the script to that tag's own `checksums.txt` instead of
 `COMRADE_NO_MODIFY_PATH` (set to any non-empty value to stop the script
 from auto-editing your rc file — it falls back to the old behavior of
 just printing a note that you need to add the install directory to
-PATH yourself).
+PATH yourself), `COMRADE_INSTALL_ALLOW_UNSIGNED` (explicitly accepts
+falling back to checksum-only verification when openssl is missing or a
+release published no signature — prints a loud warning every time; see
+[SECURITY.md](SECURITY.md)).
+
+### Trust model
+
+`checksums.txt` is downloaded over the **same channel** as the archive —
+so a bare SHA-256 checksum only proves the archive matches the manifest,
+it never proves who WROTE the manifest. The script therefore now
+authenticates `checksums.txt` itself against a cosign public key embedded
+in the script, byte-identical to `internal/update/cosign.pub` — the exact
+same ECDSA-P256/SHA-256 verification `comrade upgrade` already does in
+Go, done here with plain `openssl`. If openssl is missing, or a release
+published no `checksums.txt.sig`, the default is **fail-closed** (the
+install aborts) — override explicitly with
+`COMRADE_INSTALL_ALLOW_UNSIGNED=1`. An actual signature MISMATCH is never
+subject to that override; it always aborts unconditionally. See
+[SECURITY.md](SECURITY.md) for the full writeup.
+
+**`install.ps1` (Windows) does not have this protection yet** — tracked as
+[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
+(see SECURITY.md).
 
 ### Install script (Windows PowerShell) — recommended
 

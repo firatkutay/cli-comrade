@@ -47,7 +47,18 @@ if (Get-Command comrade -ErrorAction SilentlyContinue) {
             "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
         }
     }
-    comrade completion powershell | Out-String | Invoke-Expression
+    # Never pipe comrade's completion output straight into
+    # Invoke-Expression unguarded: if comrade is on PATH but broken
+    # (e.g. an npm install that landed the dispatcher without its
+    # platform binary), its diagnostic goes to stderr -- 2>$null
+    # discards it here -- leaving stdout empty, and Invoke-Expression
+    # throws on an empty/whitespace-only command string. Capture first,
+    # and only invoke a non-empty script.
+    $__comradeCompletionScript = comrade completion powershell 2>$null | Out-String
+    if ($__comradeCompletionScript -and $__comradeCompletionScript.Trim()) {
+        Invoke-Expression $__comradeCompletionScript
+    }
+    Remove-Variable -Name __comradeCompletionScript -ErrorAction SilentlyContinue
     try {
         $existingSpacebarHandler = Get-PSReadLineKeyHandler -Chord Spacebar -ErrorAction SilentlyContinue | Where-Object { $_.Function -ne 'SelfInsert' -and $_.Function }
         if ($null -eq $existingSpacebarHandler) {

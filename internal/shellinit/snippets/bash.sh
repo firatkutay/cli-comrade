@@ -16,10 +16,20 @@ case ";${PROMPT_COMMAND:-};" in
   *";__comrade_hook;"*) ;;
   *) PROMPT_COMMAND="__comrade_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
 esac
-command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)
+if command -v comrade >/dev/null 2>&1; then
+  # Never `source <(comrade completion bash)` unguarded: if comrade is on
+  # PATH but broken (e.g. an npm install that landed the dispatcher
+  # without its platform binary), its diagnostic goes to stderr, which
+  # this 2>/dev/null discards, leaving stdout empty. Only eval when
+  # there is something non-empty to eval, so a broken comrade never
+  # spams -- or breaks -- every new shell.
+  __comrade_completion="$(comrade completion bash 2>/dev/null)"
+  [ -n "$__comrade_completion" ] && eval "$__comrade_completion"
+  unset __comrade_completion
+fi
 # bash's readline has no ghost-text/auto-list primitive comrade can hook
 # without rebinding the space key itself (which would break magic-space,
 # multiline editing, and paste) — unlike zsh/PowerShell above, there is
 # no space-triggered hint here. Press Tab twice after "comrade " (or any
-# subcommand) for the same next-word list via the completion sourced on
-# the line above.
+# subcommand) for the same next-word list via the completion loaded
+# above.

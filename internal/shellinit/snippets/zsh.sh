@@ -14,7 +14,15 @@ __comrade_precmd() {
 if ! { autoload -Uz add-zsh-hook && add-zsh-hook precmd __comrade_precmd; } 2>/dev/null; then
   precmd() { __comrade_precmd; }
 fi
-command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)
+if command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1; then
+  # See bash.sh's matching guard: never source/eval comrade's completion
+  # output unguarded -- a broken comrade prints its diagnostic to stderr
+  # (discarded by 2>/dev/null) and leaves stdout empty, so only eval
+  # when there is a non-empty script to eval.
+  __comrade_completion="$(comrade completion zsh 2>/dev/null)"
+  [ -n "$__comrade_completion" ] && eval "$__comrade_completion"
+  unset __comrade_completion
+fi
 if [[ -o interactive ]] && zmodload zsh/zle 2>/dev/null; then
   typeset -g __comrade_hint_key="" __comrade_hint_text="" __comrade_hint_owns=0
   __comrade_hint_widget() {

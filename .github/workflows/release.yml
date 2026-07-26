@@ -23,6 +23,13 @@ permissions:
   # the exact click-path) -- npm silently refuses the publish with a 404
   # if that per-package configuration is missing or mismatched.
   id-token: write
+  # Required by the "Attach source SBOM to release" step below: it calls
+  # actions/list-artifacts under the hood (@actions/artifact's
+  # listArtifacts()) to find the SBOM captured earlier in this same run,
+  # before uploading it as a release asset. Documented at
+  # https://github.com/anchore/sbom-action#permissions ("If attaching
+  # release assets, the actions: read permission is also required").
+  actions: read
 
 jobs:
   goreleaser:
@@ -75,13 +82,33 @@ jobs:
       # this file is invisible to git entirely — belt-and-suspenders
       # with the /sbom-*.cdx.json .gitignore entry, which only matters
       # if a future edit points output-file back inside the workspace.
+      #
+      # upload-release-assets is deliberately false HERE, not because the
+      # SBOM shouldn't reach the release, but because of ORDERING: this
+      # step runs before goreleaser creates the release below, and the
+      # release doesn't exist yet at this point in the job. Verified
+      # against the action's actual source (anchore/sbom-action v0.24.0,
+      # src/github/SyftGithubAction.ts's attachReleaseAssets(), read via
+      # `gh api repos/anchore/sbom-action/contents/...?ref=v0.24.0`): for
+      # a tag-push event (this workflow's trigger) it resolves the release
+      # via `client.findRelease({tag})` -> `repos.getReleaseByTag`, which
+      # 404s (silently, only a debug log, no error/failure) when no
+      # release exists yet for that tag — so setting this true here would
+      # just no-op, not attach anything. upload-artifact is true instead,
+      # so this run's SBOM is captured as a workflow artifact that the
+      # publish-sbom step below (after the release exists) can find and
+      # attach — this two-phase generate-then-publish split is the
+      # pattern the action's own README documents under "Publishing SBOMs
+      # with releases" for exactly this "SBOM produced outside/before the
+      # release step" case.
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: cyclonedx-json
           output-file: ${{ runner.temp }}/sbom-source.cdx.json
+          artifact-name: sbom-source.cdx.json
           upload-release-assets: false
-          upload-artifact: false
+          upload-artifact: true
 
       # Derives the GitHub Release body from CHANGELOG.md's own
       # `## [<version>] - <date>` section (Derive-or-Guard: CHANGELOG.md
@@ -165,7 +192,25 @@ jobs:
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 
-      # npm publishing runs in THIS SAME job, as the two steps below,
+      # Second half of the two-phase SBOM flow started above: goreleaser
+      # has now created the GitHub Release (with the archives,
+      # checksums.txt and checksums.txt.sig as assets), so a release for
+      # this tag exists for the first time in this job. This step uses
+      # the action's dedicated `publish-sbom` sub-action (same
+      # anchore/sbom-action repo/commit, `publish-sbom/action.yml`, per
+      # its README's "Publishing SBOMs with releases" section) to attach
+      # the SBOM workflow artifact captured by the earlier step —
+      # matched by name via sbom-artifact-match, since the default
+      # pattern (`.*\.spdx\.json$`) doesn't match our CycloneDX filename.
+      # It does not regenerate the SBOM or touch the checked-out
+      # workspace, so it carries none of the git-cleanliness risk the
+      # comment above the generate step warns about.
+      - name: Attach source SBOM to the GitHub Release
+        uses: anchore/sbom-action/publish-sbom@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          sbom-artifact-match: "^sbom-source\\.cdx\\.json$"
+
+      # npm publishing runs in THIS SAME job, as the steps below,
       # deliberately -- not a separate downstream job. The goreleaser
       # step above already leaves the built dist/ directory sitting on
       # this runner's filesystem; assembling the npm packages from it
@@ -177,9 +222,16 @@ jobs:
       # and a second place for a version/commit mismatch to creep in --
       # no benefit for a job that already finishes in a few minutes.
       #
-      # Runs unconditionally after a successful goreleaser step (default
-      # GitHub Actions behavior: a step is skipped if any earlier step in
-      # the job failed) -- if goreleaser's release didn't go out, the npm
+      # Deliberately ordered LAST, after both goreleaser and the SBOM
+      # attach step above: npm publishes are irreversible (npm package
+      # versions are immutable, unlike a git tag or a GitHub Release
+      # asset), so every reversible, in-repo step finishes first. If npm
+      # publishing fails here, the GitHub release is still complete,
+      # signed, and has its SBOM attached; the reverse ordering would
+      # leave npm packages live against a half-finished release. Runs
+      # unconditionally after both prior steps succeed (default GitHub
+      # Actions behavior: a step is skipped if any earlier step in the
+      # job failed) -- if goreleaser's release didn't go out, the npm
       # packages must not go out either.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:

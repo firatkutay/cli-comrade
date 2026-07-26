@@ -9,7 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`release.yml` now publishes all 6 npm packages automatically, using npm Trusted Publishing (OIDC) -- no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, ever.** The 5 `@firatkutay/comrade-<os>-<cpu>` platform packages publish first, then the `cli-comrade` dispatcher, assembled from the SAME `dist/` this job's own goreleaser step just built and cosign-signed (no separate rebuild). The workflow's `permissions:` block gains `id-token: write`; each package still needs a one-time "Trusted Publisher" configured by hand on npmjs.com (see `docs/PACKAGING.md`'s npm section for the exact click-path) before this step can succeed against it. Idempotent on re-run: an `npm view <name>@<version>` check skips any package/version already published instead of failing the job, so retrying an already-released tag is safe.
+- **`release.yml` now publishes all 6 npm packages automatically, using npm Trusted Publishing (OIDC) — no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, ever.** The 5 `@firatkutay/comrade-<os>-<cpu>` platform packages publish first, then the `cli-comrade` dispatcher, assembled from the same `dist/` this job's own goreleaser step just built and cosign-signed (no separate rebuild), after the GitHub Release and its SBOM are already attached. The workflow's `permissions:` block gains `id-token: write`; each package still needs a one-time "Trusted Publisher" configured by hand on npmjs.com (see `docs/PACKAGING.md`'s npm section for the exact click-path) before this step can succeed against it. Idempotent on re-run: an `npm view <name>@<version>` check skips any package/version already published instead of failing the job, so retrying an already-released tag is safe.
+
+## [0.4.5] - 2026-07-26
+
+### Security
+
+- **The destructive-command classifier now resolves loop bodies to a fixpoint, closing a class where a genuinely destructive command classified `read`/`Allow` and would have run unprompted in `auto` mode** (#33). `resolveLoopBody` previously resolved a `for`/`while`/`until` body in a single pass seeded from the pre-loop environment, so a variable that only became dangerous on a later iteration was invisible — `X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /` resolved `X` to a stale `echo` even though real bash ends with `X=rm` and runs `rm -rf /`. It now re-applies the body to its own prior result (bounded by `maxLoopFixpointIterations`) and invalidates any name that ever changes anywhere along that chain. Two further CRITICAL gaps found by independent security audits during the fix were also closed: a cap-exhaustion case that only invalidated OBSERVED changes (missed a 9-link relay chain whose sink only changed on the unobservable 9th pass), and that fix's own regression (deleting names on cap exhaustion is fail-closed only in command-word position — in argument position a deleted name resolves to `""`, turning a non-converging loop into a general-purpose eraser gadget). Cap exhaustion now fails the WHOLE command closed instead of selectively deleting names. **Honest scope limit**: this closes the class for COMMAND-WORD-position sinks only — an argument-position sink (e.g. `sh -c "$X -rf /"`) still resolves inert and is not caught by this fix; recorded in `KNOWN_LIMITATIONS.md`.
+- **`scripts/install.sh` and `scripts/install.ps1` now both verify `checksums.txt` against a cosign signature using an embedded public key before trusting it, fail-closed** (#45, #51, closing issues #28 and #43). This closes the trust-root asymmetry with `comrade upgrade`'s own Go-side cosign check: previously a compromised release or MITM able to serve a consistent `checksums.txt` + archive pair could hand either installer a fully attacker-controlled binary that still passed its checksum. `COMRADE_INSTALL_ALLOW_UNSIGNED` opts into the weaker checksum-only fallback explicitly (with a loud warning), but an actual signature mismatch always aborts unconditionally with no override. `install.ps1` verifies via `ECDsaCng`/`CngKey.Import` rather than `install.sh`'s `openssl` approach (not standard on Windows), tested against both Windows PowerShell 5.1 and PowerShell 7.
+
+### Fixed
+
+- **`--profile` now works on `config set`, `config profile set`, and `explain`** (#27). cobra's `DisableFlagParsing` skipped parsing for the whole invocation, so root's persistent `--profile` flag never reached these three commands — it leaked into args as a literal token, breaking `config set`/`config profile set`'s arity check with a generic usage error, and silently folded into the text `explain` sent to the LLM with no error or indication the flag had done nothing.
+- **`comrade doctor`'s PATH check `Fix` is now a bare, copy-pasteable command instead of untranslated English prose** (#39), matching every other check in the package — a Turkish user previously got an English sentence directly under a translated `Summary` line.
+- **Generated shell hooks (bash/zsh/fish/PowerShell) no longer `eval`/`source` empty or failing completion output.** An npm install missing its platform binary left `comrade` resolvable on `PATH` but failing on every invocation; all four generated hooks piped `comrade completion <shell>`'s stdout straight into an eval-like sink with no non-empty check, which threw `Invoke-Expression: Cannot bind argument ... empty string` on every new PowerShell session (the field-reported bug) and, on bash/zsh/fish, leaked the child's stderr diagnostic into every new shell. All four now capture stdout first and only eval/source/`Invoke-Expression` when it is non-empty.
+
+### Added
+
+- CI gained **`shellcheck`** linting of `scripts/*.sh` and `npm/test/*.sh` (closing issue #29), **`gitleaks`** secret-scanning of the working tree, and a **Syft** source SBOM CI artifact with an **informational, non-blocking Grype** scan (both closing issue #47). Grype stays advisory rather than gating: this repo's one dependency manifest is already reachability-checked by `govulncheck`, and Grype's version-only matching would otherwise fail every PR on a vulnerability (`GO-2026-5970`, `golang.org/x/text`) that `govulncheck` has already proven unreachable from this codebase's call graph.
+- A test guarding that every declared i18n `MessageID` constant exists in both catalogs (closing issue #38) — previously a constant declared in `catalog.go` but added to neither catalog silently fell back to its bare ID at render time, invisible to all three existing catalog-parity tests.
+
+### Changed
+
+- npm is now documented as a live, **alternative** install channel for users who already have Node — not the primary channel — updated across README, `docs/INSTALL.md`, `docs/GUIDE.md`, and the project site, alongside the existing `comrade upgrade` refusal under an npm/pnpm/yarn/bun install.
 
 ## [0.4.4] - 2026-07-26
 
@@ -905,8 +927,9 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
+[0.4.5]: https://github.com/firatkutay/cli-comrade/compare/v0.4.4...v0.4.5
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.5...HEAD
 [0.4.4]: https://github.com/firatkutay/cli-comrade/compare/v0.4.3...v0.4.4
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.4...HEAD
 [0.4.3]: https://github.com/firatkutay/cli-comrade/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/firatkutay/cli-comrade/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/firatkutay/cli-comrade/compare/v0.4.0...v0.4.1

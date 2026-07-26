@@ -77,3 +77,12 @@ After the next release (CI signs with the pinned cosign `v2.6.3`),
 Generate a new pair, update the two secrets and `internal/update/cosign.pub`,
 and ship a release. Clients that upgrade *through* the release carrying the new
 embedded public key will then require signatures from the new key.
+
+**`scripts/install.sh` AND `scripts/install.ps1` both embed a copy of this
+same key too** (GitHub issues #28 and #43) — `install.sh`'s `COSIGN_PUB`
+shell variable and `install.ps1`'s `$CosignPub` here-string must both stay
+byte-identical to `internal/update/cosign.pub`, guarded by
+`internal/update/install_sh_mirror_test.go`'s
+`TestInstallShEmbedsExactCosignPub` and `TestInstallPs1EmbedsExactCosignPub`
+respectively. When rotating the key, update BOTH scripts' embedded copies
+in the same commit as `cosign.pub`, or the mirror-guard tests will fail.

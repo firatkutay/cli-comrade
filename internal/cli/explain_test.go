@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -151,6 +152,33 @@ func countingServer(t *testing.T, planJSON string) (srv *httptest.Server, reques
 	return srv, &count
 }
 
+// bodyCapturingServer is countingServer plus recording the raw request
+// body of the LAST request it received, so
+// TestExplainHonorsProfileFlagAcrossProviderConfig can assert the actual
+// bytes sent to the provider are exactly the command text — never
+// "--profile <name>" folded in (issue #27's dangerous, silent-failure
+// case).
+func bodyCapturingServer(t *testing.T, planJSON string) (srv *httptest.Server, requestCount *int32, lastBody *string) {
+	t.Helper()
+	var count int32
+	var body string
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&count, 1)
+		raw, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		body = string(raw)
+		resp := openAICompatResponse{
+			Model: "mock-model",
+			Choices: []openAICompatChoice{
+				{Message: openAICompatMessage{Role: "assistant", Content: planJSON}, FinishReason: "stop"},
+			},
+		}
+		w.Header().Set("content-type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	return srv, &count, &body
+}
+
 // TestExplainHelpFlagNeverCallsTheProvider is QA D1's core regression
 // guard: "comrade explain --help" (and "-h") must show help and make
 // ZERO requests to the LLM provider — the actual reported bug was
@@ -272,4 +300,146 @@ func TestExplainDoubleDashEscapeHatchExplainsLiteralHelpFlag(t *testing.T) {
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(requests), "the escape hatch must actually reach the LLM provider")
 	assert.Contains(t, stdout, "Lists the files in the current directory")
+}
+
+// TestExplainHonorsProfileFlagAcrossProviderConfig is issue #27's core
+// regression guard for `explain` — the MOST DANGEROUS of the three
+// affected commands: DisableFlagParsing meant --profile used to be
+// silently folded into the joined command text, with NO error and NO
+// indication it did nothing, so a user relying on --profile to pick a
+// different provider/model/base_url got the wrong one with no warning
+// at all. This proves --profile actually resolves the LLM client
+// against the SELECTED profile's own base_url (two distinct mock
+// servers, two distinct explanation bodies — a real behavioral fork, not
+// just "no error"), and that the exact command text reaching the
+// provider never contains "--profile work".
+func TestExplainHonorsProfileFlagAcrossProviderConfig(t *testing.T) {
+	withIsolatedConfigDir(t)
+	defaultServer, defaultRequests, defaultBody := bodyCapturingServer(t, lsExplanationJSON)
+	defer defaultServer.Close()
+	workServer, workRequests, workBody := bodyCapturingServer(t, rmRfNodeModulesExplanationJSON)
+	defer workServer.Close()
+
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", defaultServer.URL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "set", "work", "llm.openai_compat.base_url", workServer.URL)
+	require.NoError(t, err)
+
+	// Without --profile: the default (top-level) provider config answers.
+	stdout, stderr, err := execRootSplit(t, "dev", "explain", "ls", "-la")
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Contains(t, stdout, "Lists the files in the current directory")
+	assert.Equal(t, int32(1), atomic.LoadInt32(defaultRequests))
+	assert.Equal(t, int32(0), atomic.LoadInt32(workRequests))
+	assert.Contains(t, *defaultBody, "ls -la")
+
+	// With --profile work: the WORK profile's own base_url must answer
+	// instead — not the default — proving --profile was actually
+	// consumed, not silently dropped.
+	stdout, stderr, err = execRootSplit(t, "dev", "--profile", "work", "explain", "rm", "-rf", "node_modules")
+	require.NoError(t, err, "stderr: %s", stderr)
+	assert.Contains(t, stdout, "Deletes the node_modules directory")
+	assert.Equal(t, int32(1), atomic.LoadInt32(defaultRequests), "must not call the default profile's provider again")
+	assert.Equal(t, int32(1), atomic.LoadInt32(workRequests), "must call the WORK profile's own provider")
+
+	// The command text actually sent must be exactly the command, never
+	// containing the flag that selected the profile.
+	assert.Contains(t, *workBody, "Explain this command: rm -rf node_modules")
+	assert.NotContains(t, *workBody, "--profile")
+}
+
+// TestExplainProfileFlagWorksAfterTheLeafToo proves --profile is
+// consumed identically regardless of position — placed AFTER "explain"
+// and its command text, not just before it.
+func TestExplainProfileFlagWorksAfterTheLeafToo(t *testing.T) {
+	withIsolatedConfigDir(t)
+	server, requests := countingServer(t, lsExplanationJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+
+	stdout, stderr, err := execRootSplit(t, "dev", "explain", "ls", "-la", "--profile", "work")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(requests))
+	assert.Contains(t, stdout, "Lists the files in the current directory")
+}
+
+// TestExplainProfileFlagEqualsFormWorks proves the "--profile=<name>"
+// form is recognized identically to the two-token "--profile <name>"
+// form.
+func TestExplainProfileFlagEqualsFormWorks(t *testing.T) {
+	withIsolatedConfigDir(t)
+	server, requests := countingServer(t, lsExplanationJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+
+	stdout, stderr, err := execRootSplit(t, "dev", "--profile=work", "explain", "ls", "-la")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(requests))
+	assert.Contains(t, stdout, "Lists the files in the current directory")
+}
+
+// TestExplainDoubleDashEscapeHatchStillProtectsLiteralProfileFlag is the
+// explain-specific "-- separator" case the top-level task asks for:
+// "comrade explain -- --profile weird" must still explain the LITERAL
+// string "--profile weird" (reaching the LLM provider with that exact
+// text), exactly like the pre-existing "-- --help"/"-- --usage" escape
+// hatches (TestExplainDoubleDashEscapeHatchExplainsLiteralHelpFlag,
+// usage_cli_test.go's TestExplainDoubleDashEscapeStillExplainsLiteralUsageFlag)
+// — extractProfileFlag's own "--" scan-stop boundary is what makes this
+// work (profileflag.go's doc comment).
+func TestExplainDoubleDashEscapeHatchStillProtectsLiteralProfileFlag(t *testing.T) {
+	withIsolatedConfigDir(t)
+	server, requests, body := bodyCapturingServer(t, lsExplanationJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	stdout, stderr, err := execRootSplit(t, "dev", "explain", "--", "--profile", "weird")
+	require.NoError(t, err, "stderr: %s", stderr)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(requests), "the escape hatch must actually reach the LLM provider")
+	assert.Contains(t, stdout, "Lists the files in the current directory")
+	assert.Contains(t, *body, "--profile weird", "the literal text after -- must reach the provider unchanged")
+}
+
+// TestExplainProfileFlagMissingValueErrorsWithoutCallingProvider proves
+// a trailing, valueless "--profile" is reported as a clear error,
+// without ever reaching the LLM provider.
+func TestExplainProfileFlagMissingValueErrorsWithoutCallingProvider(t *testing.T) {
+	withIsolatedConfigDir(t)
+	// Uses the OTHER canned explanation JSON (not lsExplanationJSON, like
+	// every other countingServer call site here) purely so the response
+	// body itself never matters for this test — the assertion is that
+	// requests stays 0, i.e. the provider is never reached at all.
+	server, requests := countingServer(t, rmRfNodeModulesExplanationJSON)
+	defer server.Close()
+
+	t.Setenv("COMRADE_PROVIDER", "openai_compat")
+	t.Setenv("COMRADE_LLM_OPENAI_COMPAT_BASE_URL", server.URL)
+	t.Setenv("COMRADE_OPENAI_COMPAT_API_KEY", "test-key")
+
+	_, _, err := execRootSplit(t, "dev", "explain", "ls", "-la", "--profile")
+	require.Error(t, err)
+	assert.Equal(t, "--profile requires a value, e.g. --profile work", err.Error())
+	assert.Equal(t, int32(0), atomic.LoadInt32(requests), "a missing --profile value must never reach the LLM provider")
 }

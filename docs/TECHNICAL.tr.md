@@ -1001,18 +1001,55 @@ shell'de her tuş vuruşunda çalışacak kadar hızlı ve sessiz tutar.
 yönetilen marker bloğunun içine eklenir (yukarıda) — asla ayrı, opt-in
 bir adım değil:
 
+Aşağıdaki her kayıt kasıtlı olarak aynı şekli paylaşır: önce
+`comrade completion <shell>`'in stdout'unu bir değişkene yakala, ve
+yalnızca bu yakalanan içerik boş değilse eval/source/Invoke-Expression et — asla
+doğrudan pipe veya process-substitution ile eval sink'ine verme. Bu,
+PATH'te olan ama bozuk bir `comrade`'ı (gerçek dünya vakası: dispatcher'ı
+(`npm/main/bin/comrade.js`) platform binary'si olmadan bırakan bir npm
+kurulumu) her yeni shell'i spam'lemek veya bozmak yerine sessiz
+bırakan şeydir — dispatcher'ın kendi teşhis mesajı zaten stderr'e gider
+(`console.error`), aşağıdaki her koruma bunu kendi `2>/dev/null`/
+`2>$null`'ı ile, stdout'un boşluğunu kontrol etmeden önce atar.
+
 - **bash** (`internal/shellinit/snippets/bash.sh`):
-  `command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)`
+  ```bash
+  if command -v comrade >/dev/null 2>&1; then
+    __comrade_completion="$(comrade completion bash 2>/dev/null)"
+    [ -n "$__comrade_completion" ] && eval "$__comrade_completion"
+    unset __comrade_completion
+  fi
+  ```
 - **zsh** (`internal/shellinit/snippets/zsh.sh`):
-  `command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)`
+  ```zsh
+  if command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1; then
+    __comrade_completion="$(comrade completion zsh 2>/dev/null)"
+    [ -n "$__comrade_completion" ] && eval "$__comrade_completion"
+    unset __comrade_completion
+  fi
+  ```
   — `whence compdef` koruması, `compinit` hiç çalıştırılmamışken bile
   bunu güvenli kılar (zsh'nin tamamlama sistemi, bash'ninkinin aksine,
   opt-in'dir).
-- **PowerShell** (`internal/shellinit/snippets/powershell.ps1`):
-  `comrade completion powershell | Out-String | Invoke-Expression`,
+- **PowerShell** (`internal/shellinit/snippets/powershell.ps1`),
   snippet'in mevcut `if (Get-Command comrade ...)` koruması içinde —
   ikisi de mevcutken her iki PowerShell varyantının profiline aynı
-  şekilde kurulur (yukarıda anlatılan çoklu-profil kurulum).
+  şekilde kurulur (yukarıda anlatılan çoklu-profil kurulum):
+  ```powershell
+  $__comradeCompletionScript = comrade completion powershell 2>$null | Out-String
+  if ($__comradeCompletionScript -and $__comradeCompletionScript.Trim()) {
+      Invoke-Expression $__comradeCompletionScript
+  }
+  Remove-Variable -Name __comradeCompletionScript -ErrorAction SilentlyContinue
+  ```
+  Bu koruma tam olarak alan-raporlu gerçek dünya hatası için eklendi:
+  korumasız bir
+  `comrade completion powershell | Out-String | Invoke-Expression`,
+  `comrade` PATH'te ama bozuk hale geldiğinde her yeni PowerShell
+  oturumunda
+  `Cannot bind argument to parameter 'Command' because it is an empty string`
+  hatası fırlatır — `Invoke-Expression`, bash/zsh/fish'in `source`'unun
+  aksine, boş bir komut dizesine tahammül etmez.
 - **fish**: yönetilen rc bloğunun içinde bir satır DEĞİL — fish, bir
   komutun adını tamamlaması gerektiği ilk anda kendi tamamlama
   dizinine yerleştirilmiş herhangi bir dosyayı otomatik olarak
@@ -1020,10 +1057,16 @@ bir adım değil:
   comrade'a-ait bir dosyayı (`internal/shellinit/snippets/fish-completions.fish`)
   doğrudan o konuma yazar:
   ```fish
-  if command -v comrade >/dev/null
-      comrade completion fish | source
+  if command -v comrade >/dev/null 2>&1
+      set -l __comrade_completion (comrade completion fish 2>/dev/null)
+      if test (count $__comrade_completion) -gt 0
+          string join \n -- $__comrade_completion | source
+      end
   end
   ```
+  (`count`, fish'in kendi çok satırlı tamamlama çıktısına karşı yalın
+  bir `test -n "$var"`'ın düşeceği liste-tırnak-içi-bölünme tuzağından
+  kaçınır.)
   Yolu (`shellinit.FishCompletionsPath`), `RCPath`'in kendi fish
   dalının `config.fish` için zaten kullandığı aynı
   `XDG_CONFIG_HOME`-ya-da-`HOME` zincirinden, bir dizin seviyesi daha
@@ -1393,6 +1436,23 @@ anahtarları yerel bir dosyaya kaydediliyor").
 - cosign-imzalı bir `checksums.txt.sig` (`signs:`, key-tabanlı, offline
   — `--tlog-upload=false`, yalnızca doğrulama zamanında değil, imzalama
   zamanında da Rekor transparency log'unu atlar) — bununla `comrade upgrade`'in ne yaptığı için yukarıdaki paragraflara bakın
+
+**Yeniden üretilebilir (reproducible) derlemeler**: her `builds:` girdisi
+`flags: [-trimpath]` taşır, ve `Makefile`'ın `build`/`cross` hedefleri
+aynı bayrağı paylaşılan bir `GOBUILDFLAGS` değişkeni üzerinden geçirir
+(CI'nin salt `go build ./...` derleme kontrolü etkilenmez, çünkü hiçbir
+zaman diske bir binary yazmaz). `-trimpath`, derlemenin mutlak kaynak
+yolunu derlenmiş binary'den çıkarır — bu olmadan, aynı kaynak +
+toolchain + ldflags iki farklı mutlak yolda derlenirse (bir CI runner'ı,
+bir geliştiricinin makinesi, tek seferlik elle yapılan bir yayın adımı)
+iki farklı SHA-256 sonucu üretir — kontrollü bir deneyle doğrulandı.
+Bununla, verilen bir commit/toolchain'in herhangi bir temiz checkout
+derlemesi, goreleaser'ın o release için ürettiğiyle byte-byte aynıdır —
+bu da yerel olarak derlenen bir binary'nin cosign-imzalı
+`checksums.txt`'e karşı doğrulanabilmesini sağlayan şeydir (kullanıcı
+tarafı doğrulama tarifi için bkz. docs/SECURITY.md'nin "Yeniden
+üretilebilir (reproducible) release binary'leri" ve docs/INSTALL.md'nin
+"Yeniden üretilebilir derlemeler" bölümleri).
 
 `scripts/install.sh`/`install.ps1` kurulum betikleri, host OS/mimarisine
 uyan release arşivini indirir, release'in yayınladığı `checksums.txt`'e

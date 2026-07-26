@@ -341,11 +341,30 @@ func newConfigProfileSetCmd(newLoader loaderFactory) *cobra.Command {
 		Args:               cobra.ArbitraryArgs,
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --profile is hand-parsed out of args here for the same
+			// reason newConfigSetCmd's RunE does (config.go): cobra never
+			// parses ANY flag — including root's inherited persistent
+			// --profile — for a DisableFlagParsing command (issue #27).
+			// Note this only selects the ACTIVE profile newLoader
+			// resolves against (language, ensureLoaded); it is unrelated
+			// to <name>, the profile whose key is actually being edited
+			// below — those are two independent profile arguments.
+			profile, args, err := extractProfileFlag(args)
+			if err != nil {
+				return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgProfileFlagMissingValue))
+			}
+			effectiveLoader := loaderWithProfileOverride(newLoader, profile)
+			// stripFirstDoubleDash's own "--" escape hatch (profileflag.go)
+			// — lets a value that must legitimately BE the literal string
+			// "--profile" pass through, e.g. `config profile set work
+			// llm.model -- --profile`.
+			args = stripFirstDoubleDash(args)
+
 			if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
 				return cmd.Help()
 			}
 			if len(args) != 3 {
-				return profileUsageError(cmd, newLoader, "<name> <key> <value>")
+				return profileUsageError(cmd, effectiveLoader, "<name> <key> <value>")
 			}
 			name, key, raw := args[0], args[1], args[2]
 
@@ -358,7 +377,7 @@ func newConfigProfileSetCmd(newLoader loaderFactory) *cobra.Command {
 				return translateProfileError(envOnlyTranslator(), err)
 			}
 
-			loader, err := newLoader()
+			loader, err := effectiveLoader()
 			if err != nil {
 				return err
 			}

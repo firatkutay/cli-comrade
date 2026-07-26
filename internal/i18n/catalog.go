@@ -1167,12 +1167,17 @@ const (
 	MsgDoctorVersionUpToDate MessageID = "doctor_version_up_to_date"
 
 	// MsgDoctorPathNotFound reports that the comrade binary is not on
-	// PATH at all. One arg: the binary name looked up ("comrade" or
-	// "comrade.exe").
+	// PATH at all, and (issue #39) explains why re-running the installer
+	// (Fix, pathFixInstruction in check_path.go) or editing PATH by hand
+	// fixes it — this explanatory half used to be smuggled into Fix
+	// itself as untranslated English prose; Fix is now a bare command
+	// again and this Summary carries the "why" instead, translated. One
+	// arg: the binary name looked up ("comrade" or "comrade.exe").
 	MsgDoctorPathNotFound MessageID = "doctor_path_not_found"
 	// MsgDoctorPathStale reports that PATH resolves to a comrade binary
-	// other than the one currently running this diagnostic. One arg: the
-	// resolved path.
+	// other than the one currently running this diagnostic, plus the
+	// same why-explanation as MsgDoctorPathNotFound (issue #39). One arg:
+	// the resolved path.
 	MsgDoctorPathStale MessageID = "doctor_path_stale"
 	// MsgDoctorPathOK reports that PATH resolves to the running binary
 	// itself. One arg: the resolved path.
@@ -1359,6 +1364,13 @@ const (
 	// one invocation, taking precedence over COMRADE_PROFILE and the
 	// file's own general.profile (see config.ResolveActiveProfile).
 	MsgFlagProfile MessageID = "flag_profile"
+
+	// MsgProfileFlagMissingValue is printed when a trailing, valueless
+	// "--profile" token is found while hand-parsing --profile out of a
+	// DisableFlagParsing leaf's raw args (config set, config profile set,
+	// explain — see internal/cli/profileflag.go's extractProfileFlag and
+	// issue #27). No args.
+	MsgProfileFlagMissingValue MessageID = "profile_flag_missing_value"
 
 	// MsgFlagProfileFromCurrent is `comrade config profile add`'s
 	// --from-current flag's --help description.
@@ -1715,8 +1727,8 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgDoctorVersionBehindNodeManaged: "a newer version is available: %s (you have %s) — comrade was installed through a Node package manager (e.g. npm, pnpm, yarn, bun); update it with that package manager instead (npm shown below as the example)",
 	MsgDoctorVersionUpToDate:          "up to date (%s)",
 
-	MsgDoctorPathNotFound: "%q was not found on PATH",
-	MsgDoctorPathStale:    "PATH resolves to a different comrade binary than the one currently running (%s)",
+	MsgDoctorPathNotFound: "%q was not found on PATH — re-run the installer (see Fix below), or add comrade's install directory to your PATH yourself",
+	MsgDoctorPathStale:    "PATH resolves to a different comrade binary than the one currently running (%s) — re-run the installer (see Fix below), or add comrade's install directory to your PATH yourself",
 	MsgDoctorPathOK:       "found on PATH (%s)",
 
 	MsgDoctorShellHookUndetected:  "could not detect the current shell",
@@ -1769,8 +1781,9 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUndoPlanSummary:        "Reverses %d step(s) from run %s, newest first.",
 
 	// --- config profiles ---
-	MsgFlagProfile:            "use this named config profile for this invocation (overrides COMRADE_PROFILE and general.profile)",
-	MsgFlagProfileFromCurrent: "seed the new profile with the current file-level [llm] section's values",
+	MsgFlagProfile:             "use this named config profile for this invocation (overrides COMRADE_PROFILE and general.profile)",
+	MsgProfileFlagMissingValue: "--profile requires a value, e.g. --profile work",
+	MsgFlagProfileFromCurrent:  "seed the new profile with the current file-level [llm] section's values",
 
 	MsgConfigProfileListHeader: "PROFILE\tACTIVE\tKEYS",
 	MsgConfigProfileUsageError: "usage: %s %s",
@@ -2051,8 +2064,8 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgDoctorVersionBehindNodeManaged: "daha yeni bir sürüm mevcut: %s (mevcut sürümünüz: %s) — comrade bir Node paket yöneticisiyle (ör. npm, pnpm, yarn, bun) kuruldu; bunun yerine o paket yöneticisiyle güncelleyin (örnek olarak npm gösterilmiştir)",
 	MsgDoctorVersionUpToDate:          "güncel (%s)",
 
-	MsgDoctorPathNotFound: "%q, PATH üzerinde bulunamadı",
-	MsgDoctorPathStale:    "PATH, şu anda çalışan comrade ikili dosyasından farklı bir kopyaya işaret ediyor (%s)",
+	MsgDoctorPathNotFound: "%q, PATH üzerinde bulunamadı — kurulum betiğini yeniden çalıştırın (aşağıdaki Fix'e bakın) veya comrade'in kurulum dizinini PATH'inize kendiniz ekleyin",
+	MsgDoctorPathStale:    "PATH, şu anda çalışan comrade ikili dosyasından farklı bir kopyaya işaret ediyor (%s) — kurulum betiğini yeniden çalıştırın (aşağıdaki Fix'e bakın) veya comrade'in kurulum dizinini PATH'inize kendiniz ekleyin",
 	MsgDoctorPathOK:       "PATH üzerinde bulundu (%s)",
 
 	MsgDoctorShellHookUndetected:  "mevcut kabuk tespit edilemedi",
@@ -2105,8 +2118,9 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgUndoPlanSummary:        "%d adımı, %s çalıştırmasından en yeniden en eskiye doğru geri alır.",
 
 	// --- config profiles ---
-	MsgFlagProfile:            "bu çalıştırma için bu adlandırılmış config profilini kullan (COMRADE_PROFILE ve general.profile'ı geçersiz kılar)",
-	MsgFlagProfileFromCurrent: "yeni profili mevcut dosya seviyesindeki [llm] bölümünün değerleriyle doldur",
+	MsgFlagProfile:             "bu çalıştırma için bu adlandırılmış config profilini kullan (COMRADE_PROFILE ve general.profile'ı geçersiz kılar)",
+	MsgProfileFlagMissingValue: "--profile bir değer gerektirir, ör. --profile work",
+	MsgFlagProfileFromCurrent:  "yeni profili mevcut dosya seviyesindeki [llm] bölümünün değerleriyle doldur",
 
 	MsgConfigProfileListHeader: "PROFİL\tAKTİF\tANAHTAR",
 	MsgConfigProfileUsageError: "kullanım: %s %s",

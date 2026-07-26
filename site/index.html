@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cli-comrade — your AI CLI companion</title>
+  <meta name="description" content="cli-comrade (comrade): terminalle uğraşmak istemeyenler için doğal dille (TR/EN) çalışan, cross-platform AI komut satırı asistanı. An AI CLI companion for people who don't want to fight the terminal — Windows, macOS, Linux." />
+  <meta name="theme-color" content="#05070a" />
+
+  <!-- Open Graph / link previews -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="cli-comrade — AI CLI companion" />
+  <meta property="og:description" content="Terminalle uğraşmak istemeyenlere komut satırında yoldaşlık eden yapay zeka asistanı. An AI CLI companion for people who don't want to fight the terminal." />
+  <meta property="og:image" content="./assets/logo.png" />
+  <meta property="og:url" content="https://firatkutay.github.io/cli-comrade/" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- Pre-paint language gate: resolves the language with the same rules as
+       script.js detectLang(), then hides <body> (html.lang-pending in
+       styles.css) until script.js swaps the [data-tr]/[data-en] text in. The
+       timeout fails open so the page still appears if script.js never runs;
+       with JS disabled this never executes, so nothing is ever hidden. -->
+  <script>
+    (function () {
+      var l = null;
+      try { l = localStorage.getItem("cli-comrade-lang"); } catch (e) {}
+      if (l !== "tr" && l !== "en") {
+        var nav = (navigator.language || navigator.userLanguage || "en").toLowerCase();
+        l = nav.indexOf("tr") === 0 ? "tr" : "en";
+      }
+      var root = document.documentElement;
+      window.__comradeLang = l;
+      if (l !== root.lang) {
+        root.classList.add("lang-pending");
+        window.setTimeout(function () {
+          root.classList.remove("lang-pending");
+        }, 900);
+      }
+      root.lang = l;
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-tr="İçeriğe atla" data-en="Skip to content">İçeriğe atla</a>
+
+  <!-- ============ STICKY TOP BAR ============ -->
+  <header class="topbar" role="banner">
+    <div class="topbar__inner">
+      <a class="brand" href="#hero" aria-label="cli-comrade">
+        <img class="brand__logo" src="./assets/logo.png" width="819" height="232" alt="cli-comrade" />
+      </a>
+
+      <nav class="topnav" aria-label="Ana / Primary">
+        <a class="ghlink" href="./guide.html">
+          <svg class="ghlink__icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75V1.75zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574zM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25z"/></svg>
+          <span data-tr="Kılavuz" data-en="Guide">Kılavuz</span>
+        </a>
+        <div class="langtoggle" role="group" data-tr-aria="Dil seçimi" data-en-aria="Language selection" aria-label="Dil seçimi">
+          <button type="button" class="langtoggle__btn" data-lang="tr" aria-pressed="true">TR</button>
+          <button type="button" class="langtoggle__btn" data-lang="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="ghlink" href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer">
+          <svg class="ghlink__icon" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span data-tr="GitHub" data-en="GitHub">GitHub</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="hero">
+      <div class="hero__grid">
+        <div class="hero__copy">
+          <h1 class="hero__tagline"
+              data-tr="Terminalle uğraşmak istemeyenlere komut satırında yoldaşlık eden yapay zeka asistanı."
+              data-en="An AI CLI companion for people who don't want to fight the terminal.">Terminalle uğraşmak istemeyenlere komut satırında yoldaşlık eden yapay zeka asistanı.</h1>
+          <p class="hero__sub"
+             data-tr="Windows, macOS ve Linux'ta çalışır. Ne istediğini gündelik dille söyle — komutları comrade çıkarır."
+             data-en="Runs on Windows, macOS and Linux. Say what you want in plain words — comrade works out the commands.">Windows, macOS ve Linux'ta çalışır. Ne istediğini gündelik dille söyle — komutları comrade çıkarır.</p>
+          <div class="hero__cta">
+            <a class="btn btn--primary" href="#install" data-tr="Kur" data-en="Install">Kur</a>
+            <a class="btn btn--ghost" href="./guide.html" data-tr="Kullanım Kılavuzu" data-en="User Guide">Kullanım Kılavuzu</a>
+            <a class="btn btn--ghost" href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer" data-tr="GitHub'da gör" data-en="View on GitHub">GitHub'da gör</a>
+          </div>
+        </div>
+
+        <!-- ===== SIGNATURE: 3D CRT TERMINAL ===== -->
+        <div class="crt-stage" id="crtStage" aria-hidden="false">
+          <div class="crt" id="crt">
+            <div class="crt__bezel">
+              <div class="crt__bar">
+                <span class="crt__dot crt__dot--red"></span>
+                <span class="crt__dot crt__dot--amber"></span>
+                <span class="crt__dot crt__dot--green"></span>
+                <span class="crt__title">comrade — ask</span>
+              </div>
+              <div class="crt__screen">
+                <pre class="crt__pre" id="crtOut" role="img"
+                     data-tr-aria="comrade ask modunda canlı oturum: 8080 portunu dinleyen süreci bulup onay isteyerek sonlandırıyor."
+                     data-en-aria="A live comrade ask-mode session: it finds the process on port 8080 and asks before killing it."
+                     aria-label="comrade ask modunda canlı oturum"></pre>
+                <div class="crt__scan" aria-hidden="true"></div>
+                <div class="crt__glow" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ WHAT IT DOES ============ -->
+    <section class="section" id="what">
+      <p class="eyebrow" data-tr="// ne yapar" data-en="// what it does">// ne yapar</p>
+      <h2 class="section__title" data-tr="Altı komut, bir yoldaş" data-en="Six commands, one comrade">Altı komut, bir yoldaş</h2>
+      <div class="cards">
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">fix</span></div>
+          <p class="card__desc" data-tr="Son başarısız komutu teşhis eder, çözüm önerir." data-en="Diagnoses your last failed command and proposes a fix.">Son başarısız komutu teşhis eder, çözüm önerir.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-str" data-tr="&quot;docker kur&quot;" data-en="&quot;docker install&quot;">"docker kur"</span></div>
+          <p class="card__desc" data-tr="Serbest metin isteği çok adımlı plana çevirir ve moda göre çalıştırır." data-en="Turns a plain-language request into a multi-step plan and runs it per the active mode.">Serbest metin isteği çok adımlı plana çevirir ve moda göre çalıştırır.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">explain</span> <span class="tok-str">"git rebase -i HEAD~5"</span></div>
+          <p class="card__desc" data-tr="Bir komutu çalıştırmadan bayrak bayrak açıklar." data-en="Explains a command flag-by-flag without running it.">Bir komutu çalıştırmadan bayrak bayrak açıklar.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">chat</span></div>
+          <p class="card__desc" data-tr="Bağlamı koruyan interaktif sohbet." data-en="Context-preserving interactive chat.">Bağlamı koruyan interaktif sohbet.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">doctor</span></div>
+          <p class="card__desc" data-tr="Kurulumu tek komutla teşhis eder — sürüm, PATH, shell hook, API anahtarı, sağlayıcı erişimi, config — ve her sorun için kopyalanabilir bir düzeltmeyle ✓/⚠/✗ listesi basar." data-en="Diagnoses your setup in one command — version, PATH, shell hook, API key, provider reachability, config — and prints a ✓/⚠/✗ checklist with a copy-pasteable fix per problem.">Kurulumu tek komutla teşhis eder — sürüm, PATH, shell hook, API anahtarı, sağlayıcı erişimi, config — ve her sorun için kopyalanabilir bir düzeltmeyle ✓/⚠/✗ listesi basar.</p>
+        </article>
+        <article class="card">
+          <div class="card__cmd"><span class="tok-prompt">$</span> comrade <span class="tok-key">undo</span></div>
+          <p class="card__desc" data-tr="Son geri alınabilir işlemi tersine çevirir ya da elle geri alma adımları verir. Türetilen her adım aynı güvenlik onayından geçer — yalnızca ask modunda." data-en="Reverses the last reversible action, or gives you manual steps. Every derived step goes through the same safety confirmation — ask mode only.">Son geri alınabilir işlemi tersine çevirir ya da elle geri alma adımları verir. Türetilen her adım aynı güvenlik onayından geçer — yalnızca ask modunda.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ BEHAVIOR MODES ============ -->
+    <section class="section" id="modes">
+      <p class="eyebrow" data-tr="// davranış modları" data-en="// behavior modes">// davranış modları</p>
+      <h2 class="section__title" data-tr="Ne kadar devralsın, sen seç" data-en="You decide how much it takes over">Ne kadar devralsın, sen seç</h2>
+      <div class="modes">
+        <article class="mode">
+          <h3 class="mode__name">auto</h3>
+          <p class="mode__desc" data-tr="Her adımı kendisi çalıştırır." data-en="Runs each step itself.">Her adımı kendisi çalıştırır.</p>
+        </article>
+        <article class="mode mode--default">
+          <span class="mode__badge" data-tr="Varsayılan" data-en="Default">Varsayılan</span>
+          <h3 class="mode__name">ask</h3>
+          <p class="mode__desc" data-tr="Her komuttan önce gerekçe + komutu gösterir, onay ister." data-en="Shows a rationale + the command before each step and asks.">Her komuttan önce gerekçe + komutu gösterir, onay ister.</p>
+        </article>
+        <article class="mode">
+          <h3 class="mode__name">info</h3>
+          <p class="mode__desc" data-tr="Hiçbir şey çalıştırmaz — sebebi ve çözümü açıklar." data-en="Runs nothing — explains the cause and the fix.">Hiçbir şey çalıştırmaz — sebebi ve çözümü açıklar.</p>
+        </article>
+      </div>
+      <p class="install__after">
+        <code class="inline-code nowrap">--review</code>
+        <span data-tr="Çok adımlı görevlerde tüm planı çalışmadan önce TUI'de incele: adımları yeniden sırala, atla veya düzenle. Yıkıcı adımlar yine tek tek onay ister." data-en="For multi-step tasks, review the whole plan in a TUI before anything runs: reorder, skip or edit steps. Destructive steps still confirm individually.">Çok adımlı görevlerde tüm planı çalışmadan önce TUI'de incele: adımları yeniden sırala, atla veya düzenle. Yıkıcı adımlar yine tek tek onay ister.</span>
+      </p>
+    </section>
+
+    <!-- ============ SAFETY ============ -->
+    <section class="section" id="safety">
+      <p class="eyebrow" data-tr="// güvenlik" data-en="// safety">// güvenlik</p>
+      <h2 class="section__title" data-tr="LLM'e asla güvenmez" data-en="It never trusts the LLM">LLM'e asla güvenmez</h2>
+      <div class="safety">
+        <div class="safety__demo" role="img"
+             data-tr-aria="Yıkıcı bir komut engellendi: rm -rf /, destructive olarak işaretlendi ve bloklandı."
+             data-en-aria="A destructive command was blocked: rm -rf / flagged as destructive and stopped."
+             aria-label="Yıkıcı komut engellendi">
+          <div class="safety__line"><span class="tok-prompt">$</span> comrade <span class="tok-str" data-tr="&quot;her şeyi sil&quot;" data-en="&quot;delete everything&quot;">"her şeyi sil"</span></div>
+          <div class="safety__line safety__line--cmd"><span class="tok-arrow">&rarr;</span> rm -rf /</div>
+          <div class="safety__line">
+            <span class="badge badge--destructive">destructive</span>
+            <span class="badge badge--blocked" data-tr="ENGELLENDİ" data-en="BLOCKED">ENGELLENDİ</span>
+          </div>
+          <div class="safety__line safety__note" data-tr="Bu komut geri alınamaz. Onay olmadan çalıştırılmayacak." data-en="This command is irreversible. It will not run without confirmation.">Bu komut geri alınamaz. Onay olmadan çalıştırılmayacak.</div>
+        </div>
+        <div class="safety__copy">
+          <p class="safety__rule"
+             data-tr="`auto` modda bile yıkıcı komutlar (rm -rf /, mkfs, dd, fork-bomb…) daima onay ister. Yerel bir kural motoru + denylist ikinci kontrolü yapar ve LLM'e asla güvenmez."
+             data-en="Even in `auto`, destructive commands (rm -rf /, mkfs, dd, fork bombs…) always require confirmation. A local rule engine + denylist does a second check and never trusts the LLM."></p>
+          <ul class="safety__list">
+            <li data-tr="Niyet tabanlı koruma: kural motoru komutları AST'ye ayrıştırıp gerçek etkisine göre de sınıflandırır — imza listesinin kaçırdığı kaçamakları yakalar: değişken dolaylaması (R=rm; $R -rf /), dinamik disk hedefleri (dd of=$(cat dev)). Çevrimdışı çalışır, komutu asla çalıştırmaz; olsa olsa riski yükseltip onay sorar." data-en="Intent-based guard: the rule engine also parses commands into an AST and classifies them by their real effect — catching evasions the signature list missed: variable indirection (R=rm; $R -rf /), dynamic disk targets (dd of=$(cat dev)). It runs offline, never executes the command, and only ever raises risk to a confirmation."></li>
+            <li data-tr="İmzalı sürümler: her sürümün checksum dosyası cosign ile imzalanır; comrade upgrade, kurmadan önce imzayı ikiliye gömülü anahtara karşı çevrimdışı doğrular — kurcalanmış veya sahte sürüm reddedilir." data-en="Signed releases: every release's checksums are cosign-signed; comrade upgrade verifies the signature offline against a public key baked into the binary before installing anything — a tampered or spoofed release is refused."></li>
+            <li data-tr="Redaction: API anahtarları, token'lar, parolalar, Bearer/Basic başlıkları ve user:pass@ bağlantı dizeleri, LLM'e herhangi bir bağlam gönderilmeden önce maskelenir." data-en="Redaction: API keys, tokens, passwords, Bearer/Basic headers and user:pass@ connection strings are masked before any context is sent to the LLM."></li>
+            <li data-tr="Audit log: çalıştırılan her komut zaman damgası, mod ve risk sınıfıyla kaydedilir." data-en="Audit log: every executed command is recorded with timestamp, mode and risk class."></li>
+            <li data-tr="API anahtarları keychain'de tutulur, config dosyasına düz metin yazılmaz." data-en="API keys are stored in the OS keychain, never written to config in plaintext."></li>
+            <li data-tr="base_url doğrulaması: sağlayıcı API anahtarı cloud-metadata veya link-local adreslere gönderilemez; şifresiz http uç noktaları için uyarı verilir." data-en="base_url validation: the provider API key can't be sent to a cloud-metadata or link-local address, and cleartext http endpoints get a warning."></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PROVIDERS ============ -->
+    <section class="section" id="providers">
+      <p class="eyebrow" data-tr="// sağlayıcılar" data-en="// providers">// sağlayıcılar</p>
+      <h2 class="section__title" data-tr="Kendi modelini getir" data-en="Bring your own model">Kendi modelini getir</h2>
+      <div class="providers">
+        <div class="provider"><span class="provider__name">Anthropic</span><span class="provider__meta">Claude</span></div>
+        <div class="provider"><span class="provider__name" data-tr="OpenAI-uyumlu" data-en="OpenAI-compatible">OpenAI-uyumlu</span><span class="provider__meta">OpenAI · Mistral · Groq · GLM · Qwen · Kimi · OpenRouter · LM Studio…</span><span class="provider__meta" data-tr="base_url ile herhangi bir OpenAI-uyumlu sağlayıcı" data-en="any OpenAI-compatible provider via base_url">base_url ile herhangi bir OpenAI-uyumlu sağlayıcı</span></div>
+        <div class="provider"><span class="provider__name">Google</span><span class="provider__meta">Gemini</span></div>
+        <div class="provider"><span class="provider__name">Ollama</span><span class="provider__meta" data-tr="yerel · çevrimdışı" data-en="local · offline">yerel · çevrimdışı</span></div>
+      </div>
+      <p class="install__after">
+        <code class="inline-code">comrade config profile use work</code>
+        <span data-tr="Adlandırılmış profiller ve --profile bayrağıyla sağlayıcı/ayar setleri (iş/kişisel, bulut/yerel) arasında anında geçiş." data-en="Switch provider/config sets (work/personal, cloud/local) instantly with named profiles and the --profile flag.">Adlandırılmış profiller ve --profile bayrağıyla sağlayıcı/ayar setleri (iş/kişisel, bulut/yerel) arasında anında geçiş.</span>
+        <span class="sep">·</span>
+        <code class="inline-code nowrap">--usage</code>
+        <span data-tr="İsteğe bağlı: istek başına token kullanımı satırı; sağlayıcının fiyatlandırması biliniyorsa tahmini maliyet de eklenir." data-en="Opt-in: a per-request token-usage line, plus an estimated cost where the provider's pricing is known.">İsteğe bağlı: istek başına token kullanımı satırı; sağlayıcının fiyatlandırması biliniyorsa tahmini maliyet de eklenir.</span>
+      </p>
+    </section>
+
+    <!-- ============ INSTALL ============ -->
+    <section class="section" id="install">
+      <p class="eyebrow" data-tr="// kurulum" data-en="// install">// kurulum</p>
+      <h2 class="section__title" data-tr="Bir satırda kur" data-en="Install in one line">Bir satırda kur</h2>
+
+      <div class="install">
+        <div class="install__tabs" role="tablist" data-tr-aria="Kurulum yöntemi" data-en-aria="Install method" aria-label="Kurulum yöntemi">
+          <button class="tab" role="tab" id="tab-curl" aria-controls="panel-curl" aria-selected="true" tabindex="0">macOS / Linux</button>
+          <button class="tab" role="tab" id="tab-win" aria-controls="panel-win" aria-selected="false" tabindex="-1">Windows</button>
+          <button class="tab" role="tab" id="tab-brew" aria-controls="panel-brew" aria-selected="false" tabindex="-1">Homebrew</button>
+          <button class="tab" role="tab" id="tab-scoop" aria-controls="panel-scoop" aria-selected="false" tabindex="-1">Scoop</button>
+          <button class="tab" role="tab" id="tab-npm" aria-controls="panel-npm" aria-selected="false" tabindex="-1">npm</button>
+          <button class="tab" role="tab" id="tab-winget" aria-controls="panel-winget" aria-selected="false" tabindex="-1">winget</button>
+          <button class="tab" role="tab" id="tab-snap" aria-controls="panel-snap" aria-selected="false" tabindex="-1">Snap</button>
+        </div>
+
+        <div class="install__panels">
+          <div class="panel" role="tabpanel" id="panel-curl" aria-labelledby="tab-curl" tabindex="0">
+            <div class="code">
+              <code>curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh</code>
+              <button type="button" class="copy" data-tr-aria="curl komutunu kopyala" data-en-aria="Copy the curl command" data-copy="curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint" data-tr="curl yok mu? wget de olur:" data-en="No curl? wget works too:">curl yok mu? wget de olur:</p>
+            <div class="code">
+              <code>wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh</code>
+              <button type="button" class="copy" data-tr-aria="wget komutunu kopyala" data-en-aria="Copy the wget command" data-copy="wget -qO- https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh"><span class="copy-label">Kopyala</span></button>
+            </div>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-win" aria-labelledby="tab-win" tabindex="0" hidden>
+            <div class="code">
+              <code>irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex</code>
+              <button type="button" class="copy" data-copy="irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint" data-tr="PowerShell'de çalıştır." data-en="Run in PowerShell.">PowerShell'de çalıştır.</p>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-brew" aria-labelledby="tab-brew" tabindex="0" hidden>
+            <div class="code">
+              <code>brew install firatkutay/tap/comrade</code>
+              <button type="button" class="copy" data-copy="brew install firatkutay/tap/comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-scoop" aria-labelledby="tab-scoop" tabindex="0" hidden>
+            <div class="code">
+              <code>scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket</code>
+              <button type="button" class="copy" data-copy="scoop bucket add firatkutay https://github.com/firatkutay/scoop-bucket"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <div class="code">
+              <code>scoop install comrade</code>
+              <button type="button" class="copy" data-copy="scoop install comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-npm" aria-labelledby="tab-npm" tabindex="0" hidden>
+            <div class="code">
+              <code>npm install -g cli-comrade</code>
+              <button type="button" class="copy" data-copy="npm install -g cli-comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint"><span
+               data-tr="Node.js kurulu geliştiriciler için bir alternatif — önceden derlenmiş binary, derleme araç zinciri gerekmez."
+               data-en="An alternative for developers who already have Node.js — a prebuilt binary, no build toolchain required.">Node.js kurulu geliştiriciler için bir alternatif — önceden derlenmiş binary, derleme araç zinciri gerekmez.</span></p>
+            <p class="panel__hint"><span
+               data-tr="Not: bu şekilde kurulduğunda comrade upgrade kendi kendini güncellemeyi reddeder — bunun yerine npm update -g cli-comrade kullanın."
+               data-en="Note: comrade upgrade refuses to self-update when installed this way — use npm update -g cli-comrade instead.">Not: bu şekilde kurulduğunda comrade upgrade kendi kendini güncellemeyi reddeder — bunun yerine npm update -g cli-comrade kullanın.</span></p>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-winget" aria-labelledby="tab-winget" tabindex="0" hidden>
+            <div class="code">
+              <code>winget install cli.comrade</code>
+              <button type="button" class="copy" data-soon="1" data-copy="winget install cli.comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint"><span class="statustag statustag--pending" data-tr="onay bekliyor" data-en="pending review">onay bekliyor</span> <span data-tr="Microsoft moderatör onayı bekleniyor." data-en="Awaiting Microsoft moderator approval.">Microsoft moderatör onayı bekleniyor.</span></p>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-snap" aria-labelledby="tab-snap" tabindex="0" hidden>
+            <div class="code">
+              <code>sudo snap install cli-comrade --classic</code>
+              <button type="button" class="copy" data-soon="1" data-copy="sudo snap install cli-comrade --classic"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint"><span class="statustag statustag--soon" data-tr="yakında" data-en="soon">yakında</span> <span data-tr="Snap Store'da yayına hazırlanıyor." data-en="Being prepared for the Snap Store.">Snap Store'da yayına hazırlanıyor.</span></p>
+          </div>
+        </div>
+
+        <p class="install__after">
+          <span data-tr="Kurduktan sonra:" data-en="After installing:">Kurduktan sonra:</span>
+          <code class="inline-code">comrade init</code>
+          <span class="dim" data-tr="(shell hook + sekme tamamlama)" data-en="(shell hook + tab-completion)">(shell hook + sekme tamamlama)</span>
+          <span class="sep">·</span>
+          <code class="inline-code">comrade auth login</code>
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer" role="contentinfo">
+    <div class="footer__inner">
+      <div class="footer__links">
+        <a href="./guide.html" data-tr="Kullanım Kılavuzu" data-en="User Guide">Kullanım Kılavuzu</a>
+        <a href="https://github.com/firatkutay/cli-comrade" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/firatkutay/cli-comrade/releases" target="_blank" rel="noopener noreferrer" data-tr="Sürümler" data-en="Releases">Sürümler</a>
+        <a href="https://github.com/firatkutay/cli-comrade#readme" target="_blank" rel="noopener noreferrer" data-tr="Dokümanlar" data-en="Docs">Dokümanlar</a>
+        <a href="https://github.com/firatkutay/cli-comrade/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
+      </div>
+      <p class="footer__meta">
+        <span class="footer__ver">v0.4.5</span>
+        <span class="sep">·</span>
+        <span data-tr="Terminalde yoldaşlıkla yapıldı." data-en="Built with terminal camaraderie.">Terminalde yoldaşlıkla yapıldı.</span>
+      </p>
+    </div>
+  </footer>
+
+  <!-- Copy-button status. The visible label swap (Kopyala → Kopyalandı ✓) is
+       invisible to a screen reader because the buttons' accessible names are
+       fixed, so script.js mirrors the state change here instead. It ships
+       empty, so nothing is announced on load; script.js writes one message per
+       click, re-renders it on a language toggle, and clears it when the button
+       reverts. -->
+  <div id="copyLive" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="./script.js"></script>
+</body>
+</html>

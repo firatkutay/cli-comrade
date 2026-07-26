@@ -198,15 +198,42 @@ snap install cli-comrade --classic
 
 ## 5. npm (`npm install -g cli-comrade`) — ✅ SHIPPED (automated via Trusted Publishing, OIDC)
 
+**Published to the real npm registry** — `npm view cli-comrade dist-tags`
+resolves to a real, installable version. This is an **alternative**
+channel for developers who already have Node.js; it is not the primary
+install path (see `README.md`/`docs/INSTALL.md`) — the target audience
+for this tool generally doesn't have Node installed, and npm installs
+can't self-update via `comrade upgrade` (see below).
+
+What exists: `npm/` (the main dispatcher package template + the shared
+platform-package template) and `scripts/build-npm-packages.sh`, which
+assembles the 6 publishable package directories (1 main + 5 platform:
+linux-x64/arm64, darwin-x64/arm64, win32-x64 -- mirrors
+`.goreleaser.yaml`'s build matrix exactly, guarded bidirectionally by
+`internal/cli/npm_platform_matrix_test.go`) from goreleaser's `dist/`
+output.
+
+**Package names:** main `cli-comrade`; platform packages
+`@firatkutay/comrade-linux-x64`, `-linux-arm64`, `-darwin-x64`,
+`-darwin-arm64`, `-win32-x64`, scoped under the `@firatkutay` npm org/user.
+
+**History:** the first published version (v0.4.4) went out as a
+**one-time manual bootstrap publish** (`npm publish` run by hand against
+`scripts/build-npm-packages.sh`'s output), before this automation existed.
+`release.yml` now wires automated publishing into the same job as
+goreleaser, so every release **from here on** publishes to npm without
+a manual step -- the paragraphs below describe that wiring, which is
+what makes the bootstrap a one-off rather than the standing process.
+
 **Wired into `release.yml`** as the final two steps of the `goreleaser`
-job, run in the SAME job (not a downstream job) right after goreleaser
-succeeds -- so the npm packages are assembled from the exact `dist/`
-this job's own goreleaser step just built and cosign-signed, never a
-separately rebuilt copy. All 6 packages (`cli-comrade` + the 5
-`@firatkutay/comrade-<os>-<cpu>` platform packages) are already
-published at v0.4.4 (created via a one-time manual bootstrap publish
-before this automation existed); this wiring is what makes every
-release **from here on** automatic.
+job, run in the SAME job (not a downstream job), after goreleaser has
+created the GitHub Release and its SBOM has been attached -- so the npm
+packages are assembled from the exact `dist/` this job's own goreleaser
+step just built and cosign-signed, never a separately rebuilt copy, and
+an npm publish failure can never leave a half-finished GitHub Release
+behind (goreleaser's release and its SBOM are already complete,
+irreversible, in-repo steps by the time npm -- whose published versions
+are themselves immutable -- is even attempted).
 
 **Auth mechanism: npm Trusted Publishing (OIDC) -- no token, ever.**
 No `NPM_TOKEN`, no `NODE_AUTH_TOKEN`, no secret of any kind for this
@@ -220,7 +247,10 @@ first (one-time, per package, done by hand below) -- npm refuses the
 publish with a 404 if that configuration is missing or doesn't match
 this repo + this exact workflow filename.
 
-**Owner click-path -- do this once, for EACH of the 6 packages:**
+**Owner click-path -- do this once, for EACH of the 6 packages
+(organization/user `firatkutay`, repository `cli-comrade`, workflow
+filename `release.yml`, environment left blank, allowed action scoped
+to `npm publish` only):**
 
 1. Sign in to <https://www.npmjs.com/> as an owner/maintainer of the
    package (the `firatkutay` user for `cli-comrade`; the `firatkutay`
@@ -240,8 +270,7 @@ this repo + this exact workflow filename.
      this repo)
    - **Environment name:** leave blank (this workflow does not use a
      GitHub Environment)
-   - **Allowed actions / events:** select `npm publish` (not `npm stage
-     publish`)
+   - **Allowed actions / events:** select `npm publish` (not `npm stage publish`)
 5. Save. npm does **not** validate this configuration when you save it
    -- a typo'd repo or workflow filename only surfaces as a failed
    publish on the next tagged release. Double-check all 6 before
@@ -262,13 +291,23 @@ manager's own update command instead of attempting to replace a binary
 `internal/cli`'s upgrade-guard tests and CHANGELOG's `[0.4.3]` entry --
 nothing left to decide here.
 
-**Idempotent on re-run:** the publish step checks `npm view
-<name>@<version>` before every one of the 6 publishes and skips
-(logging a notice) any package/version already on the registry, rather
-than failing the whole job -- a re-run of an already-released tag (e.g.
-a transient failure in an earlier step) does not need the tag moved or
-the version bumped to retry cleanly. A genuine publish failure (auth,
-network, registry error) still fails the job.
+**Idempotent on re-run:** the publish step checks `npm view <name>@<version>`
+before every one of the 6 publishes and skips (logging a notice) any
+package/version already on the registry, rather than failing the whole
+job -- a re-run of an already-released tag (e.g. a transient failure in
+an earlier step) does not need the tag moved or the version bumped to
+retry cleanly. A genuine publish failure (auth, network, registry error)
+still fails the job.
+
+**Reproducibility note:** the v0.4.4 bootstrap publish's binaries were
+built by hand, not by this repo's own CI runner. They are still
+verifiable against the signed release because release builds now use
+`-trimpath` (see "Supply-chain signing (cosign)" above and
+`docs/SECURITY.md`'s "Reproducible release binaries" section) --
+without that flag, a manually built binary published to an immutable
+npm version would have been permanently unverifiable. Every release
+from here on is built and published by this same CI job, so this note
+is history, not a standing caveat.
 
 **End-user install command:**
 ```sh
@@ -285,18 +324,20 @@ npm install -g cli-comrade
 | Scoop | ✅ shipped (since v0.1.3) | `SCOOP_BUCKET_TOKEN` | Nothing (bucket repo already exists) | Instant, next tag |
 | winget | ⏳ pending | `WINGET_TOKEN` | Fork `microsoft/winget-pkgs` to your account | Hours–days (MS moderator merges the auto-opened PR; commit now passes the CLA gate, see above) |
 | Snap | ⏳ pending | `SNAPCRAFT_STORE_CREDENTIALS` | `snapcraft register cli-comrade` + a passed classic-confinement `store-requests` forum review | Multi-week (Canonical manual review), then instant per-release after |
-| npm | ✅ shipped (wired into `release.yml`) | none -- Trusted Publishing (OIDC), no token | A "Trusted Publisher" configured per package on npmjs.com (see "5. npm" above for the exact click-path) | Instant, next tag, once all 6 packages' Trusted Publisher config is saved |
-| Cosign signing | ✅ shipped (v0.3.0) | `COSIGN_PRIVATE_KEY` + `COSIGN_PASSWORD` | Key pair generated, public half committed at `internal/update/cosign.pub` (already done) | Instant, next tag — but **fails the whole release** if the secrets are missing, unlike the four channels above |
+| npm | ✅ shipped (wired into `release.yml`, automated via Trusted Publishing) | none -- Trusted Publishing (OIDC), no token | A "Trusted Publisher" configured per package on npmjs.com (see "5. npm" above for the exact click-path) | Instant, next tag, once all 6 packages' Trusted Publisher config is saved |
+| Cosign signing | ✅ shipped (v0.3.0) | `COSIGN_PRIVATE_KEY` + `COSIGN_PASSWORD` | Key pair generated, public half committed at `internal/update/cosign.pub` (already done) | Instant, next tag — but **fails the whole release** if the secrets are missing, unlike the four goreleaser-native channels above (Homebrew/Scoop/winget/Snap) |
+| Reproducible builds (`-trimpath`) | ✅ shipped | none (build flag, not a secret) | `.goreleaser.yaml`'s `builds:` entry + `Makefile`'s `GOBUILDFLAGS` (already done) | Instant — applies to every build, no per-release action needed |
 
-The four package-manager channels above are **not** required for
-`firatkutay/cli-comrade`'s next tagged release to succeed — each
-degrades to "skip this channel" when its secret is absent, verified by
-running `goreleaser check` and `goreleaser release --snapshot --clean --skip=publish` with none of the four secrets set (see the
-release-engineering handoff notes for that run's output). Cosign
-signing is the one exception to that pattern — see "Supply-chain
-signing (cosign)" above. npm is a *third* pattern: it needs no repo
-secret at all (Trusted Publishing/OIDC), but it DOES need per-package
-configuration done by hand on npmjs.com before it can succeed -- until
-that's done for all 6 packages, the npm publish step will fail loudly
-(by design; there is no silent-skip for this channel, since it carries
-no missing-secret signal to gate on).
+The four goreleaser-native package-manager channels (Homebrew, Scoop,
+winget, Snap) are **not** required for `firatkutay/cli-comrade`'s next
+tagged release to succeed — each degrades to "skip this channel" when its
+secret is absent, verified by running `goreleaser check` and
+`goreleaser release --snapshot --clean --skip=publish` with none of the
+four secrets set (see the release-engineering handoff notes for that run's
+output). Cosign signing is the one exception to that pattern — see
+"Supply-chain signing (cosign)" above. npm is a *third* pattern: it needs
+no repo secret at all (Trusted Publishing/OIDC), but it DOES need
+per-package configuration done by hand on npmjs.com before it can succeed
+-- until that's done for all 6 packages, the npm publish step will fail
+loudly (by design; there is no silent-skip for this channel, since it
+carries no missing-secret signal to gate on).

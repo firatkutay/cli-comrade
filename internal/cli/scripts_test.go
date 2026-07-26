@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -70,4 +71,51 @@ func TestInstallPs1IsSyntacticallyValidPowerShell(t *testing.T) {
 	cmd := exec.Command(pwshPath, "-NoProfile", "-Command", check)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "PowerShell syntax check of install.ps1 failed: %s", out)
+}
+
+// TestInstallPs1ChecksumsSignatureVerification runs scripts/install_test.ps1
+// — the PowerShell unit tests for install.ps1's cosign checksums.txt
+// signature verification added for GitHub issue #43 (New-CosignEcdsaVerifier
+// / Test-ChecksumsSignature / Confirm-AllowUnsignedOrFail / the DER<->P1363
+// conversion helpers). Runs entirely offline against ephemeral,
+// in-test-generated ECDSA keys — no network access, no real install.
+//
+// Gated on runtime.GOOS == "windows" in addition to pwsh/powershell being on
+// PATH: install_test.ps1 exercises System.Security.Cryptography.ECDsaCng and
+// CngKey, which wrap the Windows CNG API and are unavailable (throw
+// PlatformNotSupportedException) even under a `pwsh` installed on
+// ubuntu-latest/macos-26's GitHub Actions runners — unlike
+// TestInstallPs1IsSyntacticallyValidPowerShell above, which only parses the
+// AST and so works identically cross-platform. Runs against BOTH `pwsh`
+// (PowerShell 7) and `powershell` (Windows PowerShell 5.1) as independent
+// subtests when each is present, since the ECDSA-verification API
+// differences between the two runtimes are exactly what GitHub issue #43
+// needed proven, not just one of them — windows-latest's runner image ships
+// both.
+func TestInstallPs1ChecksumsSignatureVerification(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("scripts/install_test.ps1 exercises Windows-only CNG APIs (ECDsaCng/CngKey); skipping on non-Windows")
+	}
+
+	scriptPath := filepath.Join(repoRoot(t), "scripts", "install_test.ps1")
+	runtimes := []struct {
+		label string
+		bin   string
+	}{
+		{"pwsh (PowerShell 7)", "pwsh"},
+		{"powershell (Windows PowerShell 5.1)", "powershell"},
+	}
+
+	for _, rt := range runtimes {
+		rt := rt
+		t.Run(rt.label, func(t *testing.T) {
+			binPath, err := exec.LookPath(rt.bin)
+			if err != nil {
+				t.Skipf("%s not found on PATH; skipping", rt.bin)
+			}
+			cmd := exec.Command(binPath, "-NoProfile", "-File", scriptPath)
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err, "install_test.ps1 failed under %s:\n%s", rt.bin, out)
+		})
+	}
 }

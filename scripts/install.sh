@@ -14,18 +14,64 @@
 #                         from appending a PATH export to your shell rc file
 #                         when the install dir isn't already on PATH (default:
 #                         unset — the rc file is edited automatically)
+#   COMRADE_INSTALL_ALLOW_UNSIGNED  set to any non-empty value to let the
+#                         install proceed on checksum-only verification when
+#                         checksums.txt's cosign signature can't be checked
+#                         (no working openssl, or no checksums.txt.sig
+#                         published for this release) — see "Trust model"
+#                         below. Prints a loud warning every time it's used.
+#                         Never applies to an actual signature MISMATCH,
+#                         which always aborts unconditionally.
 #
 # Requirements on PATH (all preflighted by main() before any network call):
 #   - curl or wget (download)
 #   - one SHA-256 checksum tool: sha256sum (GNU/most Linux distros),
 #     shasum (macOS/BSD), or openssl (fallback) — checksum verification
 #     is mandatory and never skipped
+#   - openssl — authenticates checksums.txt itself (a cosign ECDSA
+#     signature check) before its checksum is ever trusted; fail-closed by
+#     default (see COMRADE_INSTALL_ALLOW_UNSIGNED above and "Trust model"
+#     below)
 #   - tar and gzip (archive extraction)
 #   - install (places the binary with the correct permissions)
+#
+# Trust model (see GitHub issue #28 and docs/SECURITY.md for the full
+# writeup): checksums.txt is downloaded over the same channel as the
+# release archive, so a bare SHA-256 checksum only proves the archive
+# matches the manifest — it proves nothing about who WROTE the manifest.
+# This script therefore authenticates checksums.txt itself first, via a
+# cosign ECDSA-P256/SHA-256 signature (checksums.txt.sig) checked against
+# the public key embedded below (COSIGN_PUB) — the exact mechanism
+# `comrade upgrade` already uses in Go (internal/update/signature.go).
+# Only once that signature verifies is the archive's own checksum trusted.
+# A machine with no working openssl, or a release with no published
+# checksums.txt.sig, fails closed by default (see
+# COMRADE_INSTALL_ALLOW_UNSIGNED above); an actual signature MISMATCH
+# always aborts, with no override.
 set -eu
 
 REPO="firatkutay/cli-comrade"
 BIN_NAME="comrade"
+
+# COSIGN_PUB is the project's real cosign ECDSA P-256 public key, embedded
+# as a literal PEM block — MUST stay byte-identical to
+# internal/update/cosign.pub (the same key `comrade upgrade` embeds in the
+# Go binary). This is guarded by
+# internal/update/install_sh_mirror_test.go, a bidirectional drift check
+# in the style of internal/envkeys/managed_mirror_test.go: it fails if
+# this block and cosign.pub ever diverge. Do not hand-edit one without the
+# other — update cosign.pub first (that key is the actual secret; see its
+# own doc comment), then copy its exact bytes here.
+#
+# The key travels WITH this script rather than being fetched at install
+# time on purpose: downloading the trust root over the same channel as
+# the payload it authenticates would defeat the entire point of
+# verifying checksums.txt's signature (see the "Trust model" note above).
+COSIGN_PUB='-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEH3Y238cPtsFJ3QnAzJvWnAXlhFHJ
+Dp2q9+ZzFq1dNAeDgSbvLFXjvxsRTyqQCZbNq4MVWBxmeXch3wjW/ntoQQ==
+-----END PUBLIC KEY-----
+'
 
 # PATH_MARKER is the idempotency marker prepended to the PATH export line
 # configure_path_in_rc appends to a shell rc file. Its presence in a rc
@@ -107,6 +153,108 @@ require_checksum_verifier() {
     echo "install.sh: no working SHA-256 checksum tool found on PATH (checked sha256sum, shasum, openssl — present-but-broken installs are skipped, not treated as found); install one of them (e.g. 'sha256sum' is in GNU coreutils, 'shasum' ships with macOS/Perl, or install openssl) and re-run this script." >&2
     exit 1
   fi
+}
+
+# allow_unsigned_or_fail is the single policy decision point for every way
+# checksums.txt's cosign signature can fail to be CHECKED at all (as
+# opposed to being checked and found invalid, which verify_checksums_signature
+# handles separately and NEVER routes through here — see its own doc
+# comment for why that path has no override).
+#
+# reason ($1) describes what's missing. The decision (see this script's
+# own "Trust model" header comment, GitHub issue #28, and
+# docs/SECURITY.md for the full writeup):
+#
+#   - Default: fail closed. A machine that can't check the signature gets
+#     the SAME abort a machine with a bad signature would — silently
+#     stepping back to checksum-only verification is exactly the weaker
+#     guarantee this feature exists to close, so it is never the quiet
+#     default.
+#   - COMRADE_INSTALL_ALLOW_UNSIGNED opts in, explicitly, to the weaker
+#     checksum-only guarantee (e.g. a minimal container with no openssl
+#     and no alternative). Every use prints a loud warning — never
+#     silent, the same pattern CLAUDE.md's security rule #6 already
+#     applies to --yolo.
+allow_unsigned_or_fail() {
+  reason="$1"
+  if [ -n "${COMRADE_INSTALL_ALLOW_UNSIGNED:-}" ]; then
+    echo "install.sh: WARNING — ${reason} COMRADE_INSTALL_ALLOW_UNSIGNED is set, so continuing with checksum-only verification (the same weaker guarantee this feature exists to close — see docs/SECURITY.md)." >&2
+    return 0
+  fi
+  echo "install.sh: refusing to install — ${reason} Set COMRADE_INSTALL_ALLOW_UNSIGNED=1 to explicitly accept the weaker checksum-only guarantee (see docs/SECURITY.md), or resolve the problem and re-run." >&2
+  exit 1
+}
+
+# probe_openssl_signature_tool functionally probes openssl_bin ($1) for
+# the two operations verify_checksums_signature needs: SHA-256 digesting
+# and decoding a (possibly unwrapped, single-line) base64 blob. Same
+# rationale as probe_checksum_tool above — `command -v` only proves a
+# same-named file is on PATH, not that it actually runs.
+probe_openssl_signature_tool() {
+  openssl_bin="$1"
+  printf '' | "$openssl_bin" dgst -sha256 >/dev/null 2>&1 || return 1
+  printf '' | "$openssl_bin" base64 -d -A >/dev/null 2>&1 || return 1
+  return 0
+}
+
+# require_signature_verifier decides whether checksums.txt can be
+# cryptographically authenticated before it's ever trusted, setting
+# SIGNATURE_VERIFIER to "openssl" or "none" (see allow_unsigned_or_fail
+# for the none/openssl-missing policy). openssl is the only supported
+# tool: it's the one near-universal POSIX utility that can both decode
+# cosign's base64 signature blob and verify an ECDSA-P256/SHA-256
+# signature — the exact operations internal/update/signature.go performs
+# in Go for `comrade upgrade` (see verify_checksums_signature below).
+#
+# OPENSSL_BIN defaults to "openssl" (resolved via PATH) but can be
+# overridden — scripts/install_test.sh uses this to simulate "openssl is
+# missing" deterministically, without touching this machine's real PATH.
+require_signature_verifier() {
+  openssl_bin="${OPENSSL_BIN:-openssl}"
+  if command -v "$openssl_bin" >/dev/null 2>&1 && probe_openssl_signature_tool "$openssl_bin"; then
+    SIGNATURE_VERIFIER=openssl
+    return 0
+  fi
+
+  allow_unsigned_or_fail "no working openssl was found on PATH (checked '${openssl_bin}'), so checksums.txt's signature cannot be checked."
+  SIGNATURE_VERIFIER=none
+}
+
+# verify_checksums_signature verifies checksums_file ($1) against detached
+# signature file sig_file ($2) — cosign's base64-encoded, ASN.1 DER,
+# ECDSA-P256/SHA-256 signature format — using the embedded COSIGN_PUB.
+# This is the shell-side mirror of
+# internal/update/signature.go:verifyChecksumsSignatureWith, which
+# `comrade upgrade` uses for the exact same release assets.
+#
+# A verification failure here is ALWAYS a hard, unconditional abort —
+# COMRADE_INSTALL_ALLOW_UNSIGNED does NOT apply. That override exists for
+# "the signature couldn't be CHECKED" (see allow_unsigned_or_fail above);
+# once a checksums.txt.sig was actually downloaded and this function ran,
+# a mismatch means either a compromised release, a corrupted download, or
+# a tampered mirror — never "not configured" — so there is no safe
+# fallback to checksum-only in this branch.
+verify_checksums_signature() {
+  checksums_file="$1"
+  sig_file="$2"
+  openssl_bin="${OPENSSL_BIN:-openssl}"
+  work_dir="$(dirname "$checksums_file")"
+
+  pub_file="${work_dir}/cosign.pub"
+  printf '%s' "$COSIGN_PUB" >"$pub_file"
+
+  sig_der_file="${work_dir}/checksums.txt.sig.der"
+  if ! "$openssl_bin" base64 -d -A -in "$sig_file" -out "$sig_der_file" 2>/dev/null; then
+    echo "install.sh: checksums.txt.sig is not valid base64; refusing to install." >&2
+    exit 1
+  fi
+
+  if ! "$openssl_bin" dgst -sha256 -verify "$pub_file" -signature "$sig_der_file" "$checksums_file" >/dev/null 2>&1; then
+    echo "install.sh: checksums.txt signature verification FAILED — the downloaded checksums.txt does not match its signature. This can mean a compromised release, a corrupted download, or a tampered mirror. Refusing to install." >&2
+    exit 1
+  fi
+
+  echo "install.sh: checksums.txt signature verified."
 }
 
 # verify_checksum checks archive file $1 against checksums.txt line $2
@@ -260,10 +408,21 @@ path_export_line_for_shell() {
   shell_arg="$1"
   dir_arg="$2"
   if [ "$dir_arg" = "$HOME/.local/bin" ]; then
+    # Deliberately literal: written verbatim into the rc file (see the
+    # function comment above) so it re-expands correctly even under a
+    # different $HOME later -- not an accidental missed expansion.
+    # shellcheck disable=SC2016
     dir_expr='$HOME/.local/bin'
   else
     dir_expr="$dir_arg"
   fi
+  # Both branches below deliberately print a literal, unexpanded "$PATH"
+  # (and "fish"'s %s placeholder may itself carry a literal "$HOME" from
+  # above) -- the rc-file text must stay unexpanded until it is sourced
+  # later, so this is not an accidental missed expansion. ShellCheck
+  # directives only attach to whole commands, not individual case
+  # branches (SC1124), so this covers the full case statement.
+  # shellcheck disable=SC2016
   case "$shell_arg" in
     fish) printf 'set -gx PATH %s $PATH\n' "$dir_expr" ;;
     *) printf 'export PATH="%s:$PATH"\n' "$dir_expr" ;;
@@ -314,6 +473,7 @@ configure_path_in_rc() {
 main() {
   require_downloader
   require_checksum_verifier
+  require_signature_verifier
   require_tool tar "it's needed to extract the release archive"
   require_gzip
   require_tool install "it's needed to place the binary with the correct permissions"
@@ -327,6 +487,25 @@ main() {
 
   echo "install.sh: fetching checksums..."
   fetch_url_to_file "${base_url}/checksums.txt" "${workdir}/checksums.txt"
+
+  # Authenticate checksums.txt itself — via its cosign signature — BEFORE
+  # any of its content (including the archive filename/version parsed out
+  # of it below) is trusted. See this script's "Trust model" header
+  # comment and require_signature_verifier/verify_checksums_signature
+  # above for the full mechanism and the fail-open/fail-closed policy.
+  if [ "$SIGNATURE_VERIFIER" = openssl ]; then
+    echo "install.sh: fetching checksums.txt.sig..."
+    sig_downloaded=1
+    fetch_url_to_file "${base_url}/checksums.txt.sig" "${workdir}/checksums.txt.sig" || sig_downloaded=0
+    if [ "$sig_downloaded" -eq 1 ]; then
+      echo "install.sh: verifying checksums.txt signature..."
+      verify_checksums_signature "${workdir}/checksums.txt" "${workdir}/checksums.txt.sig"
+    else
+      allow_unsigned_or_fail "no checksums.txt.sig could be downloaded for this release (missing signature asset, or a network error), so checksums.txt's signature cannot be checked."
+    fi
+  fi
+  # SIGNATURE_VERIFIER = "none" reaches here having already printed its
+  # warning inside require_signature_verifier; nothing further to do.
 
   # Find the checksums.txt line for our os/arch by exact filename suffix
   # match (avoids regex-metachar escaping on the dots in ".tar.gz") and

@@ -1,0 +1,85 @@
+# gitleaks config for cli-comrade — extends (does not replace) gitleaks'
+# built-in default ruleset; see GitHub issue #47.
+#
+# Scope decision (issue #47): the recurring CI gate scans the WORKING TREE
+# (`gitleaks dir`), not full git history, on every push/PR. A one-off full
+# HISTORY scan (`gitleaks git --log-opts="--all"`, all 226 commits / all
+# refs, run 2026-07-26) was performed once as this issue's mandatory
+# baseline and found zero real credentials — only the same fixture hits
+# allowlisted below, confined to two commits that already exist in the
+# current working tree (v0.1.0-era additions to the two test files below).
+# Full-history rescanning on every PR is a cost that grows with total repo
+# history forever, for value this repo doesn't need day to day: commits
+# land via direct push/self-merge (see git-workflow's trunk-based model),
+# so the "attacker adds a secret then removes it before merging" threat
+# model a history scan defends against does not really apply here. Rerun
+# the full-history scan manually before onboarding any external
+# contributor, or periodically (e.g. annually) as a standing audit.
+#
+# Cosign PUBLIC key false-positive note: issue #47 expected the cosign
+# public key embedded in scripts/install.sh and internal/update/cosign.pub
+# to trip gitleaks' "private-key" rule. Verified empirically (both a
+# working-tree `gitleaks dir` scan and the full-history scan above): it
+# does NOT match any default rule, because that rule's regex targets
+# "-----BEGIN...PRIVATE KEY-----" blocks specifically, and these files
+# contain "-----BEGIN PUBLIC KEY-----" only. scripts/install.ps1 does not
+# embed the key at all. No allowlist entry is added for these paths since
+# there is currently no finding to allowlist — adding one preemptively
+# would be a speculative, unverifiable rule with nothing to test it against.
+
+[extend]
+useDefault = true
+
+# internal/redact/redact_test.go and internal/llm/client_redact_test.go are
+# golden tests for internal/redact's masking pipeline: they embed
+# deliberately fake, secret-SHAPED strings (AWS's own public example access
+# key, jwt.io's public example JWT, a truncated/invalid fake RSA key body,
+# and clearly-synthetic Stripe/SendGrid/GitLab-PAT/npm/GCP-shaped test
+# values such as "sk_test_testvalidkey0987654321b") so the tests can assert
+# the redactor actually masks them before they'd ever reach an LLM
+# provider. None are real credentials. Allowlisted per rule ID + exact
+# file path (not a blanket ignore) so a real secret added to either file,
+# or a genuine finding anywhere else in the repo, still fails the gate.
+
+[[rules]]
+id = "generic-api-key"
+  [[rules.allowlists]]
+  paths = [
+    '''internal/redact/redact_test\.go''',
+    '''internal/llm/client_redact_test\.go''',
+  ]
+
+[[rules]]
+id = "stripe-access-token"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]
+
+[[rules]]
+id = "sendgrid-api-token"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]
+
+[[rules]]
+id = "gcp-api-key"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]
+
+[[rules]]
+id = "gitlab-pat"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]
+
+[[rules]]
+id = "npm-access-token"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]
+
+[[rules]]
+id = "jwt"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]
+
+[[rules]]
+id = "private-key"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]

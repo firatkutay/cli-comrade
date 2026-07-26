@@ -971,17 +971,54 @@ keystroke in an interactive shell.
 `comrade init <shell>` already writes (above) — never a separate,
 opt-in step:
 
+Every registration below shares the same shape, deliberately: capture
+`comrade completion <shell>`'s stdout into a variable first, and only
+eval/source/Invoke-Expression it when that capture is non-empty — never
+pipe or process-substitute it straight into the eval sink. This is what
+keeps a broken-but-still-on-PATH `comrade` (the real-world case: an npm
+install that lands the dispatcher, `npm/main/bin/comrade.js`, without
+its platform binary) silent instead of spamming or breaking every new
+shell — the dispatcher's own diagnostic already goes to stderr
+(`console.error`), which each guard below discards with its own
+`2>/dev/null`/`2>$null` before checking stdout for emptiness.
+
 - **bash** (`internal/shellinit/snippets/bash.sh`):
-  `command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)`
+  ```bash
+  if command -v comrade >/dev/null 2>&1; then
+    __comrade_completion="$(comrade completion bash 2>/dev/null)"
+    [ -n "$__comrade_completion" ] && eval "$__comrade_completion"
+    unset __comrade_completion
+  fi
+  ```
 - **zsh** (`internal/shellinit/snippets/zsh.sh`):
-  `command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)`
+  ```zsh
+  if command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1; then
+    __comrade_completion="$(comrade completion zsh 2>/dev/null)"
+    [ -n "$__comrade_completion" ] && eval "$__comrade_completion"
+    unset __comrade_completion
+  fi
+  ```
   — the `whence compdef` guard makes this safe even when `compinit` was
   never run (zsh's completion system, unlike bash's, is opt-in).
-- **PowerShell** (`internal/shellinit/snippets/powershell.ps1`):
-  `comrade completion powershell | Out-String | Invoke-Expression`,
-  inside the snippet's existing `if (Get-Command comrade ...)` guard —
+- **PowerShell** (`internal/shellinit/snippets/powershell.ps1`), inside
+  the snippet's existing `if (Get-Command comrade ...)` guard —
   installed identically into both PowerShell variants' profiles when
-  both are present (the multi-profile install described above).
+  both are present (the multi-profile install described above):
+  ```powershell
+  $__comradeCompletionScript = comrade completion powershell 2>$null | Out-String
+  if ($__comradeCompletionScript -and $__comradeCompletionScript.Trim()) {
+      Invoke-Expression $__comradeCompletionScript
+  }
+  Remove-Variable -Name __comradeCompletionScript -ErrorAction SilentlyContinue
+  ```
+  This is the exact real-world bug this guard was added for: an
+  unguarded
+  `comrade completion powershell | Out-String | Invoke-Expression`
+  throws
+  `Cannot bind argument to parameter 'Command' because it is an empty string`
+  on every new PowerShell session once `comrade` is on PATH but broken —
+  `Invoke-Expression`, unlike bash/zsh/fish's `source`, does not
+  tolerate an empty command string.
 - **fish**: *not* a line inside the managed rc block at all — fish
   auto-sources any file placed in its own completions directory the
   first time it needs to complete that command's name, so
@@ -989,10 +1026,16 @@ opt-in step:
   (`internal/shellinit/snippets/fish-completions.fish`) directly to that
   location:
   ```fish
-  if command -v comrade >/dev/null
-      comrade completion fish | source
+  if command -v comrade >/dev/null 2>&1
+      set -l __comrade_completion (comrade completion fish 2>/dev/null)
+      if test (count $__comrade_completion) -gt 0
+          string join \n -- $__comrade_completion | source
+      end
   end
   ```
+  (`count` avoids the list-in-double-quotes splitting pitfall a bare
+  `test -n "$var"` would hit against fish's own multi-line completion
+  output.)
   Its path (`shellinit.FishCompletionsPath`) is resolved from the exact
   same `XDG_CONFIG_HOME`-or-`HOME` chain `RCPath`'s own fish branch
   already uses for `config.fish`, one directory level deeper:
@@ -1342,6 +1385,21 @@ previous, blunter "no OS keychain available on this machine").
   `--tlog-upload=false` skips the Rekor transparency log at sign time
   too, not just at verify time) — see the paragraphs above for what
   `comrade upgrade` does with it
+
+**Reproducible builds**: every `builds:` entry carries `flags: [-trimpath]`,
+and `Makefile`'s `build`/`cross` targets pass the same flag via a shared
+`GOBUILDFLAGS` var (CI's plain `go build ./...` compile check is untouched
+since it never writes a binary to disk). `-trimpath` strips the build's
+absolute source path from the compiled binary — without it, the exact same
+source + toolchain + ldflags built at two different absolute paths (a CI
+runner vs. a developer's machine vs. a one-time manual publish step)
+produces two different SHA-256 sums, confirmed by controlled experiment.
+With it, any clean-checkout build of a given commit/toolchain is
+byte-identical to the one goreleaser produced for that release, which is
+what lets a locally built binary be verified against the cosign-signed
+`checksums.txt` (see docs/SECURITY.md's "Reproducible release binaries"
+and docs/INSTALL.md's "Reproducible builds" for the user-facing
+verification recipe).
 
 Install scripts `scripts/install.sh`/`install.ps1` download the release
 archive matching the host OS/arch, verify it against the release's

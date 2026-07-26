@@ -33,13 +33,23 @@ case ";${PROMPT_COMMAND:-};" in
   *";__comrade_hook;"*) ;;
   *) PROMPT_COMMAND="__comrade_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
 esac
-command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)
+if command -v comrade >/dev/null 2>&1; then
+  # Never ` + "`source <(comrade completion bash)`" + ` unguarded: if comrade is on
+  # PATH but broken (e.g. an npm install that landed the dispatcher
+  # without its platform binary), its diagnostic goes to stderr, which
+  # this 2>/dev/null discards, leaving stdout empty. Only eval when
+  # there is something non-empty to eval, so a broken comrade never
+  # spams -- or breaks -- every new shell.
+  __comrade_completion="$(comrade completion bash 2>/dev/null)"
+  [ -n "$__comrade_completion" ] && eval "$__comrade_completion"
+  unset __comrade_completion
+fi
 # bash's readline has no ghost-text/auto-list primitive comrade can hook
 # without rebinding the space key itself (which would break magic-space,
 # multiline editing, and paste) — unlike zsh/PowerShell above, there is
 # no space-triggered hint here. Press Tab twice after "comrade " (or any
-# subcommand) for the same next-word list via the completion sourced on
-# the line above.
+# subcommand) for the same next-word list via the completion loaded
+# above.
 `
 
 const wantZshSnippet = `__comrade_last_cmd=""
@@ -58,7 +68,15 @@ __comrade_precmd() {
 if ! { autoload -Uz add-zsh-hook && add-zsh-hook precmd __comrade_precmd; } 2>/dev/null; then
   precmd() { __comrade_precmd; }
 fi
-command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1 && source <(comrade completion zsh)
+if command -v comrade >/dev/null 2>&1 && whence compdef >/dev/null 2>&1; then
+  # See bash.sh's matching guard: never source/eval comrade's completion
+  # output unguarded -- a broken comrade prints its diagnostic to stderr
+  # (discarded by 2>/dev/null) and leaves stdout empty, so only eval
+  # when there is a non-empty script to eval.
+  __comrade_completion="$(comrade completion zsh 2>/dev/null)"
+  [ -n "$__comrade_completion" ] && eval "$__comrade_completion"
+  unset __comrade_completion
+fi
 if [[ -o interactive ]] && zmodload zsh/zle 2>/dev/null; then
   typeset -g __comrade_hint_key="" __comrade_hint_text="" __comrade_hint_owns=0
   __comrade_hint_widget() {
@@ -159,7 +177,18 @@ const wantPowerShellSnippet = `if (Get-Command comrade -ErrorAction SilentlyCont
             "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
         }
     }
-    comrade completion powershell | Out-String | Invoke-Expression
+    # Never pipe comrade's completion output straight into
+    # Invoke-Expression unguarded: if comrade is on PATH but broken
+    # (e.g. an npm install that landed the dispatcher without its
+    # platform binary), its diagnostic goes to stderr -- 2>$null
+    # discards it here -- leaving stdout empty, and Invoke-Expression
+    # throws on an empty/whitespace-only command string. Capture first,
+    # and only invoke a non-empty script.
+    $__comradeCompletionScript = comrade completion powershell 2>$null | Out-String
+    if ($__comradeCompletionScript -and $__comradeCompletionScript.Trim()) {
+        Invoke-Expression $__comradeCompletionScript
+    }
+    Remove-Variable -Name __comradeCompletionScript -ErrorAction SilentlyContinue
     try {
         $existingSpacebarHandler = Get-PSReadLineKeyHandler -Chord Spacebar -ErrorAction SilentlyContinue | Where-Object { $_.Function -ne 'SelfInsert' -and $_.Function }
         if ($null -eq $existingSpacebarHandler) {
@@ -236,13 +265,23 @@ func TestBlockWrapsSnippetInExactMarkers(t *testing.T) {
 		"  *\";__comrade_hook;\"*) ;;\n" +
 		"  *) PROMPT_COMMAND=\"__comrade_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\" ;;\n" +
 		"esac\n" +
-		"command -v comrade >/dev/null 2>&1 && source <(comrade completion bash)\n" +
+		"if command -v comrade >/dev/null 2>&1; then\n" +
+		"  # Never `source <(comrade completion bash)` unguarded: if comrade is on\n" +
+		"  # PATH but broken (e.g. an npm install that landed the dispatcher\n" +
+		"  # without its platform binary), its diagnostic goes to stderr, which\n" +
+		"  # this 2>/dev/null discards, leaving stdout empty. Only eval when\n" +
+		"  # there is something non-empty to eval, so a broken comrade never\n" +
+		"  # spams -- or breaks -- every new shell.\n" +
+		"  __comrade_completion=\"$(comrade completion bash 2>/dev/null)\"\n" +
+		"  [ -n \"$__comrade_completion\" ] && eval \"$__comrade_completion\"\n" +
+		"  unset __comrade_completion\n" +
+		"fi\n" +
 		"# bash's readline has no ghost-text/auto-list primitive comrade can hook\n" +
 		"# without rebinding the space key itself (which would break magic-space,\n" +
 		"# multiline editing, and paste) — unlike zsh/PowerShell above, there is\n" +
 		"# no space-triggered hint here. Press Tab twice after \"comrade \" (or any\n" +
-		"# subcommand) for the same next-word list via the completion sourced on\n" +
-		"# the line above.\n" +
+		"# subcommand) for the same next-word list via the completion loaded\n" +
+		"# above.\n" +
 		shellinit.MarkerEnd
 	assert.Equal(t, want, got)
 	assert.False(t, strings.HasSuffix(got, "\n"), "Block must not end with a trailing newline")
@@ -254,8 +293,18 @@ func TestBlockWrapsSnippetInExactMarkers(t *testing.T) {
 // embedded file must update this literal too, so an unreviewed change
 // to completion-registration behavior fails this test instead of
 // silently shipping.
-const wantFishCompletionsScript = `if command -v comrade >/dev/null
-    comrade completion fish | source
+const wantFishCompletionsScript = `if command -v comrade >/dev/null 2>&1
+    # Never pipe comrade's completion output straight into ` + "`source`" + `
+    # unguarded: if comrade is on PATH but broken (e.g. an npm install
+    # that landed the dispatcher without its platform binary), its
+    # diagnostic goes to stderr (discarded below) and stdout is empty.
+    # Capture first, and only source a non-empty script -- ` + "`count`" + `
+    # avoids the list-in-double-quotes splitting pitfall a bare
+    # ` + "`test -n \"$var\"`" + ` would hit on the normal multi-line case.
+    set -l __comrade_completion (comrade completion fish 2>/dev/null)
+    if test (count $__comrade_completion) -gt 0
+        string join \n -- $__comrade_completion | source
+    end
 end
 `
 

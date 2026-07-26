@@ -340,6 +340,98 @@ func TestConfigProfileSetWrongArgCountShowsUsageError(t *testing.T) {
 	assert.ErrorContains(t, err, "usage:")
 }
 
+// TestConfigProfileSetHonorsProfileFlagRegardlessOfPosition is issue
+// #27's core regression guard for `config profile set`: exactly the same
+// bug as newConfigSetCmd's own (config_test.go's identically-named
+// test) — DisableFlagParsing means cobra never parses root's persistent
+// --profile here either, so it used to leak into args and break the
+// len(args)==3 arity check. --profile here selects the ACTIVE profile
+// only (language/ensureLoaded); <name> (the profile actually being
+// edited) is a separate, unaffected positional argument.
+func TestConfigProfileSetHonorsProfileFlagRegardlessOfPosition(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"before the subcommand", []string{"--profile", "other", "config", "profile", "set", "work", "llm.provider", "openai_compat"}},
+		{"after the leaf", []string{"config", "profile", "set", "work", "llm.provider", "openai_compat", "--profile", "other"}},
+		{"equals form before the subcommand", []string{"--profile=other", "config", "profile", "set", "work", "llm.provider", "openai_compat"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withIsolatedConfigDir(t)
+			_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+			require.NoError(t, err)
+			_, _, err = execRootSplit(t, "dev", "config", "profile", "add", "other")
+			require.NoError(t, err)
+
+			stdout, _, err := execRootSplit(t, "dev", tc.args...)
+			require.NoError(t, err, "must not be rejected as a generic arity usage error")
+			assert.Equal(t, "work.llm.provider = openai_compat\n", stdout)
+		})
+	}
+}
+
+// TestConfigProfileSetProfileFlagActuallyTakesEffect proves --profile is
+// genuinely threaded through to the Loader `config profile set` uses
+// (not merely tolerated): a ProfileNotFoundError for the EDITED profile
+// (<name>, not the --profile-selected active one) is only reached AFTER
+// cfg is loaded via the active profile, so its translated rendering
+// reflects the --profile-selected profile's own general.language.
+func TestConfigProfileSetProfileFlagActuallyTakesEffect(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "langtr")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "set", "langtr", "general.language", "tr")
+	require.NoError(t, err)
+
+	_, _, err = execRootSplit(t, "dev", "--profile", "langtr", "config", "profile", "set", "doesnotexist", "llm.provider", "openai_compat")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "tanımlı değil", "the not-found error must render in the --profile-selected profile's own general.language, proving --profile was actually consumed")
+}
+
+// TestConfigProfileSetProfileFlagDoesNotDisturbDashPrefixedValue mirrors
+// config_test.go's identically-purposed test: a value that legitimately
+// starts with "-" must still reach config.ValidateProfileKey untouched
+// even with a real --profile flag present in the same invocation.
+func TestConfigProfileSetProfileFlagDoesNotDisturbDashPrefixedValue(t *testing.T) {
+	withIsolatedConfigDir(t)
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+
+	_, _, err = execRootSplit(t, "dev", "--profile", "work", "config", "profile", "set", "work", "llm.timeout_seconds", "-5")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "greater than 0")
+}
+
+// TestConfigProfileSetProfileFlagDoubleDashEscapeHatchKeepsLiteralValue
+// mirrors config_test.go's identically-purposed test for the 3-arg
+// `config profile set` shape.
+func TestConfigProfileSetProfileFlagDoubleDashEscapeHatchKeepsLiteralValue(t *testing.T) {
+	withIsolatedConfigDir(t)
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+
+	stdout, _, err := execRootSplit(t, "dev", "config", "profile", "set", "work", "llm.model", "--", "--profile")
+	require.NoError(t, err)
+	assert.Equal(t, "work.llm.model = --profile\n", stdout)
+}
+
+// TestConfigProfileSetProfileFlagMissingValueErrors mirrors
+// config_test.go's identically-purposed test.
+func TestConfigProfileSetProfileFlagMissingValueErrors(t *testing.T) {
+	withIsolatedConfigDir(t)
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "set", "work", "llm.model", "--profile")
+	require.Error(t, err)
+	assert.Equal(t, "--profile requires a value, e.g. --profile work", err.Error())
+}
+
 // TestConfigProfileUndefinedActiveProfileNeverFailsACommand pins that a
 // bogus general.profile value never fails a real end-to-end CLI
 // invocation — the warning text itself (config.emitProfileWarning writes

@@ -237,6 +237,7 @@
           <button class="tab" role="tab" id="tab-win" aria-controls="panel-win" aria-selected="false" tabindex="-1">Windows</button>
           <button class="tab" role="tab" id="tab-brew" aria-controls="panel-brew" aria-selected="false" tabindex="-1">Homebrew</button>
           <button class="tab" role="tab" id="tab-scoop" aria-controls="panel-scoop" aria-selected="false" tabindex="-1">Scoop</button>
+          <button class="tab" role="tab" id="tab-npm" aria-controls="panel-npm" aria-selected="false" tabindex="-1">npm</button>
           <button class="tab" role="tab" id="tab-winget" aria-controls="panel-winget" aria-selected="false" tabindex="-1">winget</button>
           <button class="tab" role="tab" id="tab-snap" aria-controls="panel-snap" aria-selected="false" tabindex="-1">Snap</button>
         </div>
@@ -275,6 +276,18 @@
               <code>scoop install comrade</code>
               <button type="button" class="copy" data-copy="scoop install comrade"><span class="copy-label">Kopyala</span></button>
             </div>
+          </div>
+          <div class="panel" role="tabpanel" id="panel-npm" aria-labelledby="tab-npm" tabindex="0" hidden>
+            <div class="code">
+              <code>npm install -g cli-comrade</code>
+              <button type="button" class="copy" data-copy="npm install -g cli-comrade"><span class="copy-label">Kopyala</span></button>
+            </div>
+            <p class="panel__hint"><span
+               data-tr="Node.js kurulu geliştiriciler için bir alternatif — önceden derlenmiş binary, derleme araç zinciri gerekmez."
+               data-en="An alternative for developers who already have Node.js — a prebuilt binary, no build toolchain required.">Node.js kurulu geliştiriciler için bir alternatif — önceden derlenmiş binary, derleme araç zinciri gerekmez.</span></p>
+            <p class="panel__hint"><span
+               data-tr="Not: bu şekilde kurulduğunda comrade upgrade kendi kendini güncellemeyi reddeder — bunun yerine npm update -g cli-comrade kullanın."
+               data-en="Note: comrade upgrade refuses to self-update when installed this way — use npm update -g cli-comrade instead.">Not: bu şekilde kurulduğunda comrade upgrade kendi kendini güncellemeyi reddeder — bunun yerine npm update -g cli-comrade kullanın.</span></p>
           </div>
           <div class="panel" role="tabpanel" id="panel-winget" aria-labelledby="tab-winget" tabindex="0" hidden>
             <div class="code">

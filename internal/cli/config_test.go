@@ -504,6 +504,112 @@ func TestConfigSetWrongArgCountShowsTranslatedUsageErrorInEnglishWhenNeitherConf
 	assert.NoError(t, statErr, "the usage-error path must create the default config file, same as every other command's first invocation")
 }
 
+// TestConfigSetHonorsProfileFlagRegardlessOfPosition is issue #27's core
+// regression guard for `config set`: newConfigSetCmd's DisableFlagParsing
+// means cobra never parses root's own persistent --profile flag for this
+// command at all, so --profile used to leak into args as a literal,
+// unconsumed token and break the len(args)==2 arity check — looking
+// exactly like --profile "isn't supported" here, when in fact it was
+// just never being consumed. Table-driven over every position/form the
+// flag can take, per the issue's own acceptance criteria.
+func TestConfigSetHonorsProfileFlagRegardlessOfPosition(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"before the subcommand", []string{"--profile", "work", "config", "set", "llm.timeout_seconds", "42"}},
+		{"after the leaf", []string{"config", "set", "llm.timeout_seconds", "42", "--profile", "work"}},
+		{"equals form before the subcommand", []string{"--profile=work", "config", "set", "llm.timeout_seconds", "42"}},
+		{"equals form after the leaf", []string{"config", "set", "llm.timeout_seconds", "42", "--profile=work"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withIsolatedConfigDir(t)
+			_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+			require.NoError(t, err)
+
+			stdout, _, err := execRootSplit(t, "dev", tc.args...)
+			require.NoError(t, err, "must not be rejected as a generic arity usage error")
+			assert.Equal(t, "llm.timeout_seconds = 42\n", stdout)
+		})
+	}
+}
+
+// TestConfigSetProfileFlagActuallyTakesEffect proves --profile isn't
+// merely tolerated (no longer erroring) but genuinely THREADED THROUGH
+// to the Loader `config set` uses — mirroring
+// TestConfigSetWrongArgCountShowsTranslatedUsageErrorInTurkishFromConfigLanguageAlone's
+// own proof technique, but sourcing general.language from the ACTIVE
+// PROFILE via --profile instead of the top-level file, for the
+// wrong-arg-count usage-error path (which does load config, unlike
+// config.Validate's own pre-load rejection).
+func TestConfigSetProfileFlagActuallyTakesEffect(t *testing.T) {
+	withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "profile", "set", "work", "general.language", "tr")
+	require.NoError(t, err)
+
+	_, _, err = execRootSplit(t, "dev", "--profile", "work", "config", "set", "onlykey")
+	require.Error(t, err)
+	assert.Equal(t, "kullanım: comrade config set <anahtar> <değer>", err.Error(),
+		"the usage error must render in the --profile-selected profile's own general.language, proving --profile was actually consumed, not just tolerated")
+
+	// Without --profile, the (still-inactive) "work" profile's language
+	// must have no effect at all.
+	_, _, err = execRootSplit(t, "dev", "config", "set", "onlykey")
+	require.Error(t, err)
+	assert.Equal(t, "usage: comrade config set <key> <value>", err.Error())
+}
+
+// TestConfigSetProfileFlagDoesNotDisturbDashPrefixedValue proves
+// extractProfileFlag's --profile scan leaves every OTHER "-"-prefixed
+// token (config set's original reason for DisableFlagParsing) completely
+// untouched, even when a real --profile flag is present in the same
+// invocation.
+func TestConfigSetProfileFlagDoesNotDisturbDashPrefixedValue(t *testing.T) {
+	withIsolatedConfigDir(t)
+	_, _, err := execRootSplit(t, "dev", "config", "profile", "add", "work")
+	require.NoError(t, err)
+
+	_, _, err = execRootSplit(t, "dev", "--profile", "work", "config", "set", "llm.timeout_seconds", "-5")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "greater than 0", "the negative value must still reach config.Validate, not be misread as a flag")
+}
+
+// TestConfigSetProfileFlagDoubleDashEscapeHatchKeepsLiteralValue proves
+// the "--" escape hatch (extractProfileFlag's scan-stop boundary, plus
+// stripFirstDoubleDash's marker removal — both profileflag.go) lets a
+// config VALUE that must legitimately BE the literal string "--profile"
+// pass through untouched, exactly like DisableFlagParsing's original
+// purpose promises.
+func TestConfigSetProfileFlagDoubleDashEscapeHatchKeepsLiteralValue(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	stdout, _, err := execRootSplit(t, "dev", "config", "set", "llm.model", "--", "--profile")
+	require.NoError(t, err)
+	assert.Equal(t, "llm.model = --profile\n", stdout)
+
+	getStdout, _, err := execRootSplit(t, "dev", "config", "get", "llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "--profile\n", getStdout)
+}
+
+// TestConfigSetProfileFlagMissingValueErrors proves a trailing, valueless
+// "--profile" (nothing left to consume as its value) is reported as a
+// clear error rather than silently dropped or misreported as a generic
+// wrong-arg-count usage error.
+func TestConfigSetProfileFlagMissingValueErrors(t *testing.T) {
+	withIsolatedConfigDir(t)
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.model", "--profile")
+	require.Error(t, err)
+	assert.Equal(t, "--profile requires a value, e.g. --profile work", err.Error())
+}
+
 // TestConfigGetWrongArgCountShowsTranslatedUsageError proves `comrade
 // config get`'s Args (translatedExactArgs, config.go) renders a
 // friendly, i18n'd usage error instead of cobra's raw English "accepts 1

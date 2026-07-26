@@ -184,6 +184,25 @@ func newConfigSetCmd(newLoader loaderFactory) *cobra.Command {
 		// no candidates, matching what B's spec asked for.
 		ValidArgsFunction: completeFirstArgFromList(config.Keys()),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --profile is hand-parsed out of args here (rather than left
+			// to cobra) because DisableFlagParsing (above) means cobra
+			// never parses ANY flag for this invocation — including
+			// root's own inherited persistent --profile — so it would
+			// otherwise arrive as a literal, unconsumed token in args and
+			// break the len(args)==2 check below (issue #27). See
+			// extractProfileFlag's own doc comment (profileflag.go) for
+			// the full rationale, including its "--" escape hatch.
+			profile, args, err := extractProfileFlag(args)
+			if err != nil {
+				return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgProfileFlagMissingValue))
+			}
+			effectiveLoader := loaderWithProfileOverride(newLoader, profile)
+			// stripFirstDoubleDash's own "--" escape hatch (profileflag.go)
+			// — lets a value that must legitimately BE the literal string
+			// "--profile" pass through, e.g. `config set some.key --
+			// --profile`.
+			args = stripFirstDoubleDash(args)
+
 			if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
 				return cmd.Help()
 			}
@@ -196,7 +215,7 @@ func newConfigSetCmd(newLoader loaderFactory) *cobra.Command {
 				// fine (matches every other command's --help/usage-error
 				// behavior, e.g. `comrade config get <bad-key>` already
 				// loads config first too).
-				return fmt.Errorf("%s", bestEffortTranslator(cmd, newLoader).T(i18n.MsgConfigSetUsageError))
+				return fmt.Errorf("%s", bestEffortTranslator(cmd, effectiveLoader).T(i18n.MsgConfigSetUsageError))
 			}
 			key, raw := args[0], args[1]
 
@@ -216,7 +235,7 @@ func newConfigSetCmd(newLoader loaderFactory) *cobra.Command {
 				return translateConfigError(envOnlyTranslator(), err)
 			}
 
-			loader, err := newLoader()
+			loader, err := effectiveLoader()
 			if err != nil {
 				return err
 			}

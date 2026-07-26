@@ -54,14 +54,34 @@ func PathCheck(_ context.Context, deps Deps) Result {
 	return Result{Severity: SeverityOK, Summary: i18n.MsgDoctorPathOK, SummaryArgs: []any{foundPath}}
 }
 
-// pathFixInstruction is a short, platform-appropriate, copy-pasteable
-// remediation for "comrade is not on PATH" / "PATH resolves to a stale
-// copy" — deliberately plain, unlocalized text (see doctor.Result.Fix's
-// own doc comment): re-running the installer is what actually fixes
-// both cases (a fresh install re-adds/repoints the PATH entry).
+// pathFixInstallUnix/pathFixInstallWindows are pathFixInstruction's two
+// bare, copy-pasteable remediation commands for "comrade is not on PATH"
+// / "PATH resolves to a stale copy": re-running the installer is what
+// actually fixes both cases (a fresh install re-adds/repoints the PATH
+// entry). These are the SAME one-liners README.md/docs/GUIDE.md/
+// docs/INSTALL.md already document as the primary install method — using
+// them here (rather than a bare "scripts/install.sh"-style relative
+// path, which presumes a cloned repo checkout most `comrade doctor`
+// callers won't have) means Fix is a command that is ACTUALLY runnable
+// wherever a user happens to be, matching doctor.Result.Fix's own "a
+// shell command is not prose to translate" contract (issue #39: this
+// package's Fix values are bare commands everywhere else — see
+// check_baseurl.go/check_key.go/check_reach.go/check_shellhook.go/
+// check_version.go — check_path.go was the one remaining exception,
+// smuggling a full explanatory sentence ("re-run ..., or add ... to your
+// PATH manually") into Fix instead. That explanation now lives in the
+// TRANSLATED MsgDoctorPathNotFound/MsgDoctorPathStale Summary text
+// instead — mirrors PR #37's identical fix for check_version.go's own
+// Node-managed caveat, see VersionCheck's doc comment).
+const (
+	pathFixInstallUnix    = "curl -fsSL https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.sh | sh"
+	pathFixInstallWindows = "irm https://raw.githubusercontent.com/firatkutay/cli-comrade/main/scripts/install.ps1 | iex"
+)
+
+// pathFixInstruction returns the platform-appropriate bare command above.
 func pathFixInstruction(goos string) string {
 	if goos == "windows" {
-		return "re-run scripts/install.ps1, or add comrade's install directory to your PATH manually"
+		return pathFixInstallWindows
 	}
-	return "re-run scripts/install.sh, or add comrade's install directory to your PATH manually"
+	return pathFixInstallUnix
 }

@@ -168,8 +168,8 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   değeri) konumda başarısız-kapalıdır — ARGÜMAN konumunda silinmiş bir isim,
   ayarlanmamış bir değişken gibi `""`e çözülür, bu ise başarısız-kapalı
   DEĞİLDİR. Bu yüzden tüm ortamı silmek, araya sokulan, yakınsamayan bir
-  döngüyü genel amaçlı bir SİLME ARACINA çeviriyordu: `A=/dev/; B=sda;
-  Z=a; for i in 1 2; do Z=${Z}a; done; dd of=$A$B` (Z her geçişte bir
+  döngüyü genel amaçlı bir SİLME ARACINA çeviriyordu: `A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a; done; dd of=$A$B`
+  (Z her geçişte bir
   karakter büyüdüğü için hiç yakınsamaz) `A` ve `B`yi yan hasar olarak
   siliyordu (döngü onlara hiç dokunmuyor olsa bile), bu yüzden `dd`'nin
   kendi `of=` hedefi sessizce `""`e dönüşüyor ve zararsız görünen
@@ -420,8 +420,8 @@ validation, redaction coverage, and the destructive-command classifier
   position a deleted name resolves to `""`, exactly like an unset
   variable, which is NOT fail-closed. Wiping the whole env therefore
   turned an interposed, deliberately non-converging loop into a
-  general-purpose ERASER GADGET: `A=/dev/; B=sda; Z=a; for i in 1 2; do
-  Z=${Z}a; done; dd of=$A$B` (`Z` grows by one character every simulated
+  general-purpose ERASER GADGET: `A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a; done; dd of=$A$B`
+  (`Z` grows by one character every simulated
   pass, so this loop never converges) deleted `A` and `B` as collateral
   damage — the loop never touches them at all — so `dd`'s own `of=`
   target silently vanished to `""`, reconstructing the safe-looking

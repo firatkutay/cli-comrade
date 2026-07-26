@@ -184,6 +184,23 @@ var errUnexpectedProcSubst = errors.New("safety: unexpected process substitution
 // UNCONDITIONALLY isolated by real bash semantics, so there is nothing to
 // invalidate.
 //
+// A for/while/until Do body gets ONE FURTHER refinement on top of the
+// plain clone+invalidate treatment above (resolveLoopBody, not
+// resolveMayNotExecute directly — issue #33): "may not execute" alone
+// only ever asks "did this body run AT ALL", which misses that a body
+// which DOES run can run MORE THAN ONCE, and a value that only becomes
+// dangerous on a second-or-later iteration is invisible to a single
+// resolution pass seeded once from the pre-loop env. resolveLoopBody
+// resolves the body to a FIXPOINT instead — repeatedly re-seeding a fresh
+// pass from the PRIOR pass's own result, bounded by
+// maxLoopFixpointIterations — and invalidates any name that ever changes
+// anywhere along that chain, not merely between the pre-loop env and a
+// single pass. See resolveLoopBody's own doc comment for the full
+// mechanism and worked trace. This does not change the "may not execute
+// at all" semantics above (a zero-iteration real loop is still exactly as
+// ambiguous as before); it strictly extends it to also cover "may execute
+// more than once".
+//
 // This does mean two mutually exclusive branches assigning the SAME
 // variable to DIFFERENT literal values can never both be resolved with
 // confidence afterward — correct: no static analysis of this kind can
@@ -513,6 +530,210 @@ func (r *bashResolver) resolveMayNotExecute(stmts []*syntax.Stmt) (text string, 
 	return text, false, ""
 }
 
+// maxLoopFixpointIterations bounds how many times resolveLoopBody may
+// re-apply a for/while body to its own prior result while searching for a
+// fixpoint (see resolveLoopBody's doc comment) before giving up and
+// invalidating every name that ever changed along the way. Chosen
+// generously above the hop-count of any realistic variable-indirection
+// chain a legitimate one-liner would build inside a loop body (the
+// issue #33 repro needs 2 passes to expose; a 3-variable relay chain
+// needs 4) while staying a small, fixed multiplier on top of the existing
+// resolverBudget/maxScopeForks/maxEnvSize guards — each pass still goes
+// through safeCloneEnv exactly like any other scope fork, so a
+// pathologically loop-heavy command is bounded by the SAME shared budget,
+// not a separate unbounded one.
+const maxLoopFixpointIterations = 8
+
+// resolveLoopBody resolves stmts — a for/while/until loop's own Do body —
+// to a FIXPOINT rather than a single pass, closing issue #33: a real loop
+// can run more than once, and a variable that only takes on a dangerous
+// value on the SECOND (or later) iteration is invisible to a single
+// resolution pass seeded once from the pre-loop env (resolveMayNotExecute,
+// which for/while used to call directly). The repro:
+//
+//	X=echo; R=echo; for i in 1 2; do X=$R; R=rm; done; $X -rf /
+//
+// Pass 1, seeded from the pre-loop env ({X:echo, R:echo}), resolves
+// `X=$R` by reading R AS IT STOOD BEFORE THIS PASS TOUCHED IT (still
+// "echo"), so pass 1's own result is {X:echo, R:rm} — X looks unchanged
+// from its pre-loop value, so a single-pass invalidation check (compare
+// pre-loop env to pass 1's result) wrongly concludes X is safe. Real
+// bash's SECOND iteration is what actually turns R into "rm" before
+// `X=$R` runs again, and a single pass never simulates a second
+// iteration at all.
+//
+// The fix: treat pass 1's own resulting env as the SEED for a pass 2 (the
+// loop body is deterministic given its starting state, so re-applying it
+// to pass 1's result is exactly what a real second iteration would do),
+// and keep going — comparing each pass's result to the one before it and
+// recording any name whose value EVER differs anywhere along the chain —
+// until either (a) a pass produces an env IDENTICAL to the one that fed
+// it (a genuine fixpoint: further iterations, however many the loop
+// really runs, cannot change anything further, so it is safe to stop), or
+// (b) maxLoopFixpointIterations is reached WITHOUT stabilizing.
+//
+// Case (b) is NOT "invalidate whichever names happened to change within
+// the passes actually run" — a follow-up security audit found and fixed
+// a CRITICAL false-Allow in an earlier version of this function that did
+// exactly that. Once the cap is hit without reaching a genuine fixpoint,
+// this analysis is INCOMPLETE: a name that stayed stable through every
+// pass observed so far could still be the next one to change on the very
+// next (unobserved) iteration — "stable for 8 passes" is not "stable
+// forever" the way a genuine fixpoint is. The audit's own 9-link relay
+// chain proves this concretely: with an 8-pass cap, a chain that only
+// changes its SINK variable on the 9th application never shows that sink
+// changing in any OBSERVED pass, so a "changed" set built only from
+// observed passes silently omits it — even though it is exactly as
+// ambiguous as any name that did visibly change.
+//
+// The response is NOT to invalidate every name in the parent env either
+// — a SECOND follow-up security audit found that a first version of
+// THIS fix did exactly that, and it was itself a CRITICAL regression:
+// deleting a name is fail-closed only in STRICT (command-word/
+// assignment-value) position; in ARGUMENT position a deleted name
+// resolves to "" (resolveWord's non-strict branch), which is NOT
+// fail-closed. Wiping the whole parent env therefore turned an
+// interposed non-converging loop into a general-purpose ERASER GADGET:
+// `A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a; done; dd of=$A$B`
+// deleted A and B as collateral damage (the loop never touches them),
+// so dd's own of= target silently vanished to "", reconstructing the
+// safe-looking "dd of=" instead of "dd of=/dev/sda" — worse than the
+// bug this fix exists to close, since it actively erases an
+// already-fully-assembled destructive argv rather than merely failing
+// to model the loop. See the `!converged` branch below: the only sound
+// response to "the search did not complete" is to fail the WHOLE
+// resolveLoopBody call closed (propagate indeterminate), never to
+// return any resolved/reconstructed text at all — there is then nothing
+// for an argument-position reference anywhere in the command to exploit.
+//
+// Tracing the repro: pass 1 seeded from {X:echo,R:echo} produces
+// {X:echo,R:rm} (R changed: echo->rm, not yet stable). Pass 2, seeded
+// from pass 1's OWN result, resolves `X=$R` against R="rm" this time —
+// producing {X:rm,R:rm} (X now ALSO changed relative to pass 1: echo->rm)
+// — not yet stable. Pass 3, seeded from {X:rm,R:rm}, reproduces the exact
+// same env {X:rm,R:rm} — a fixpoint — so iteration stops (`converged`).
+// Both X and R changed at some point along that chain, so BOTH are
+// invalidated (deleted from the parent env): a later command-word
+// reference to `$X` therefore fails closed via the existing unresolved-
+// command-word rule, exactly as it should for a genuinely ambiguous,
+// iteration-dependent value — never silently resolved to either "echo"
+// or "rm". (This per-name deletion path is unaffected by the
+// `!converged` fix above: it only ever runs when `converged` is true —
+// a real fixpoint was reached — so every name in `changed` is one this
+// analyzer actually observed differing, not a guess.)
+//
+// Every pass's own reconstructed text is preserved and joined into the
+// returned text (not just the final pass's) — so a value that is only
+// dangerous WITHIN some later simulated iteration (`for i in 1 2; do $R
+// -rf /; R=rm; done`, dangerous only once R has already become "rm" on a
+// prior iteration) still surfaces via the SAME denylist/escalation-reuse
+// signature match analyzeBashEffect already runs over the whole
+// reconstructed command, exactly like the existing intra-body escalation
+// case (TestEvaluateEffectMayNotExecuteBodyStillEscalatesWithinItself) —
+// this is a strict superset of that, not a separate mechanism. Each
+// simulated pass is a state a real execution could actually reach (pass k
+// is exactly what running the body k times produces), so joining every
+// pass's text can only ever ADD detection surface, never invent a
+// fictitious "cannot happen" state — consistent with this layer's
+// monotonic, only-ever-raise-risk contract.
+//
+// Only for/while/until Do bodies use this fixpoint treatment — if/elif
+// Then/Else and case items are NOT iterative (each is a single,
+// non-repeating alternative), so they keep using the plain
+// resolveMayNotExecute single-pass clone+invalidate treatment unchanged.
+func (r *bashResolver) resolveLoopBody(stmts []*syntax.Stmt) (text string, indeterminate bool, reason string) {
+	prev := r.env
+	changed := map[string]bool{}
+	var texts []string
+	converged := false
+
+	for pass := 0; pass < maxLoopFixpointIterations; pass++ {
+		clone, ok := safeCloneEnv(prev, r.budget)
+		if !ok {
+			return "", true, scopeGuardReason
+		}
+		child := &bashResolver{env: clone, budget: r.budget}
+		t, indet, why := child.resolveStmts(stmts)
+		r.findings = append(r.findings, child.findings...)
+		if indet {
+			return "", true, why
+		}
+		texts = appendNonEmpty(texts, t)
+
+		for name, oldVal := range prev {
+			if newVal, stillPresent := clone[name]; !stillPresent || newVal != oldVal {
+				changed[name] = true
+			}
+		}
+		if envsEqual(prev, clone) {
+			converged = true
+			break
+		}
+		prev = clone
+	}
+
+	// The cap was hit WITHOUT reaching a genuine fixpoint: this analysis
+	// is incomplete, and `changed` only reflects names observed to differ
+	// within the passes actually run — a name that happens to be stable
+	// through every one of those passes but would first change on the
+	// NEXT (unobserved) iteration is indistinguishable, from here, from a
+	// name that is genuinely constant forever.
+	//
+	// An earlier version of this fix responded by DELETING every name in
+	// the parent env instead of just `changed`. A follow-up security
+	// audit found that this was itself a CRITICAL regression: deletion is
+	// fail-closed only in STRICT (command-word/assignment-value)
+	// position — a deleted name in ARGUMENT position resolves to "",
+	// exactly like an unset variable (see resolveWord's non-strict
+	// branch), which is NOT fail-closed. Wiping the whole env therefore
+	// turned an interposed non-converging loop into a general-purpose
+	// ERASER GADGET: `A=/dev/; B=sda; Z=a; for i in 1 2; do Z=${Z}a;
+	// done; dd of=$A$B` deleted A and B (collateral damage from the
+	// wipe, despite the loop never touching them) and dd's own of=
+	// target silently vanished to "", reconstructing the safe-looking
+	// "dd of=" instead of "dd of=/dev/sda" — a false-ALLOW strictly
+	// worse than the false-Allow this whole fix exists to close, since
+	// it actively erases a destructive argv already fully assembled
+	// before the loop, rather than merely failing to model the loop.
+	//
+	// The sound response: propagate INDETERMINATE for the whole
+	// resolveLoopBody call instead of returning a (mangled) resolved
+	// text. This fails the ENTIRE command closed via the same
+	// "effect: indeterminate" path as any other genuinely unresolvable
+	// construct — never silently dropping or reconstructing any argument
+	// anywhere in the command, so there is no deletion for an
+	// argument-position reference to exploit.
+	if !converged {
+		return "", true, "loop body did not reach a fixpoint within this analyzer's iteration bound"
+	}
+
+	for name := range changed {
+		delete(r.env, name)
+	}
+	return strings.Join(texts, " ; "), false, ""
+}
+
+// envsEqual reports whether a and b hold exactly the same set of variable
+// names, each mapped to exactly the same value — the FULL-STATE fixpoint
+// check resolveLoopBody's termination condition needs. A narrower check
+// (comparing only a's own keys, mirroring resolveMayNotExecute's
+// invalidation loop) would wrongly declare an early pass "stable" the
+// moment a brand-new name first appears with nothing yet in a to compare
+// it against, before that new name's own value has been through even a
+// single round-trip of the loop body — under-testing exactly the
+// iteration-dependent instability this function exists to catch.
+func envsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
+}
+
 // resolveIfClause resolves a TOP-LEVEL if/elif/else chain: this is
 // analyzeBashEffect's only entry point into an *syntax.IfClause, and it
 // always starts resolveIfClauseChain with condAlwaysRuns=true for c's OWN
@@ -573,16 +794,17 @@ func (r *bashResolver) resolveIfClauseChain(c *syntax.IfClause, condAlwaysRuns b
 // least once when control reaches the while statement at all (the first
 // test), so it is resolved via plain r.resolveStmts against the shared,
 // persistent env — exactly like the very first "if"'s Cond. Do is a
-// MAY-NOT-EXECUTE body: the loop may run zero iterations (the audit's
-// exact repro — `while false; do R=echo; done` never runs Do at all), so
-// it is resolved via resolveMayNotExecute exactly like a for-loop body or
-// an if/case branch.
+// LOOP body (it may run zero iterations — the audit's exact repro,
+// `while false; do R=echo; done` never runs Do at all — OR it may run
+// MORE THAN ONCE, which a plain may-not-execute single pass cannot see —
+// issue #33), so it is resolved via resolveLoopBody exactly like a
+// for-loop body.
 func (r *bashResolver) resolveWhileClause(w *syntax.WhileClause) (text string, indeterminate bool, reason string) {
 	condText, indet, why := r.resolveStmts(w.Cond)
 	if indet {
 		return "", true, why
 	}
-	doText, indet, why := r.resolveMayNotExecute(w.Do)
+	doText, indet, why := r.resolveLoopBody(w.Do)
 	if indet {
 		return "", true, why
 	}
@@ -593,16 +815,16 @@ func (r *bashResolver) resolveWhileClause(w *syntax.WhileClause) (text string, i
 }
 
 // resolveForClause resolves a for/select clause's Do body as a
-// MAY-NOT-EXECUTE construct: the loop may run zero iterations (an empty,
-// unset, or dynamically-empty Items list — `for i in $UNSET`,
-// `for i in $(false)` — the audit's exact repro), so Do is resolved via
-// resolveMayNotExecute exactly like a while/until body. See
-// analyzeBashEffect's doc comment for why the iteration variable itself
-// (*syntax.WordIter's Name) is separately, deliberately never added to
-// env at all — a different, narrower limitation from the
-// may-not-execute treatment of the body as a whole.
+// LOOP body — see resolveLoopBody's doc comment for the fixpoint
+// treatment this requires beyond a plain may-not-execute construct (issue
+// #33: a loop may run MORE THAN ONCE, and a value that only becomes
+// dangerous on a second-or-later iteration needs more than one resolution
+// pass to surface). See analyzeBashEffect's doc comment for why the
+// iteration variable itself (*syntax.WordIter's Name) is separately,
+// deliberately never added to env at all — a different, narrower
+// limitation from the loop-body treatment of the body as a whole.
 func (r *bashResolver) resolveForClause(f *syntax.ForClause) (text string, indeterminate bool, reason string) {
-	return r.resolveMayNotExecute(f.Do)
+	return r.resolveLoopBody(f.Do)
 }
 
 // resolveCaseClause resolves a case/switch clause: exactly one CaseItem's

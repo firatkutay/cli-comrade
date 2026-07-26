@@ -184,14 +184,15 @@ jobs:
   # instead of silently going unlinted.
   #
   # Secret scanning (gitleaks) and SBOM/SCA (Syft/Grype) decision, per
-  # this issue's acceptance criteria: explicitly DECLINED in this PR.
-  # This repo has no dependency manifest that changes often enough yet to
-  # justify a recurring SCA job (a single go.sum, already covered for
-  # known CVEs by the vulncheck job above), and no secret-scanning gate
-  # exists at all today, so there's nothing for gitleaks to regress
-  # against without a dedicated rollout (baseline scan, allowlist for any
-  # existing false positives). Both are real, valuable, separate work —
-  # tracked in issue #47 — not bundled into this shell-linting change.
+  # this issue's acceptance criteria: DECLINED in this PR, tracked as
+  # separate work in issue #47. This repo has no dependency manifest that
+  # changes often enough yet to justify a recurring SCA job (a single
+  # go.sum, already covered for known CVEs by the vulncheck job above),
+  # and no secret-scanning gate exists at all today, so there's nothing
+  # for gitleaks to regress against without a dedicated rollout (baseline
+  # scan, allowlist for any existing false positives). Both landed as the
+  # `gitleaks` and `sbom-scan` jobs below — see each job's own comment
+  # block for the scope decisions made when they were actually wired in.
   shellcheck:
     runs-on: ubuntu-latest
     steps:
@@ -221,3 +222,125 @@ jobs:
           done < <(find scripts npm/test -name '*.sh' -print0 | sort -z)
 
           exit "${status}"
+
+  # GitHub issue #47: secret scanning. Follow-up from #29, whose own
+  # decision (comment block above) explicitly deferred this to a
+  # dedicated issue rather than bundling it into a shell-linting change.
+  #
+  # Scope decision — working tree vs. full history, per issue #47's
+  # acceptance criteria: this job scans the WORKING TREE (`gitleaks dir`)
+  # on every push/PR, not full git history. A one-off FULL HISTORY scan
+  # (`gitleaks git --redact --log-opts="--all"`, all 226 commits / every
+  # ref, at the time this job was added) was run locally first, per the
+  # issue's mandatory baseline requirement — see the implementing PR's
+  # description for the result (zero real credentials found). Full-
+  # history rescanning on every PR is a cost that grows with total repo
+  # history forever, for value this repo doesn't need day to day: commits
+  # land via direct push/self-merge (trunk-based, see git-workflow), so
+  # the "secret added then removed before merge" threat a history scan
+  # specifically defends against doesn't really apply here — and neither
+  # of this repo's two known real-secret-adjacent items (the cosign
+  # signing key, held only as a GitHub Actions secret, never committed;
+  # an npm token leaked via chat and revoked, also never committed) would
+  # have been caught by scanning git contents at any depth. Re-run the
+  # full-history scan manually before onboarding an external contributor,
+  # or periodically as a standing audit — it is not wired into this job.
+  #
+  # Installed via `go install`, pinned to v8.30.1 (released 2026-03-21,
+  # comfortably past the 15-day floor) — same convention as the
+  # vulncheck job above: no third-party Action to pin/audit, no download
+  # to checksum-verify by hand (`go install` verifies module content
+  # against the public checksum database), supply-chain surface is
+  # exactly the Go toolchain + this one module. (gitleaks-action v3 was
+  # considered and rejected: its repo's license metadata resolves to
+  # "Other"/NOASSERTION on GitHub rather than a clear OSI license —
+  # avoided rather than chased down, since `go install` sidesteps the
+  # question entirely.) Note gitleaks' upstream GitHub organization is
+  # "gitleaks" but its go.mod still declares the module path under the
+  # tool's original author, zricethezav — intentional upstream quirk
+  # confirmed against the v8.30.1 tag's own go.mod, not a typo here.
+  #
+  # .gitleaks.toml extends (not replaces) the built-in default ruleset
+  # and allowlists, per rule ID + exact file path, the golden-test
+  # fixtures in internal/redact/redact_test.go and
+  # internal/llm/client_redact_test.go — deliberately fake, secret-shaped
+  # strings used to assert internal/redact's masking pipeline actually
+  # masks them. See .gitleaks.toml's own header comment for why the
+  # cosign PUBLIC key embedded in scripts/install.sh and
+  # internal/update/cosign.pub needed no allowlist entry: verified
+  # empirically that it does not match gitleaks' "private-key" rule
+  # (that rule targets PRIVATE key PEM blocks specifically).
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install gitleaks
+        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
+
+      - name: gitleaks (working tree)
+        run: gitleaks dir --redact --exit-code 1 --config .gitleaks.toml .
+
+  # GitHub issue #47: SBOM (Syft) + SCA (Grype).
+  #
+  # Reconciled against release.yml's existing SBOM step before adding
+  # this (release.yml itself is out of scope for this PR — PR #41 is in
+  # flight there; this is reported, not fixed, here): that step (also
+  # anchore/sbom-action) generates a source SBOM at release time, but
+  # writes it to `${{ runner.temp }}` with upload-release-assets AND
+  # upload-artifact both false — so today it is generated and then
+  # discarded, never actually attached to a release or uploaded anywhere.
+  # That means this repo currently has NO durable SBOM artifact from any
+  # pipeline, release or CI. Generating one here, on every push/PR, is
+  # therefore not a duplicate of working release-time coverage — it is
+  # this repo's only actual retrievable SBOM artifact right now, and
+  # per-PR generation additionally proves the SBOM stays generatable on
+  # every change, not just at tag time.
+  #
+  # Grype vs. govulncheck, decided empirically rather than assumed:
+  # before writing this job, syft was run against this repo's own source
+  # and grype against the resulting SBOM. It found exactly one issue —
+  # GO-2026-5970 (High) in golang.org/x/text v0.28.0, fixed in v0.39.0 —
+  # which govulncheck (the `vulncheck` job above) already knows about and
+  # already correctly excludes, because its call-graph analysis proves
+  # this repo's code never reaches the vulnerable (infinite-loop-on-
+  # invalid-input) symbols — confirmed side by side, same GO-2026-5970 ID
+  # in both tools' output. Grype has no reachability analysis: at the
+  # issue's own suggested `--fail-on high` threshold it would fail this
+  # exact job on a vulnerability govulncheck has already triaged as a
+  # non-issue for this codebase — precisely the "gate people learn to
+  # ignore" failure mode this issue asked to avoid. Given this repo has
+  # exactly one dependency manifest (go.mod/go.sum) and govulncheck's
+  # reachability check strictly dominates Grype's version-only matching
+  # for every finding a Go-only repo like this one can produce, Grype
+  # runs here as an INFORMATIONAL, non-blocking step (`fail-build:
+  # false`) — its value is defense-in-depth against a DB-freshness gap
+  # (Grype's feeds can occasionally carry a real NVD/GHSA advisory before
+  # Go's own vulndb curates it), surfaced as build-log table output for a
+  # human to read, not a merge-blocking gate that would routinely fire on
+  # already-triaged noise.
+  sbom-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-release-assets: false
+          upload-artifact: true
+          artifact-name: sbom.cdx.json
+
+      - name: Scan SBOM with Grype (informational — see comment above)
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          sbom: sbom.cdx.json
+          fail-build: false
+          output-format: table

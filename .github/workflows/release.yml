@@ -16,12 +16,21 @@ permissions:
   # below) detects this automatically when publishing from GitHub
   # Actions and exchanges the OIDC token for a one-off, per-publish npm
   # registry credential via npm's Trusted Publishing flow -- there is no
-  # NPM_TOKEN/NODE_AUTH_TOKEN anywhere in this workflow, on purpose (see
-  # the "Publish npm packages" step). Requires each of the 6 packages to
-  # have a "Trusted Publisher" configured on npmjs.com pointing at this
-  # repo + this workflow filename (docs/PACKAGING.md's npm section has
-  # the exact click-path) -- npm silently refuses the publish with a 404
-  # if that per-package configuration is missing or mismatched.
+  # NPM_TOKEN, and no *real* NODE_AUTH_TOKEN, anywhere in this workflow,
+  # on purpose. (The "Publish npm packages" step below does set
+  # NODE_AUTH_TOKEN to an explicit empty string -- that override exists
+  # only to neutralize a placeholder value actions/setup-node writes on
+  # its own when registry-url is set and no token is supplied; see that
+  # step's comment for the full, evidence-based explanation. It is not a
+  # credential.) Requires each of the 6 packages to have a "Trusted
+  # Publisher" configured on npmjs.com pointing at this repo + this
+  # workflow filename (docs/PACKAGING.md's npm section has the exact
+  # click-path) -- npm silently refuses the publish with a 404 if that
+  # per-package configuration is missing or mismatched, OR if the OIDC
+  # token exchange fails for any other reason (npm's own oidc.js swallows
+  # the real reason at default log level -- see the "Publish npm
+  # packages" step's --loglevel=verbose for how to surface it on a
+  # future failure).
   id-token: write
   # Required by the "Attach source SBOM to release" step below: it calls
   # actions/list-artifacts under the hood (@actions/artifact's
@@ -301,7 +310,59 @@ jobs:
       # text, which is fragile and undocumented as a stable contract;
       # checking existence up front is the same check npm itself would
       # make, just visible to this workflow's control flow.
+      # NODE_AUTH_TOKEN override -- root-caused against the actual v0.4.6
+      # failure (run 30210611779), not assumed:
+      #
+      # actions/setup-node's `registry-url` input makes it write
+      # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` into .npmrc
+      # AND export a placeholder value for every later step in this job
+      # whenever no real NODE_AUTH_TOKEN was supplied --
+      # `core.exportVariable('NODE_AUTH_TOKEN', process.env.NODE_AUTH_TOKEN
+      # || 'XXXXX-XXXXX-XXXXX-XXXXX')` in setup-node's own
+      # src/authutil.ts. Confirmed byte-for-byte against this run's own
+      # logs: the "Publish npm packages" step's env block showed
+      # `NODE_AUTH_TOKEN: XXXXX-XXXXX-XXXXX-XXXXX` -- the exact literal
+      # from that fallback -- immediately before the E404.
+      #
+      # This fallback is still present in the setup-node version pinned
+      # above (v6.4.0) and in the newest v6.x release (v6.5.0, published
+      # 2026-07-14): confirmed by reading src/authutil.ts at both refs via
+      # `gh api repos/actions/setup-node/contents/src/authutil.ts?ref=<tag>`.
+      # It was removed only in v7.0.0 (PR #1558, "Remove dummy
+      # NODE_AUTH_TOKEN export", also published 2026-07-14) -- but v7.0.0
+      # is a major bump on the day this was diagnosed (2026-07-26), i.e.
+      # 12 days old, short of this repo's >=15-day version-selection
+      # floor, so it is NOT adopted here. Fixing this in our own workflow,
+      # rather than waiting on or bumping to an ineligible upstream
+      # release, avoids that tradeoff entirely.
+      #
+      # npm/cli's own publish path (lib/commands/publish.js, verified at
+      # the pinned npm@11.18.0 tag) always calls its oidc() helper BEFORE
+      # checking for existing credentials, and oidc() -- when it succeeds
+      # -- overwrites whatever token was already configured
+      # (config.set(authTokenKey, response.token, 'user')). So the
+      # placeholder is not fatal by design; per multiple maintainer- and
+      # community-reproduced runs on actions/setup-node#1440, recent npm
+      # CLI versions have been observed publishing successfully via OIDC
+      # with the placeholder still present. What actually happened on
+      # this repo's v0.4.6 run cannot be fully distinguished from these
+      # logs alone: npm's oidc() swallows its own failure reason at the
+      # default "notice" log level (see npm/cli lib/utils/oidc.js -- every
+      # failure branch logs at `verbose`, not `notice`), so whether the
+      # OIDC token exchange itself failed (e.g. a Trusted Publisher
+      # config mismatch on npmjs.com) or something else pre-empted it is
+      # NOT determinable from run 30210611779's log. Overriding the
+      # placeholder to an explicit empty string here is a safe change
+      # either way: it cannot break a working OIDC exchange (oidc()
+      # overwrites it on success regardless), and if OIDC fails again, npm
+      # now reports a clear "you must be logged in" (ENEEDAUTH) instead of
+      # today's misleading 404 -- the log line the next run actually
+      # needs to tell a workflow bug from a registry-config mismatch.
+      # --loglevel=verbose (below) surfaces npm/cli's own oidc log lines
+      # for that same reason.
       - name: Publish npm packages via Trusted Publishing (OIDC)
+        env:
+          NODE_AUTH_TOKEN: ""
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
@@ -319,7 +380,7 @@ jobs:
             if npm view "${name}@${version}" version >/dev/null 2>&1; then
               echo "npm: ${name}@${version} is already published -- skipping (safe no-op on a re-run of an already-released tag)."
             else
-              npm publish "${dir}"
+              npm publish "${dir}" --loglevel=verbose
               echo "npm: published ${name}@${version}"
             fi
             echo "::endgroup::"

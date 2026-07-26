@@ -276,6 +276,124 @@ kurulum iptal edilir. Ayrıntılar için bkz.
 [`docs/UPDATE_SIGNING.md`](UPDATE_SIGNING.md) ve
 [`docs/SECURITY.md`](SECURITY.md).
 
+### Kaldırma (Uninstall)
+
+Binary'i silmek uygulamayı **tam olarak** kaldırmaz — comrade aşağıda
+listelenen birkaç yerde durum bırakır. Önce API anahtarlarını temizleyin
+(güvenlik açısından en önemli adım), shell kancasını binary hâlâ PATH'teyken
+kaldırın, sonra binary'nin kendisini silin.
+
+#### Kanal başına kaldırma komutu
+
+| Kanal | Kaldırma komutu |
+|---|---|
+| `install.sh` (macOS/Linux) | `rm -f "$(command -v comrade)"` — varsayılan olarak `$HOME/.local/bin/comrade`, o yazılamıyorsa `/usr/local/bin/comrade`'dır (kurulumda `COMRADE_INSTALL_DIR` verildiyse onu kullanın) |
+| `install.ps1` (Windows) | `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Programs\cli-comrade"` (kurulumda `-InstallDir`/`$env:COMRADE_INSTALL_DIR` verildiyse onu kullanın) |
+| Homebrew | `brew uninstall comrade` — isterseniz ayrıca `brew untap firatkutay/tap` |
+| Scoop | `scoop uninstall comrade` — isterseniz ayrıca `scoop bucket rm firatkutay` |
+| winget | `winget uninstall cli.comrade` — paket henüz moderatör onayı beklediği için bu komut da yukarıdaki kurulum komutu gibi henüz çalışmaz |
+| .deb | `sudo dpkg -r comrade` |
+| .rpm | `sudo rpm -e comrade` |
+| npm | `npm uninstall -g cli-comrade` — pnpm/yarn/bun ile kurduysanız o paket yöneticisinin kendi `remove -g`/`uninstall -g` komutunu kullanın; 5 platforma özgü `@firatkutay/comrade-*` paketi `optionalDependencies` üzerinden otomatik kaldırılır |
+
+`install.ps1`'in kalıcı olarak kullanıcı `PATH`'ine eklediği kaydı da
+temizlemek isterseniz (script `$InstallDir`'i, zaten yoksa, doğrudan
+`Environment.SetEnvironmentVariable` ile ekler — bir rc dosyası değil):
+
+```powershell
+$p = [Environment]::GetEnvironmentVariable("Path", "User")
+$dir = "$env:LOCALAPPDATA\Programs\cli-comrade"
+[Environment]::SetEnvironmentVariable("Path", (($p -split ';') | Where-Object { $_ -ne $dir }) -join ';', "User")
+```
+
+#### Kalan veriler
+
+Binary'yi (ve varsa paket yöneticisi kaydını) kaldırmak yukarıdakilerin
+hiçbirini silmez — comrade'ın bıraktığı her şey ayrı ayrı temizlenmelidir.
+Aşağıdaki liste `internal/config`, `internal/context`, `internal/update`,
+`internal/audit`, `internal/secrets` ve `internal/undo`'nun kodunda
+bulunan her kalıcı durumu kapsar (`internal/undo` diske hiçbir şey
+yazmaz — bellek içi bir tersine-çevirme kural motorudur, kaldırılacak
+ayrı bir dosyası yoktur). **Önce API anahtarlarıyla başlayın** — güvenlik
+sonucu olan tek adım budur. Son madde (config + state dizinlerinin
+tamamen silinmesi) **GERİ ALINAMAZ**.
+
+1. **API anahtarları (önce bu — güvenlik önemli).** comrade hâlâ
+   çalışıyorsa kendi komutuyla kaldırın — keychain'de mi dosya
+   fallback'inde mi saklandığını bilmenize gerek yok, `comrade auth logout`
+   doğru backend'i kendisi bulur (`internal/secrets/store.go`):
+
+   ```sh
+   comrade auth logout anthropic
+   comrade auth logout openai_compat
+   comrade auth logout google
+   ```
+
+   comrade artık kurulu değilse: OS keychain'inde `cli-comrade` servis adı
+   altında kayıtlı girdileri elle arayıp silin (macOS Keychain Access,
+   Windows Credential Manager, veya Linux'ta Secret Service — `secret-tool`
+   ya da Seahorse gibi bir GUI üzerinden; `internal/secrets/store.go`'daki
+   `serviceName = "cli-comrade"`, `github.com/zalando/go-keyring` v0.2.8
+   üzerinden). Hiçbir OS keychain'i yoksa anahtarlar bunun yerine 0600
+   izinli düz bir dosyadaydı (base64 ile gizlenmiş, **şifreli değil**):
+   `~/.config/cli-comrade/credentials` (ya da
+   `$XDG_CONFIG_HOME/cli-comrade/credentials`), Windows'ta
+   `%APPDATA%\cli-comrade\credentials` — bu dosya, aşağıdaki adım 4'teki
+   config dizini silmenin bir parçası olarak da temizlenir.
+
+2. **Shell entegrasyonu — binary'yi silmeden ÖNCE yapın.**
+   `comrade init <shell> --remove` (PowerShell için
+   `comrade init powershell --remove`) kancayı ilgili rc dosyasından
+   (`~/.bashrc`, `~/.zshrc`, fish config, PowerShell `$PROFILE`) kaldırır
+   ve fish kullanıyorsanız tamamlama dosyasını da siler. Binary hâlâ
+   PATH'teyken çalıştırılmalıdır — önce binary'yi silerseniz kancayı elle
+   rc dosyasından çıkarmanız gerekir.
+
+3. **`install.sh`'ın eklediği PATH satırı.** Yukarıdaki PowerShell
+   komutunu kullanmadıysanız ve `install.sh`, `COMRADE_NO_MODIFY_PATH`
+   ayarlanmamışken rc dosyanızı düzenlediyse, şu işaretle başlayan iki
+   satırı bulup silin:
+
+   ```
+   # Added by the cli-comrade installer — https://github.com/firatkutay/cli-comrade
+   export PATH="...:$PATH"
+   ```
+
+   Hangi dosyada olduğunu bulmak için:
+
+   ```sh
+   grep -n "Added by the cli-comrade installer" ~/.bashrc ~/.zshrc ~/.config/fish/config.fish ~/.profile 2>/dev/null
+   ```
+
+4. **Config dosyası** — ayarlar ve config profilleri (profiller ayrı bir
+   dosyada değil, bu dosyanın içinde `[profiles.*]` tabloları olarak
+   tutulur): `~/.config/cli-comrade/config.toml` (ya da
+   `$XDG_CONFIG_HOME/cli-comrade/config.toml`), Windows'ta
+   `%APPDATA%\cli-comrade\config.toml`.
+
+5. **State — denetim kaydı, son komut ve güncelleme-kontrolü önbelleği**,
+   hepsi aynı dizinde: `audit.jsonl` (her çalıştırılan komutun zaman
+   damgası, mod, komut, risk sınıfı, exit code kaydı — CLAUDE.md güvenlik
+   kuralı #4), `last_command.json` (shell kancasının yakaladığı son
+   komut/exit code/hata çıktısı), `update_check.json`
+   (`comrade upgrade`'in kendi kendini güncelleme önbelleği). Dizin:
+   `~/.local/state/cli-comrade/` (ya da `$XDG_STATE_HOME/cli-comrade/`),
+   Windows'ta `%LOCALAPPDATA%\cli-comrade\`.
+
+**Hepsini tek seferde silmek** (**GERİ ALINAMAZ** — config profillerinizi,
+denetim geçmişinizi ve dosya-fallback kullanıyorsanız API anahtarlarınızı
+kalıcı olarak siler; yukarıdaki adım 1'i önce yaptığınızdan emin olun):
+
+```sh
+rm -rf ~/.config/cli-comrade ~/.local/state/cli-comrade
+```
+
+Windows:
+
+```powershell
+Remove-Item -Recurse -Force "$env:APPDATA\cli-comrade", "$env:LOCALAPPDATA\cli-comrade"
+```
+
 ---
 
 ## English
@@ -549,3 +667,125 @@ lookup) on the downloaded release before installing it — the upgrade
 aborts if the signature doesn't check out. See
 [`docs/UPDATE_SIGNING.md`](UPDATE_SIGNING.md) and
 [`docs/SECURITY.md`](SECURITY.md) for details.
+
+### Uninstalling
+
+Deleting the binary does **not** fully remove the app — comrade leaves
+state in several places listed below. Clear your API keys first (the
+one step with security consequences), remove the shell hook while the
+binary is still on PATH, then delete the binary itself.
+
+#### Per-channel uninstall command
+
+| Channel | Uninstall command |
+|---|---|
+| `install.sh` (macOS/Linux) | `rm -f "$(command -v comrade)"` — defaults to `$HOME/.local/bin/comrade`, falling back to `/usr/local/bin/comrade` (use whatever `COMRADE_INSTALL_DIR` was set to at install time) |
+| `install.ps1` (Windows) | `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Programs\cli-comrade"` (use whatever `-InstallDir`/`$env:COMRADE_INSTALL_DIR` was set to at install time) |
+| Homebrew | `brew uninstall comrade` — optionally also `brew untap firatkutay/tap` |
+| Scoop | `scoop uninstall comrade` — optionally also `scoop bucket rm firatkutay` |
+| winget | `winget uninstall cli.comrade` — the package is still awaiting moderator review, so this command doesn't work yet either, same as the install command |
+| .deb | `sudo dpkg -r comrade` |
+| .rpm | `sudo rpm -e comrade` |
+| npm | `npm uninstall -g cli-comrade` — if you installed with pnpm/yarn/bun, use that package manager's own `remove -g`/`uninstall -g` command instead; the 5 platform-specific `@firatkutay/comrade-*` packages are removed automatically via `optionalDependencies` |
+
+To also clear the entry `install.ps1` permanently added to your user
+`PATH` (the script adds `$InstallDir` directly via
+`Environment.SetEnvironmentVariable` when it's missing — not an rc file):
+
+```powershell
+$p = [Environment]::GetEnvironmentVariable("Path", "User")
+$dir = "$env:LOCALAPPDATA\Programs\cli-comrade"
+[Environment]::SetEnvironmentVariable("Path", (($p -split ';') | Where-Object { $_ -ne $dir }) -join ';', "User")
+```
+
+#### Leftover data
+
+Removing the binary (and any package-manager registration) deletes none
+of the following — everything comrade leaves behind must be cleaned up
+separately. This list covers every persistent location found in the
+code of `internal/config`, `internal/context`, `internal/update`,
+`internal/audit`, `internal/secrets`, and `internal/undo`
+(`internal/undo` writes nothing to disk at all — it's an in-memory
+reversal-rule engine with no file of its own to remove). **Start with
+the API keys** — that's the one step with security consequences. The
+last item (deleting the config + state directories entirely) is
+**IRREVERSIBLE**.
+
+1. **API keys (do this first — security matters).** If comrade is still
+   installed, remove them with its own command — you don't need to know
+   whether they're in the keychain or the file fallback,
+   `comrade auth logout` finds the right backend itself
+   (`internal/secrets/store.go`):
+
+   ```sh
+   comrade auth logout anthropic
+   comrade auth logout openai_compat
+   comrade auth logout google
+   ```
+
+   If comrade is already gone: manually find and delete the entries
+   stored under the `cli-comrade` service name in your OS keychain
+   (macOS Keychain Access, Windows Credential Manager, or Linux Secret
+   Service via `secret-tool` or a GUI like Seahorse; see
+   `internal/secrets/store.go`'s `serviceName = "cli-comrade"`, via
+   `github.com/zalando/go-keyring` v0.2.8). If no OS keychain was
+   available, the keys instead lived in a plain 0600-permission file
+   (base64-obfuscated, **not encrypted**):
+   `~/.config/cli-comrade/credentials` (or
+   `$XDG_CONFIG_HOME/cli-comrade/credentials`), on Windows
+   `%APPDATA%\cli-comrade\credentials` — this file is also cleared as
+   part of deleting the config directory in step 4 below.
+
+2. **Shell integration — do this BEFORE deleting the binary.**
+   `comrade init <shell> --remove` (`comrade init powershell --remove`
+   on Windows) removes the hook from the relevant rc file
+   (`~/.bashrc`, `~/.zshrc`, fish config, PowerShell `$PROFILE`) and
+   also deletes the fish completions file if you use fish. It must be
+   run while the binary is still on PATH — if you delete the binary
+   first, you'll need to remove the hook from the rc file by hand.
+
+3. **The PATH line `install.sh` added.** If you didn't use the
+   PowerShell command above, and `install.sh` edited your rc file
+   (i.e. `COMRADE_NO_MODIFY_PATH` wasn't set), find and delete the two
+   lines starting with this marker:
+
+   ```
+   # Added by the cli-comrade installer — https://github.com/firatkutay/cli-comrade
+   export PATH="...:$PATH"
+   ```
+
+   To find which file has it:
+
+   ```sh
+   grep -n "Added by the cli-comrade installer" ~/.bashrc ~/.zshrc ~/.config/fish/config.fish ~/.profile 2>/dev/null
+   ```
+
+4. **The config file** — settings and config profiles (profiles aren't
+   a separate file; they live as `[profiles.*]` tables inside this
+   same file): `~/.config/cli-comrade/config.toml` (or
+   `$XDG_CONFIG_HOME/cli-comrade/config.toml`), on Windows
+   `%APPDATA%\cli-comrade\config.toml`.
+
+5. **State — the audit log, last command, and update-check cache**,
+   all in the same directory: `audit.jsonl` (a record of every
+   executed command's timestamp, mode, command, risk class, and exit
+   code — CLAUDE.md security rule #4), `last_command.json` (the last
+   command/exit code/error output the shell hook captured),
+   `update_check.json` (`comrade upgrade`'s own self-update cache).
+   Directory: `~/.local/state/cli-comrade/` (or
+   `$XDG_STATE_HOME/cli-comrade/`), on Windows
+   `%LOCALAPPDATA%\cli-comrade\`.
+
+**Deleting everything in one shot** (**IRREVERSIBLE** — permanently
+deletes your config profiles, your audit history, and, if you were on
+the file fallback, your API keys; make sure you did step 1 first):
+
+```sh
+rm -rf ~/.config/cli-comrade ~/.local/state/cli-comrade
+```
+
+Windows:
+
+```powershell
+Remove-Item -Recurse -Force "$env:APPDATA\cli-comrade", "$env:LOCALAPPDATA\cli-comrade"
+```

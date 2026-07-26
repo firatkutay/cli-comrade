@@ -196,6 +196,9 @@ against a module whose `go.mod` contains `replace`/`exclude`. `git clone` +
 module — and it's exactly how every binary package above is built, so none
 of them are affected. Details: [docs/INSTALL.md](docs/INSTALL.md).
 
+**Uninstalling:** per-channel command plus leftover config/state/API-key
+cleanup: [docs/INSTALL.md](docs/INSTALL.md#uninstalling).
+
 ### Quick start
 
 ```sh
@@ -460,6 +463,9 @@ kurulumunu reddediyor. `git clone` + `make build` bunu aşar, çünkü
 checkout'un kendisi ana modül haline gelir — yukarıdaki her ikili paket de
 tam olarak bu şekilde derlendiği için hiçbiri bundan etkilenmez. Detaylar:
 [docs/INSTALL.md](docs/INSTALL.md).
+
+**Kaldırma:** kanal başına komut + kalan config/state/API-anahtarı
+temizliği: [docs/INSTALL.md](docs/INSTALL.md#kaldırma-uninstall).
 
 ### Hızlı başlangıç
 

@@ -187,12 +187,26 @@ ortam değişkenidir — her kullanımda yüksek sesle bir uyarı basar
 DOĞRULANAMAZSA (indirilen `checksums.txt` gerçekten imzasıyla eşleşmiyorsa)
 bu override GEÇERLİ DEĞİLDİR — bu her zaman koşulsuz olarak durur.
 
-**Kapsam notu:** Bu değişiklik yalnızca `scripts/install.sh`'ı kapsar.
-`scripts/install.ps1` (Windows) aynı asimetriye sahiptir ve henüz
-düzeltilmedi — PowerShell 5.1/7 arasındaki ECDSA doğrulama API
-farklılıkları ayrı bir araştırma/test döngüsü gerektiriyor; bu
-[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
-olarak takip ediliyor.
+**`scripts/install.ps1` (Windows) artık aynı korumaya sahip** (GitHub issue
+#43, bu bölümün daha önce takip ettiği boşluğu kapatır): `checksums.txt`'i
+aynı gömülü cosign genel anahtarına karşı doğrular (`internal/update/cosign.pub`
+ile birebir aynı, `internal/update/install_sh_mirror_test.go`'daki
+`TestInstallPs1EmbedsExactCosignPub` ile korunur), aynı kapalı-hata
+varsayılanı ve `COMRADE_INSTALL_ALLOW_UNSIGNED` override'ı ile. Ancak
+`install.sh`'ın `openssl dgst -sha256 -verify` yaklaşımını birebir
+kopyalayamaz: openssl Windows'ta standart değildir, ve ECDSA doğrulama
+API'si Windows PowerShell 5.1 (.NET Framework) ile PowerShell 7 (.NET Core)
+arasında farklıdır — projenin belgelenmiş destek matrisi (bkz. INSTALL.md)
+ikisini de gerektirir. Sürüme göre dallanmak yerine
+`System.Security.Cryptography.ECDsaCng` + `CngKey.Import`'u, elle
+oluşturulmuş bir CNG genel-anahtar blob'u ile kullanır: `ECDsaCng`,
+.NET Framework 4.6.1'den beri bu şekilde çalışır ve Windows'ta PowerShell 7
+altında da aynı davranır, çünkü ikisi de aynı temel Windows CNG API'sini
+sarmalar. Tam mekanizma için `scripts/install.ps1`'in kendi "checksums.txt
+cosign-signature verification" yorum bloğuna, imza testleri için
+`scripts/install_test.ps1`'e bakın (Windows CI'da hem `pwsh` hem
+`powershell` altında `internal/cli/scripts_test.go`'daki
+`TestInstallPs1ChecksumsSignatureVerification` ile çalıştırılır).
 
 ### `--yolo` flag'i
 
@@ -391,14 +405,26 @@ applied to `--yolo`). This override does NOT apply when a signature is
 actually checked and fails to verify (a real mismatch) — that always
 aborts unconditionally, with no override.
 
-**Scope note:** this change covers `scripts/install.sh` only.
-`scripts/install.ps1` (Windows) has the identical asymmetry and has not
-been fixed yet — the ECDSA-verification API differs meaningfully between
-Windows PowerShell 5.1 (.NET Framework) and PowerShell 7 (.NET Core),
-which needs its own research/test cycle on an actual Windows machine;
-this is tracked as
-[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
-rather than silently left unaddressed.
+**`scripts/install.ps1` (Windows) has the same protection** (GitHub issue
+#43, closing the gap this section originally tracked): it authenticates
+`checksums.txt` against the same embedded cosign public key (byte-identical
+to `internal/update/cosign.pub`, guarded by
+`internal/update/install_sh_mirror_test.go`'s
+`TestInstallPs1EmbedsExactCosignPub`), with the identical fail-closed
+default and `COMRADE_INSTALL_ALLOW_UNSIGNED` override. It cannot reuse
+`install.sh`'s `openssl dgst -sha256 -verify` approach, though: openssl
+isn't standard on Windows, and the ECDSA-verification API differs between
+Windows PowerShell 5.1 (.NET Framework) and PowerShell 7 (.NET Core) — the
+repo's own documented support matrix (see docs/INSTALL.md) requires both.
+Rather than branching per runtime, it uses
+`System.Security.Cryptography.ECDsaCng` + `CngKey.Import` with a hand-built
+CNG public-key blob: `ECDsaCng` has worked this way since .NET Framework
+4.6.1 and behaves identically under PowerShell 7 on Windows, since both
+wrap the same underlying Windows CNG API. See `scripts/install.ps1`'s own
+"checksums.txt cosign-signature verification" comment block for the full
+mechanism, and `scripts/install_test.ps1` for the signature tests (run via
+`internal/cli/scripts_test.go`'s `TestInstallPs1ChecksumsSignatureVerification`
+on Windows CI, against both `pwsh` and `powershell`).
 
 ### The `--yolo` flag
 

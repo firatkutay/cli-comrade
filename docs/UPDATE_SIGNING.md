@@ -78,13 +78,11 @@ Generate a new pair, update the two secrets and `internal/update/cosign.pub`,
 and ship a release. Clients that upgrade *through* the release carrying the new
 embedded public key will then require signatures from the new key.
 
-**`scripts/install.sh` embeds a copy of this same key too** (GitHub issue
-#28) — its `COSIGN_PUB` shell variable must stay byte-identical to
-`internal/update/cosign.pub`, guarded by
-`internal/update/install_sh_mirror_test.go`. When rotating the key, update
-`install.sh`'s embedded copy in the same commit as `cosign.pub`, or the
-mirror-guard test will fail. `scripts/install.ps1` (Windows) does not yet
-carry a copy of the key — see docs/SECURITY.md's "Trust model of the
-`curl | sh` bootstrap path" section and
-[GitHub issue #43](https://github.com/firatkutay/cli-comrade/issues/43)
-for that gap.
+**`scripts/install.sh` AND `scripts/install.ps1` both embed a copy of this
+same key too** (GitHub issues #28 and #43) — `install.sh`'s `COSIGN_PUB`
+shell variable and `install.ps1`'s `$CosignPub` here-string must both stay
+byte-identical to `internal/update/cosign.pub`, guarded by
+`internal/update/install_sh_mirror_test.go`'s
+`TestInstallShEmbedsExactCosignPub` and `TestInstallPs1EmbedsExactCosignPub`
+respectively. When rotating the key, update BOTH scripts' embedded copies
+in the same commit as `cosign.pub`, or the mirror-guard tests will fail.

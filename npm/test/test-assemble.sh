@@ -33,10 +33,15 @@ run_build_script() {
 }
 
 TMP_DIR="$(mktemp -d)"
-# Only invoked indirectly via the trap below; ShellCheck's own wiki
-# (SC2329) notes it "is currently bad at figuring out functions that are
-# invoked via trap" and recommends this directive.
-# shellcheck disable=SC2329
+# Only invoked indirectly via the trap below. ShellCheck's own wiki pages
+# for both codes name this exact pattern as a known false positive: SC2317
+# ("ShellCheck may incorrectly believe that code is unreachable if it's
+# invoked ... in a trap") and SC2329 ("is currently bad at figuring out
+# functions that are invoked via trap"). Which code fires depends on the
+# ShellCheck version (SC2317 on the 0.9.0 preinstalled on GitHub-hosted
+# ubuntu-latest runners at the time of writing; SC2329 is newer, added in
+# 0.11.0) -- both are disabled here so this stays clean across versions.
+# shellcheck disable=SC2317,SC2329
 cleanup() { rm -rf "${TMP_DIR}"; }
 trap cleanup EXIT
 

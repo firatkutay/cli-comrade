@@ -415,17 +415,21 @@ const (
 	MsgAuthStatusNotSet MessageID = "auth_status_not_set"
 
 	// MsgAuthOpenAICompatBaseURLPrompt is `comrade auth login
-	// openai_compat`'s interactive prompt, shown only when
-	// llm.openai_compat.base_url's effective value still equals the
-	// shipped default (config.Default()) — openai_compat is a
-	// single connector shared by every OpenAI-compatible provider
-	// (Mistral, Groq, GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter, LM
-	// Studio; see CLAUDE.md's LLM Provider Mimarisi), so logging in with a
-	// non-OpenAI key while base_url still points at api.openai.com
-	// silently pinged the wrong provider and failed with a 401 from
-	// OpenAI itself, not the user's actual provider. Pressing Enter with
-	// no input keeps the current default untouched. One arg: the current
-	// default base_url value.
+	// openai_compat`'s interactive prompt, shown on EVERY invocation —
+	// openai_compat is a single connector shared by every OpenAI-compatible
+	// provider (Mistral, Groq, GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter,
+	// LM Studio; see CLAUDE.md's LLM Provider Mimarisi), so switching
+	// vendors is a normal, expected action, not just a first-time setup.
+	// Gating this prompt on "base_url still equals the shipped default"
+	// (this project's original design) meant a user who had already
+	// customized base_url once, to ANY provider, got no further chance to
+	// change it from this command again: entering a new key silently
+	// pinged it against the stale endpoint and failed with THAT
+	// provider's own rejection, not the new one's. Pressing Enter with no
+	// input keeps the current value untouched, so the common case (same
+	// provider, new key) stays a single keystroke. One arg: the current
+	// effective base_url value (the shipped default, for a genuine OpenAI
+	// user who never customized it, or whatever the user last set it to).
 	MsgAuthOpenAICompatBaseURLPrompt MessageID = "auth_openai_compat_base_url_prompt"
 
 	// MsgAuthOpenAICompatBaseURLSaved confirms
@@ -443,7 +447,15 @@ const (
 	// e.g. "gpt-5.4-mini") against a provider that has never heard of it,
 	// failing with a confusing 404. Pressing Enter with no input leaves
 	// llm.model empty, same as MsgAuthOpenAICompatBaseURLPrompt's own
-	// empty-line behavior. No args.
+	// empty-line behavior. Deliberately names no example model at all
+	// (an earlier version hardcoded "qwen-plus" — confusing text to show
+	// a user who just pointed base_url at OpenRouter or NVIDIA, neither
+	// of which has ever heard of that name): base_url is arbitrary
+	// user-entered text, not a closed enum this package could map to a
+	// per-vendor example without an ever-growing, ever-stale lookup
+	// table, so a neutral "check your provider's docs" pointer is the
+	// only wording that stays correct for every vendor openai_compat
+	// covers today or in the future. No args.
 	MsgAuthOpenAICompatModelPrompt MessageID = "auth_openai_compat_model_prompt"
 
 	// MsgAuthModelNotFound reports `comrade auth login`'s live test
@@ -1575,7 +1587,7 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 
 	MsgAuthOpenAICompatBaseURLPrompt: "Provider address (base_url) [current: %s]\n› Enter another provider's URL (e.g. Qwen → https://dashscope-intl.aliyuncs.com/compatible-mode/v1), or press Enter to keep it: ",
 	MsgAuthOpenAICompatBaseURLSaved:  "Saved llm.openai_compat.base_url = %s\n",
-	MsgAuthOpenAICompatModelPrompt:   "Model — enter this provider's model name (e.g. qwen-plus); leave empty to set it later with 'comrade config set llm.model': ",
+	MsgAuthOpenAICompatModelPrompt:   "Model — enter this provider's model name (check its docs for the exact name); leave empty to set it later with 'comrade config set llm.model': ",
 	MsgAuthModelNotFound:             "Key saved ✓  But model '%s' doesn't exist on this provider.\n› Pick a model:  comrade config models   then:  comrade config set llm.model <model>\n",
 
 	MsgSecretsFileFallbackWarning: "cli-comrade: no system keychain found, so API keys are being saved to a local file instead (base64-encoded, not encrypted — see the file's own header for details).\n",
@@ -1912,7 +1924,7 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 
 	MsgAuthOpenAICompatBaseURLPrompt: "Sağlayıcı adresi (base_url) [şu an: %s]\n› Farklı sağlayıcı için adresini gir (ör. Qwen → https://dashscope-intl.aliyuncs.com/compatible-mode/v1), yoksa Enter: ",
 	MsgAuthOpenAICompatBaseURLSaved:  "llm.openai_compat.base_url = %s olarak kaydedildi\n",
-	MsgAuthOpenAICompatModelPrompt:   "Model — bu sağlayıcının model adını gir (ör. qwen-plus); boş bırakırsan sonra 'comrade config set llm.model' ile ayarla: ",
+	MsgAuthOpenAICompatModelPrompt:   "Model — bu sağlayıcının model adını gir (tam adı için sağlayıcının dokümantasyonuna bak); boş bırakırsan sonra 'comrade config set llm.model' ile ayarla: ",
 	MsgAuthModelNotFound:             "Anahtar kaydedildi ✓  Ama '%s' modeli bu sağlayıcıda yok.\n› Modeli seç:  comrade config models   sonra:  comrade config set llm.model <model>\n",
 
 	MsgSecretsFileFallbackWarning: "cli-comrade: sistem anahtarlığı bulunamadı, bu yüzden API anahtarları yerel bir dosyaya kaydediliyor (base64 ile kodlanmış, şifrelenmemiş — ayrıntılar için dosyanın kendi başlığına bakın).\n",

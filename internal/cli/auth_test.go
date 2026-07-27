@@ -137,9 +137,12 @@ func TestAuthLoginStoresKeyAndReportsPingSuccess(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
 	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	require.NoError(t, err)
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-test-key-123"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n")) // bare Enter: keep the already-customized base_url; the base_url prompt now always fires
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -248,17 +251,19 @@ func TestAuthLoginOpenAICompatPromptsForBaseURLWhenStillDefaultInTurkish(t *test
 	assert.Equal(t, srv.URL, got)
 }
 
-// TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet proves the
-// prompt is a no-op once llm.openai_compat.base_url's effective VALUE no
-// longer equals the shipped default (set explicitly via `comrade config
-// set` here — the same precondition every OTHER openai_compat test in
-// this file already relies on): stdin is pre-loaded with a URL that must
-// NEVER be read — if the prompt fired anyway, it would persist that
-// sentinel value over the real one and the ping would hit the wrong
-// host — so leaving base_url == srv.URL after Execute, and the ping
-// actually landing on srv (proven by the captured Authorization header),
-// is proof the flow is unchanged and no extra prompt was ever emitted.
-func TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet(t *testing.T) {
+// TestAuthLoginOpenAICompatPromptsForBaseURLEvenWhenAlreadyCustomized is
+// this task's own core regression test — the exact bug reported: once
+// llm.openai_compat.base_url had been customized ONCE (here, to a fake
+// "DashScope" server), the prompt used to never fire again on any later
+// `comrade auth login openai_compat`, silently pinging every subsequent
+// key (OpenRouter, NVIDIA, ...) against the stale endpoint. This test
+// proves the prompt now fires REGARDLESS of whether base_url is still
+// the shipped default, AND that a bare Enter keeps the current
+// (customized) value untouched — the "same provider, new key" flow stays
+// a single keystroke: no new value is persisted, no
+// MsgAuthOpenAICompatBaseURLSaved notice prints, and the ping still lands
+// on the ORIGINAL server with the NEW key.
+func TestAuthLoginOpenAICompatPromptsForBaseURLEvenWhenAlreadyCustomized(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
 
@@ -266,7 +271,7 @@ func TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		w.Header().Set("content-type", "application/json")
-		_, _ = w.Write([]byte(`{"model":"gpt-5.4-mini","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+		_, _ = w.Write([]byte(`{"model":"qwen-max","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
 	}))
 	defer srv.Close()
 
@@ -274,37 +279,157 @@ func TestAuthLoginOpenAICompatSkipsPromptWhenBaseURLAlreadySet(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", srv.URL)
 	require.NoError(t, err)
-	// llm.model is ALSO pre-set here — deliberately, and required for this
-	// test's own sentinel-input proof to still hold: promptOpenAICompatModelIfEmpty
-	// (this task's own new addition) fires whenever base_url is non-default
-	// AND llm.model is empty, regardless of whether base_url was customized
-	// just now or, as here, already set beforehand — so leaving llm.model
-	// empty would make the sentinel line below a LEGITIMATE model-prompt
-	// read instead of the never-consumed poison this test needs it to be.
-	// promptOpenAICompatModelIfEmpty's own firing behavior is covered by
-	// TestAuthLoginOpenAICompatPromptsForModelWhenBaseURLNonDefaultAndModelEmpty.
-	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "gpt-5.4-mini")
+	// llm.model is pre-set too, so this test stays isolated to the
+	// base_url prompt alone — promptOpenAICompatModelIfEmpty's own firing
+	// behavior (base_url non-default AND model empty) is covered
+	// separately by TestPromptOpenAICompatModelIfEmptyPromptsAndSavesWhenEligible.
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "qwen-max")
 	require.NoError(t, err)
 
 	var stdout strings.Builder
-	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-test-key-123"), fakeTTY(true))
-	cmd.SetIn(strings.NewReader("http://should-never-be-read.invalid\n"))
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-openrouter-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n")) // bare Enter: keep the current (already-customized) value
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
 
 	require.NoError(t, cmd.Execute())
 
-	assert.Equal(t, "Bearer sk-test-key-123", gotAuth, "the ping must land on the pre-configured srv.URL, not the unread sentinel")
+	assert.Equal(t, "Bearer sk-openrouter-test-key", gotAuth, "the ping must land on the pre-configured srv.URL — a bare Enter keeps it")
 	assert.Contains(t, stdout.String(), "Stored key for openai_compat")
-	assert.NotContains(t, stdout.String(), "Provider address (base_url)", "no base_url prompt must be emitted when base_url is already explicitly set")
+	assert.Contains(t, stdout.String(), "Provider address (base_url) [current: "+srv.URL+"]",
+		"the prompt MUST fire even though base_url was already customized away from the OpenAI default — this is the reported bug's own regression guard")
+	assert.NotContains(t, stdout.String(), "Saved llm.openai_compat.base_url", "a bare Enter must not be reported as a new save")
 	assert.NotContains(t, stdout.String(), "Model —", "no model prompt must be emitted when llm.model is already explicitly set")
 
 	loader, err := config.NewLoader("")
 	require.NoError(t, err)
 	got, err := loader.Get("llm.openai_compat.base_url")
 	require.NoError(t, err)
-	assert.Equal(t, srv.URL, got, "base_url must be unchanged — the unread sentinel must never be persisted")
+	assert.Equal(t, srv.URL, got, "a bare Enter must never overwrite the existing value")
+}
+
+// TestAuthLoginOpenAICompatSwitchingBaseURLReplacesCustomizedValue is the
+// "switch provider" half of the same bug report: the user's
+// llm.openai_compat.base_url was already customized (to a fake
+// "DashScope" server here) and llm.model was empty — the exact
+// precondition in the reported transcript — and they type a DIFFERENT
+// provider's URL (a fake "OpenRouter" server) at the now-always-firing
+// prompt. This proves the NEWLY entered base_url (not the old one) is
+// what gets persisted AND pinged, the model prompt fires for the new
+// (still-empty) model and its entered value is what gets sent, and the
+// old server never receives a request at all.
+func TestAuthLoginOpenAICompatSwitchingBaseURLReplacesCustomizedValue(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	var oldServerHit bool
+	oldSrv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		oldServerHit = true
+	}))
+	defer oldSrv.Close()
+
+	var gotModel string
+	newSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		gotModel = body.Model
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"` + body.Model + `","choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+	}))
+	defer newSrv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", oldSrv.URL)
+	require.NoError(t, err)
+	// llm.model deliberately left empty here — matching the reported
+	// transcript exactly (base_url already customized, model not yet
+	// set) — so the model prompt fires too, proving both values switch
+	// together in one login.
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-openrouter-test-key"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(newSrv.URL + "\nnvidia/llama-3.1-nemotron-70b\n"))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	require.NoError(t, cmd.Execute())
+
+	assert.False(t, oldServerHit, "the OLD (pre-switch) server must never receive a request once the user switched providers")
+	assert.Equal(t, "nvidia/llama-3.1-nemotron-70b", gotModel, "the ping must send the ENTERED model against the NEW endpoint")
+	assert.Contains(t, stdout.String(), "Provider address (base_url) [current: "+oldSrv.URL+"]", "the prompt must show the OLD value as the current one")
+	assert.Contains(t, stdout.String(), "Saved llm.openai_compat.base_url = "+newSrv.URL)
+	assert.Contains(t, stdout.String(), "Test request succeeded")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, newSrv.URL, gotBaseURL, "the NEWLY entered base_url must be persisted, replacing the old customized value")
+
+	gotStoredModel, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "nvidia/llama-3.1-nemotron-70b", gotStoredModel)
+}
+
+// TestAuthLoginRejectedKeyRollsBackToPriorCustomizedBaseURLWhenSwitchingProviders
+// is the failure-path proof this task's own spec calls out explicitly:
+// switching base_url away from an ALREADY-customized value (not the
+// fresh-install shipped default every other rollback test in this file
+// starts from) must roll back to that PRIOR customized value on a
+// rejected (401) key — never to the newly-typed one, and never to the
+// shipped OpenAI default either. Without this, a user switching from a
+// working provider to a new one with a bad key would be left with
+// config pointed at the new provider with no working credential behind
+// it — exactly the "nothing is persisted unless the ping succeeds"
+// property newAuthLoginCmd's own doc comment on priorOpenAICompatBaseURL
+// requires.
+func TestAuthLoginRejectedKeyRollsBackToPriorCustomizedBaseURLWhenSwitchingProviders(t *testing.T) {
+	withIsolatedConfigDir(t)
+	withMockKeychain(t)
+
+	oldSrv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer oldSrv.Close()
+
+	rejectingSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer rejectingSrv.Close()
+
+	_, _, err := execRootSplit(t, "dev", "config", "set", "llm.provider", "openai_compat")
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.openai_compat.base_url", oldSrv.URL)
+	require.NoError(t, err)
+	_, _, err = execRootSplit(t, "dev", "config", "set", "llm.model", "qwen-plus")
+	require.NoError(t, err)
+
+	var stdout strings.Builder
+	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader(rejectingSrv.URL + "\n")) // model prompt never fires: llm.model is already set
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"openai_compat"})
+
+	cmdErr := cmd.Execute()
+
+	require.Error(t, cmdErr, "a definitively rejected key must be a nonzero-exit command error")
+	assert.NotContains(t, stdout.String(), "Saved llm.openai_compat.base_url", "a rejected login must never print the base_url-saved notice")
+
+	loader, err := config.NewLoader("")
+	require.NoError(t, err)
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, oldSrv.URL, gotBaseURL, "base_url must roll back to the PRIOR customized value, not the newly-typed one and not the shipped default")
+
+	gotModel, err := loader.Get("llm.model")
+	require.NoError(t, err)
+	assert.Equal(t, "qwen-plus", gotModel, "llm.model must be unaffected — it was never re-prompted, since it was already set")
 }
 
 // TestAuthLoginOpenAICompatUsesEnteredModelEvenWhenDefaultProviderIsStillActive
@@ -436,6 +561,7 @@ func TestAuthLoginActivatesProviderAndPrintsNoticeOnlyWhenChanged(t *testing.T) 
 	// change, persist, and print the activation notice.
 	var stdout1 strings.Builder
 	cmd1 := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-first"), fakeTTY(true))
+	cmd1.SetIn(strings.NewReader("\n")) // bare Enter: keep the pre-set base_url; the prompt now always fires
 	cmd1.SetOut(&stdout1)
 	cmd1.SetErr(&strings.Builder{})
 	cmd1.SetArgs([]string{"openai_compat"})
@@ -453,6 +579,7 @@ func TestAuthLoginActivatesProviderAndPrintsNoticeOnlyWhenChanged(t *testing.T) 
 	// silent, no redundant write or notice.
 	var stdout2 strings.Builder
 	cmd2 := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-second"), fakeTTY(true))
+	cmd2.SetIn(strings.NewReader("\n")) // bare Enter: keep the base_url again
 	cmd2.SetOut(&stdout2)
 	cmd2.SetErr(&strings.Builder{})
 	cmd2.SetArgs([]string{"openai_compat"})
@@ -531,17 +658,18 @@ func TestPromptOpenAICompatBaseURLEmitsNoWarningForHTTPSURL(t *testing.T) {
 	assert.Equal(t, "https://dashscope.aliyuncs.com/compatible-mode/v1", got)
 }
 
-// TestPromptOpenAICompatBaseURLIfDefaultFiresForTrailingSlashDefault is
-// this follow-up's regression test for promptOpenAICompatBaseURLIfDefault
-// itself (the "still the default?" gate, as opposed to
-// promptOpenAICompatBaseURL which this wraps): a base_url that is
-// OpenAI's own shipped default PLUS a trailing slash must still be
-// recognized as "still the default" via
-// config.IsDefaultOpenAICompatBaseURL, so the prompt DOES fire — before
-// the shared-predicate fix, the bare `!=` compare here treated this
-// spelling as "already customized" and silently skipped the prompt for a
-// genuine OpenAI user.
-func TestPromptOpenAICompatBaseURLIfDefaultFiresForTrailingSlashDefault(t *testing.T) {
+// TestPromptOpenAICompatBaseURLBareEnterKeepsCurrentValueAndPersistsNothing
+// is this task's own unit-level proof of the "Enter keeps the current
+// value" contract, isolated from the full auth-login flow:
+// promptOpenAICompatBaseURL is called directly with an ALREADY-customized
+// currentValue (a fake DashScope endpoint, not the shipped OpenAI
+// default — this function fires unconditionally now, so its own gating
+// behavior no longer depends on default-ness at all), a bare Enter is
+// supplied on stdin, and the prompt must both display that exact current
+// value and leave llm.openai_compat.base_url completely untouched (still
+// whatever the fresh loader's own shipped default is, proving no write
+// ever happened).
+func TestPromptOpenAICompatBaseURLBareEnterKeepsCurrentValueAndPersistsNothing(t *testing.T) {
 	withIsolatedConfigDir(t)
 
 	loader, err := config.NewLoader("")
@@ -552,14 +680,17 @@ func TestPromptOpenAICompatBaseURLIfDefaultFiresForTrailingSlashDefault(t *testi
 	var stdout strings.Builder
 	cmd.SetOut(&stdout)
 
-	cfg := config.Default()
-	cfg.LLM.OpenAICompat.BaseURL = config.Default().LLM.OpenAICompat.BaseURL + "/"
-
-	saved, promptErr := promptOpenAICompatBaseURLIfDefault(cmd, loader, cfg, i18n.NewTranslator(i18n.LangEN), bufio.NewReader(cmd.InOrStdin()))
+	const currentValue = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+	saved, promptErr := promptOpenAICompatBaseURL(cmd, loader, i18n.NewTranslator(i18n.LangEN), currentValue, bufio.NewReader(cmd.InOrStdin()))
 	require.NoError(t, promptErr)
 
-	assert.Contains(t, stdout.String(), "Provider address (base_url)", "the prompt must fire for a trailing-slash spelling of the OpenAI default")
+	assert.Contains(t, stdout.String(), "Provider address (base_url) [current: "+currentValue+"]",
+		"the prompt must fire and show the caller-supplied current value regardless of whether it is the OpenAI default")
 	assert.Empty(t, saved, "a bare Enter must not persist a new value")
+
+	got, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, config.Default().LLM.OpenAICompat.BaseURL, got, "a bare Enter must never write through the loader")
 }
 
 // TestPromptOpenAICompatModelIfEmptyPromptsAndSavesWhenEligible is this
@@ -701,6 +832,7 @@ func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n\n")) // bare Enter x2: keep base_url, skip the (empty) model
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -727,7 +859,8 @@ func TestAuthLoginStoresKeyEvenWhenPingFails(t *testing.T) {
 // exactly like every other ping-failure class except ErrAuthRejected.
 // llm.model is pre-set via `config set` (rather than left for the
 // interactive model prompt to fill) so the effective model name is
-// deterministic and the test needs no stdin at all.
+// deterministic and the model prompt never fires — only the (now
+// always-firing) base_url prompt needs a bare-Enter line on stdin.
 func TestAuthLoginOpenAICompatReportsModelNotFoundOn404WithModelMessage(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
@@ -747,6 +880,7 @@ func TestAuthLoginOpenAICompatReportsModelNotFoundOn404WithModelMessage(t *testi
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n")) // bare Enter: keep the pre-set base_url
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -839,6 +973,7 @@ func TestAuthLoginOpenAICompatReportsPingFailedOn404WithoutModelWording(t *testi
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n")) // bare Enter: keep the pre-set base_url
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -872,6 +1007,7 @@ func TestAuthLoginOpenAICompatReportsPingFailedOnOfflineError(t *testing.T) {
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n")) // bare Enter: keep the pre-set base_url
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -912,6 +1048,7 @@ func TestAuthLoginStoresKeyAndReportsBaseURLUnsafeInsteadOfPingFailed(t *testing
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n\n")) // bare Enter x2: keep the env-sourced base_url, skip the (empty) model
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -941,6 +1078,7 @@ func TestAuthLoginStoresKeyAndReportsBaseURLUnsafeInTurkish(t *testing.T) {
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-still-stored"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n\n")) // bare Enter x2: keep the env-sourced base_url, skip the (empty) model
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -988,6 +1126,7 @@ func TestAuthLoginNeverWritesKeyWhenProviderRejectsIt(t *testing.T) {
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n\n")) // bare Enter x2: keep base_url, skip the (empty) model
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -1029,6 +1168,7 @@ func TestAuthLoginNeverWritesKeyWhenProviderRejectsItInTurkish(t *testing.T) {
 	require.NoError(t, err)
 
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n\n")) // bare Enter x2: keep base_url, skip the (empty) model
 	cmd.SetOut(&strings.Builder{})
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -1100,15 +1240,17 @@ func TestAuthLoginRejectedKeyRollsBackProviderModelAndBaseURL(t *testing.T) {
 	assert.Equal(t, config.Default().LLM.OpenAICompat.BaseURL, gotBaseURL, "a rejected login must roll llm.openai_compat.base_url back to the shipped default")
 }
 
-// TestAuthLoginRejectedKeyRestoresProviderWhenNoOpenAICompatPromptsFire is
-// the coordinator's "simple" repro, isolated from the base_url/model
+// TestAuthLoginRejectedKeyRestoresProviderWhenOpenAICompatPromptsAreNoOps
+// is the coordinator's "simple" repro, isolated from the base_url/model
 // rollback covered above: llm.openai_compat.base_url and llm.model are
-// BOTH pre-set via `config set` so NEITHER interactive prompt fires —
-// only llm.provider is ever switched pre-ping, by the activation step
-// alone. llm.provider is left at its default ("anthropic"); the key is
-// rejected (401). Proves the provider-only rollback path works even when
-// the base_url/model prompts are never involved.
-func TestAuthLoginRejectedKeyRestoresProviderWhenNoOpenAICompatPromptsFire(t *testing.T) {
+// BOTH pre-set via `config set`, so the model prompt never fires (model
+// already non-empty) and the base_url prompt — which now always fires —
+// is fed a bare Enter, a genuine no-op that changes nothing; only
+// llm.provider is ever switched pre-ping, by the activation step alone.
+// llm.provider is left at its default ("anthropic"); the key is rejected
+// (401). Proves the provider-only rollback path works even when the
+// openai_compat prompts do fire but persist nothing.
+func TestAuthLoginRejectedKeyRestoresProviderWhenOpenAICompatPromptsAreNoOps(t *testing.T) {
 	withIsolatedConfigDir(t)
 	withMockKeychain(t)
 
@@ -1125,6 +1267,7 @@ func TestAuthLoginRejectedKeyRestoresProviderWhenNoOpenAICompatPromptsFire(t *te
 
 	var stdout strings.Builder
 	cmd := newAuthLoginCmd(newTestLoaderFactory(), fakePasswordReader("sk-definitely-bad"), fakeTTY(true))
+	cmd.SetIn(strings.NewReader("\n")) // bare Enter: keep the pre-set base_url; the prompt now always fires
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&strings.Builder{})
 	cmd.SetArgs([]string{"openai_compat"})
@@ -1132,14 +1275,18 @@ func TestAuthLoginRejectedKeyRestoresProviderWhenNoOpenAICompatPromptsFire(t *te
 	cmdErr := cmd.Execute()
 
 	require.Error(t, cmdErr)
-	assert.NotContains(t, stdout.String(), "Provider address (base_url)", "precondition: no base_url prompt should fire")
-	assert.NotContains(t, stdout.String(), "Model —", "precondition: no model prompt should fire")
+	assert.Contains(t, stdout.String(), "Provider address (base_url)", "the base_url prompt now always fires, even though it turns out to be a no-op here")
+	assert.NotContains(t, stdout.String(), "Model —", "no model prompt must be emitted when llm.model is already explicitly set")
 
 	loader, err := config.NewLoader("")
 	require.NoError(t, err)
 	gotProvider, err := loader.Get("llm.provider")
 	require.NoError(t, err)
-	assert.Equal(t, "anthropic", gotProvider, "a rejected login must roll llm.provider back even when no openai_compat prompts fired")
+	assert.Equal(t, "anthropic", gotProvider, "a rejected login must roll llm.provider back even when the openai_compat prompts were no-ops")
+
+	gotBaseURL, err := loader.Get("llm.openai_compat.base_url")
+	require.NoError(t, err)
+	assert.Equal(t, srv.URL, gotBaseURL, "base_url was only KEPT via bare Enter, never changed, so there is nothing to roll back")
 }
 
 // TestAuthLoginNonInteractiveStdinReportsFriendlyError is QA MINOR-5's

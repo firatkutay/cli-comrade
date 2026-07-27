@@ -204,26 +204,34 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			// The bug this fixes: openai_compat is a single connector
 			// shared by every OpenAI-compatible provider (Mistral, Groq,
 			// GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter, LM Studio —
-			// CLAUDE.md's LLM Provider Mimarisi), but
-			// llm.openai_compat.base_url DEFAULTS to OpenAI's own API
-			// (config/schema.go). A user who never customizes base_url and
-			// logs in here with, say, a Qwen/DashScope key was silently
-			// pinging api.openai.com below with the wrong key and getting a
-			// 401 from OpenAI itself — not from their actual provider, and
-			// with no hint why. Only prompt when the loaded VALUE still
-			// equals the shipped default (see
-			// promptOpenAICompatBaseURLIfDefault's own doc comment for why
-			// that is a value comparison, not loader.Source(key)): a user
-			// who already pointed base_url somewhere else gets no new
-			// prompt at all. Runs BEFORE pingProvider so a newly-entered
-			// endpoint is both the one pinged and the one persisted, never
-			// a stale one.
+			// CLAUDE.md's LLM Provider Mimarisi), so switching vendors —
+			// not just a first-time setup — is a normal, expected action,
+			// not an edge case. Prompting for base_url only while it still
+			// equalled the shipped default (config.IsDefaultOpenAICompatBaseURL)
+			// meant a user who had already customized it ONCE — to ANY
+			// provider — got no further chance to change it from this
+			// command again: entering a brand-new key silently pinged it
+			// against the stale endpoint and failed with THAT provider's
+			// own rejection, not the new one's (the reported symptom —
+			// see this fix's own regression tests in auth_test.go for the
+			// exact transcript: an OpenRouter/NVIDIA key entered while
+			// base_url still pointed at Alibaba DashScope, rejected with a
+			// DashScope-flavored 401 for a key DashScope was never asked
+			// about). The prompt therefore now fires on EVERY
+			// `comrade auth login openai_compat`, unconditionally — what
+			// keeps the common case (same provider, new key) a single
+			// keystroke is promptOpenAICompatBaseURL's own behavior (see
+			// its doc comment): the CURRENT value is shown and IS the
+			// default, so a bare Enter leaves it untouched exactly as
+			// before. Runs BEFORE pingProvider so a newly-entered endpoint
+			// is both the one pinged and the one persisted, never a stale
+			// one.
 			// promptOpenAICompatModelIfEmpty (below) needs the effective
-			// base_url AFTER promptOpenAICompatBaseURLIfDefault has had a
-			// chance to change it — cfg itself is never mutated by that
-			// call (it only writes through loader.SetAndSave), so cfg is
-			// reloaded from disk in between; the second reload afterward
-			// picks up a model the user may have just entered, so the
+			// base_url AFTER promptOpenAICompatBaseURL has had a chance to
+			// change it — cfg itself is never mutated by that call (it
+			// only writes through loader.SetAndSave), so cfg is reloaded
+			// from disk in between; the second reload afterward picks up
+			// a model the user may have just entered, so the
 			// 404-model-not-found branch below (which names the model
 			// that was actually pinged) sees it too.
 			//
@@ -235,19 +243,18 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 			// cmd.InOrStdin() would see nothing left to read — silently
 			// losing a model line a piped/scripted caller supplied right
 			// after the base_url line in one shot.
-			// savedBaseURL is "" when promptOpenAICompatBaseURLIfDefault
-			// never persisted anything (prompt skipped entirely, or the
-			// user pressed Enter to keep the default) and the ENTERED
-			// value otherwise — used below, after the ping, to decide
-			// whether to print MsgAuthOpenAICompatBaseURLSaved. Deferred
-			// for the exact same reason providerChanged's print is
-			// deferred above: promptOpenAICompatBaseURL itself no longer
-			// prints it, so a hard-rejected login (which rolls this value
-			// back) never has a stale "saved" line to begin with.
+			// savedBaseURL is "" when the user pressed Enter to keep the
+			// current value, and the ENTERED value otherwise — used
+			// below, after the ping, to decide whether to print
+			// MsgAuthOpenAICompatBaseURLSaved. Deferred for the exact same
+			// reason providerChanged's print is deferred above:
+			// promptOpenAICompatBaseURL itself no longer prints it, so a
+			// hard-rejected login (which rolls this value back) never has
+			// a stale "saved" line to begin with.
 			var savedBaseURL string
 			if provider == "openai_compat" {
 				reader := bufio.NewReader(cmd.InOrStdin())
-				savedBaseURL, err = promptOpenAICompatBaseURLIfDefault(cmd, loader, cfg, tr, reader)
+				savedBaseURL, err = promptOpenAICompatBaseURL(cmd, loader, tr, cfg.LLM.OpenAICompat.BaseURL, reader)
 				if err != nil {
 					return err
 				}
@@ -409,67 +416,39 @@ func newAuthLoginCmd(newLoader loaderFactory, readPassword passwordReader, isTer
 	}
 }
 
-// promptOpenAICompatBaseURLIfDefault decides whether to ask for the real
-// endpoint by comparing the loaded llm.openai_compat.base_url against
-// config.Default()'s own value for that same key — via
-// config.IsDefaultOpenAICompatBaseURL (so a trailing-slash or
-// differently-cased scheme/host spelling of the same default still
-// counts as "still the default" — see that function's own doc comment),
-// NOT loader.Source(key), despite that looking like the more direct "did
-// the user ever set this" signal. It isn't one here: Loader.ensureFileExists
-// writes defaultConfigTOML VERBATIM to disk the first time any command
-// ever runs (before this function is ever reached — loadConfigWithNotice
-// itself already triggered it earlier in this same RunE), and that
-// template spells out base_url's value explicitly. From that point on,
-// for the entire lifetime of the install, Loader.Source reports
-// SourceFile for this key — the value is genuinely "in the file" — even
-// though a real user never once touched it. A Source()-based check here
-// would silently never fire for anyone; comparing the effective VALUE
-// against the known default is the check that actually distinguishes
-// "still pointed at OpenAI" from "customized," matching what this
-// function needs regardless of how that value ended up in the resolved
-// config. The trade-off is a user who explicitly re-set base_url back to
-// literally OpenAI's own URL gets one harmless extra prompt (Enter keeps
-// it) — vastly preferable to the check never triggering for anyone.
-//
-// Returns the value it persisted ("" if the prompt never fired, or fired
-// but the user pressed Enter to keep the default) — the caller prints
-// MsgAuthOpenAICompatBaseURLSaved itself, deferred until after the ping,
-// rather than this function printing it immediately (see newAuthLoginCmd's
-// own doc comment on why that print is deferred: a hard-rejected login
-// rolls this value back, and must never have printed a "saved" line for a
-// value that no longer sticks).
-func promptOpenAICompatBaseURLIfDefault(cmd *cobra.Command, loader *config.Loader, cfg config.Config, tr i18n.Translator, reader *bufio.Reader) (string, error) {
-	if !config.IsDefaultOpenAICompatBaseURL(cfg.LLM.OpenAICompat.BaseURL) {
-		return "", nil
-	}
-	return promptOpenAICompatBaseURL(cmd, loader, tr, cfg.LLM.OpenAICompat.BaseURL, reader)
-}
-
 // promptOpenAICompatBaseURL reads a single line from reader (a
 // bufio.Reader the caller built over cmd.InOrStdin() — see
 // newAuthLoginCmd's own doc comment on why this and
 // promptOpenAICompatModelIfEmpty must share ONE reader rather than each
-// building its own), naming currentDefault (the still-in-effect shipped
-// default) in the prompt itself (MsgAuthOpenAICompatBaseURLPrompt). An
-// empty line (a bare Enter) leaves llm.openai_compat.base_url untouched —
-// genuine OpenAI users must not be forced to retype their endpoint — and
-// returns ("", nil) without writing anything. A non-empty line is
-// validated with config.CheckBaseURL, the SAME reject-class check
-// internal/llm/client.go's buildProvider applies at client-construction
-// time: a rejected value is reported via the existing
-// MsgLLMBaseURLRejected message (reused rather than adding a
+// building its own), naming currentValue — whatever
+// llm.openai_compat.base_url currently resolves to, shipped default or
+// a value the user already customized to some other vendor — in the
+// prompt itself (MsgAuthOpenAICompatBaseURLPrompt). This function is
+// called UNCONDITIONALLY on every `comrade auth login openai_compat`
+// (see newAuthLoginCmd's own doc comment for why: gating it on "is
+// base_url still the shipped default" — this project's original
+// design — meant a user who had already customized base_url once, to
+// ANY provider, got no further chance to change it from this command
+// again). An empty line (a bare Enter) leaves llm.openai_compat.base_url
+// untouched — the common case, same provider + a new key, stays a
+// single keystroke, and a genuine OpenAI user is never forced to retype
+// their endpoint either — and returns ("", nil) without writing
+// anything. A non-empty line is validated with config.CheckBaseURL, the
+// SAME reject-class check internal/llm/client.go's buildProvider applies
+// at client-construction time: a rejected value is reported via the
+// existing MsgLLMBaseURLRejected message (reused rather than adding a
 // near-duplicate) and re-prompted, never silently kept or saved. An
 // accepted value is persisted via loader.SetAndSave before this returns —
 // so the caller's subsequent pingProvider call (which re-Loads config
 // from disk) sees it too — and returned as-is; this function does NOT
 // print MsgAuthOpenAICompatBaseURLSaved itself (see the caller's own doc
 // comment on why that print is the CALLER's job, deferred until after the
-// ping).
-func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18n.Translator, currentDefault string, reader *bufio.Reader) (string, error) {
+// ping, and specifically why a value the user only KEPT — via bare Enter
+// — must never be reported as newly "saved").
+func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18n.Translator, currentValue string, reader *bufio.Reader) (string, error) {
 	const key = "llm.openai_compat.base_url"
 	for {
-		if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthOpenAICompatBaseURLPrompt, currentDefault)); err != nil {
+		if _, err := fmt.Fprint(cmd.OutOrStdout(), tr.T(i18n.MsgAuthOpenAICompatBaseURLPrompt, currentValue)); err != nil {
 			return "", err
 		}
 		line, err := reader.ReadString('\n')
@@ -523,19 +502,20 @@ func promptOpenAICompatBaseURL(cmd *cobra.Command, loader *config.Loader, tr i18
 // llm.DefaultOpenAICompatModel() — an OpenAI-specific model name — against
 // a provider that has never heard of it, failing with a confusing 404 far
 // downstream of this command. Called by newAuthLoginCmd right after
-// promptOpenAICompatBaseURLIfDefault, against cfg RELOADED from disk after
-// that call (never the cfg loaded before it), so a base_url the user just
-// typed at that prompt is what decides whether this one fires too — the
-// prompt's own local cfg parameter is never mutated by
-// promptOpenAICompatBaseURLIfDefault (it only writes through
-// loader.SetAndSave), so checking the original cfg here would miss a
-// provider switch that just happened in the very same invocation.
+// promptOpenAICompatBaseURL, against cfg RELOADED from disk after that
+// call (never the cfg loaded before it), so a base_url the user just
+// typed at that prompt — or a pre-existing one they kept via bare
+// Enter — is what decides whether this one fires too — the prompt's own
+// local cfg parameter is never mutated by promptOpenAICompatBaseURL (it
+// only writes through loader.SetAndSave), so checking the original cfg
+// here would miss a provider switch that just happened in the very same
+// invocation.
 //
-// reader is the SAME bufio.Reader promptOpenAICompatBaseURLIfDefault (via
-// promptOpenAICompatBaseURL) was given — never a second one independently
-// wrapping cmd.InOrStdin(), which would silently lose a model line a
-// piped/scripted caller supplied right after the base_url line (see
-// newAuthLoginCmd's own doc comment on the shared-reader rationale). An
+// reader is the SAME bufio.Reader promptOpenAICompatBaseURL was given —
+// never a second one independently wrapping cmd.InOrStdin(), which would
+// silently lose a model line a piped/scripted caller supplied right
+// after the base_url line (see newAuthLoginCmd's own doc comment on the
+// shared-reader rationale). An
 // empty line (a bare Enter) leaves llm.model untouched — the user can
 // always set it later with `comrade config set llm.model` — matching
 // promptOpenAICompatBaseURL's own empty-line behavior. A non-empty line is

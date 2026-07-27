@@ -103,29 +103,38 @@ comrade auth login openai_compat
 Akış şöyle işler:
 
 1. API anahtarınızı sorar.
-2. Hâlâ varsayılan OpenAI adresindeyseniz, sağlayıcının adresini
-   (`base_url`) sorar — sadece Enter'a basarsanız OpenAI'de kalırsınız.
+2. **Her zaman** sağlayıcının adresini (`base_url`) sorar — yalnızca
+   ilk kurulumda değil: `openai_compat` zaten birden çok sağlayıcıyı
+   paylaşan tek connector olduğu için sağlayıcı değiştirmek her zaman
+   geçerlidir. Mevcut değer köşeli parantez içinde gösterilir; sadece
+   Enter'a basarsanız o değerde kalırsınız (aynı sağlayıcıya yeni bir
+   anahtarla girmek tek bir Enter'dır).
 3. Girdiğiniz adres OpenAI'den farklıysa **ve** henüz bir model
-   seçilmediyse, kullanmak istediğiniz modelin adını sorar (ör.
-   `qwen-plus`) — boş bırakabilirsiniz, sonra
-   `comrade config set llm.model <model>` ile ayarlarsınız.
+   seçilmediyse, kullanmak istediğiniz modelin adını sorar (tam adı
+   için sağlayıcının dokümantasyonuna bakabilirsiniz) — boş
+   bırakabilirsiniz, sonra `comrade config set llm.model <model>` ile
+   ayarlarsınız.
 4. Anahtarı test eder: anahtar reddedilirse (401/403) hiçbir şey
-   kaydedilmez; "model bulunamadı" (404) hatası alırsa anahtar yine de
-   kaydedilir ve size `comrade config models` çalıştırıp doğru modeli
-   seçmenizi söyler; başka bir hata olursa yine kaydeder ama
-   doğrulayamadığını belirtir.
+   kaydedilmez — `base_url` ve model dahil, bu girişte değiştirdiğiniz
+   her şey eski haline döner; "model bulunamadı" (404) hatası alırsa
+   anahtar yine de kaydedilir ve size `comrade config models`
+   çalıştırıp doğru modeli seçmenizi söyler; başka bir hata olursa yine
+   kaydeder ama doğrulayamadığını belirtir.
 
 Girişten sonra, giriş yaptığınız sağlayıcı **etkin sağlayıcınız** olur
 (`comrade "..."` artık onu kullanır ve girdiğiniz model ona uygulanır).
 
-Örnek — Qwen/DashScope:
+Örnek — Qwen/DashScope'tan OpenRouter'a geçiş:
 
 ```sh
 comrade auth login openai_compat
 # API key: <anahtarınız>
-# Provider address (base_url) [Enter = OpenAI]: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-# Model [Enter = skip]: qwen-plus
+# Provider address (base_url) [current: https://dashscope-intl.aliyuncs.com/compatible-mode/v1]: https://openrouter.ai/api/v1
+# Model — enter this provider's model name (check its docs for the exact name); leave empty to set it later with 'comrade config set llm.model': inclusionai/ling-3.0-flash:free
 ```
+
+Sadece anahtar değiştiriyorsanız (sağlayıcı aynı kalıyorsa), 2. adımda
+Enter'a basmanız yeterlidir.
 
 **B) Yerel / çevrimdışı (Ollama) — anahtar gerekmez**
 
@@ -419,28 +428,38 @@ comrade auth login openai_compat
 The flow:
 
 1. Asks for your API key.
-2. If you're still pointed at the shipped OpenAI default, asks for the
-   provider's address (`base_url`) — press Enter to stay on OpenAI.
+2. **Always** asks for the provider's address (`base_url`) — not just on
+   first setup: `openai_compat` is a single connector shared by every
+   OpenAI-compatible provider, so switching providers is always a valid
+   thing to do. The current value is shown in brackets; press Enter to
+   keep it (logging into the SAME provider with a new key is a single
+   Enter).
 3. If the address you entered is non-OpenAI **and** no model is set yet,
-   asks for the model name you want (e.g. `qwen-plus`) — you can leave it
-   blank and set it later with `comrade config set llm.model <model>`.
-4. Tests the key: a rejected key (401/403) is never saved; a "model not
-   found" (404) still saves the key and tells you to run
-   `comrade config models` to pick the right one; any other failure
-   saves the key too, just flagging that it couldn't verify.
+   asks for the model name you want (check the provider's own docs for
+   the exact name) — you can leave it blank and set it later with
+   `comrade config set llm.model <model>`.
+4. Tests the key: a rejected key (401/403) is never saved — and neither
+   is anything else you changed in this login, `base_url`/model
+   included, all of it rolls back; a "model not found" (404) still saves
+   the key and tells you to run `comrade config models` to pick the
+   right one; any other failure saves the key too, just flagging that it
+   couldn't verify.
 
 After login, the provider you logged into becomes your **active
 provider** (`comrade "..."` now uses it, and the model you entered
 applies to it).
 
-Example — Qwen/DashScope:
+Example — switching from Qwen/DashScope to OpenRouter:
 
 ```sh
 comrade auth login openai_compat
 # API key: <your key>
-# Provider address (base_url) [Enter = OpenAI]: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-# Model [Enter = skip]: qwen-plus
+# Provider address (base_url) [current: https://dashscope-intl.aliyuncs.com/compatible-mode/v1]: https://openrouter.ai/api/v1
+# Model — enter this provider's model name (check its docs for the exact name); leave empty to set it later with 'comrade config set llm.model': inclusionai/ling-3.0-flash:free
 ```
+
+If you're only rotating the key (same provider), just press Enter at
+step 2.
 
 **B) Local / offline (Ollama) — no key needed**
 

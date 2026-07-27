@@ -177,14 +177,23 @@ sağlayıcı** yapar — `llm.provider`'ı kaydeder ve (yalnızca gerçekten
 değiştiyse) `Etkin sağlayıcı <sağlayıcı> olarak ayarlandı.` notunu
 basar; zaten etkin olan bir sağlayıcıya tekrar giriş yapmak sessiz
 kalır. `comrade auth login openai_compat`, API anahtarını okuduktan
-sonra: hâlâ gönderilmiş OpenAI varsayılanındaysanız `base_url`'i sorar
-(boş geçmek OpenAI'de kalır); ardından `base_url` artık OpenAI-DIŞI
-**ve** `llm.model` boşsa, model adını da sorar (ör. `qwen-plus` — boş
+sonra **her zaman** `base_url`'i sorar — yalnızca ilk kurulumda değil,
+`openai_compat` zaten Mistral/Groq/GLM/Qwen/Kimi/OpenRouter/LM Studio
+gibi birden çok sağlayıcıyı paylaşan tek connector olduğu için,
+sağlayıcı değiştirmek her zaman geçerli bir işlemdir: mevcut değer
+köşeli parantez içinde gösterilir ve varsayılan olarak seçilidir, boş
+geçmek (Enter) o değeri korur — yani "aynı sağlayıcı, yeni anahtar"
+senaryosu tek bir Enter'dır. Yeni bir adres girerseniz, `base_url`
+artık OpenAI-DIŞI **ve** `llm.model` boşsa, model adını da sorar (tam
+adı için sağlayıcının dokümantasyonuna bakabilirsiniz — boş
 geçebilirsiniz, sonra `comrade config set llm.model` ile ayarlarsınız)
-— girilen model, artık etkin olan bu sağlayıcıya uygulanır. Anahtarı
-test eden ping'in sonucu "model bulunamadı" (gövdesinde "model" geçen
-bir 404) derse, anahtar yine de kaydedilir ve size
-`comrade config models` çalıştırıp ardından
+— girilen model, artık etkin olan bu sağlayıcıya uygulanır. Anahtar
+sağlayıcı tarafından kesin olarak reddedilirse (401/403), `base_url` ve
+`llm.model` dahil hiçbir değişiklik kalıcı olmaz — hem bu ping'ten
+önceki değerlere hem de (sağlayıcı zaten değişmediyse) etkin
+sağlayıcıya geri döner. Anahtarı test eden ping'in sonucu "model
+bulunamadı" (gövdesinde "model" geçen bir 404) derse, anahtar yine de
+kaydedilir ve size `comrade config models` çalıştırıp ardından
 `comrade config set llm.model <model>` demenizi söyler — yani
 leftover-default bir 404, belirsiz bir "ağ sorunu" değil, doğrudan bir
 çözüm yönergesi verir.
@@ -440,15 +449,23 @@ comrade config set llm.model qwen-plus     # or qwen-turbo / qwen-max
 **active** one — it persists `llm.provider` and (only when it actually
 changed) prints `Active provider set to <provider>.`; logging back
 into an already-active provider stays silent.
-`comrade auth login openai_compat`, after reading the API key: if
-`base_url` is still pointed at the shipped OpenAI default, it prompts
-for the provider's address (bare Enter keeps OpenAI); then, if
-`base_url` is now
-non-OpenAI **and** `llm.model` is empty, it also prompts for the model
-name (e.g. `qwen-plus` — you can leave it blank and set it later with
-`comrade config set llm.model`) — the model you enter applies to this
-now-active provider. If the verification ping that follows comes back
-as "model not found" (a 404 whose body mentions "model"), the key is
+`comrade auth login openai_compat`, after reading the API key,
+**always** prompts for `base_url` — not just on first setup: since
+`openai_compat` is a single connector shared by Mistral, Groq,
+GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter, LM Studio and more,
+switching providers is always a valid thing to do. The current value
+is shown in brackets and is the default, so a bare Enter keeps it —
+the "same provider, new key" case stays a single keystroke. If you
+type a new address, and `base_url` is now non-OpenAI **and**
+`llm.model` is empty, it also prompts for the model name (check the
+provider's own docs for the exact name — you can leave it blank and
+set it later with `comrade config set llm.model`) — the model you
+enter applies to this now-active provider. If the provider
+definitively rejects the key (401/403), NOTHING is persisted —
+`base_url` and `llm.model` roll back to what they were before this
+login, and so does the active provider if it hadn't already been
+active. If the verification ping that follows instead comes back as
+"model not found" (a 404 whose body mentions "model"), the key is
 still saved and you're told to run `comrade config models` and then
 `comrade config set llm.model <model>` — so a leftover-default 404
 gives you a directive fix instead of a vague "network issue" message.

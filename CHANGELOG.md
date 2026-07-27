@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-07-27
+
+### Fixed
+
+- **`comrade auth login openai_compat` now always prompts for `base_url`, enabling transparent provider switching on every login** (#55). Before, the prompt fired only when `base_url` still equalled the shipped default (`https://api.openai.com/v1`). Once a user customized it once (e.g. to Alibaba DashScope), the prompt never fired again — silently validating every later key against the stale endpoint and rejecting it with *that* provider's error instead of the new one's. This mattered because `openai_compat` is the project's single connector for all OpenAI-compatible providers (Mistral, Groq, GLM/Zhipu, Qwen, Kimi/Moonshot, OpenRouter, NVIDIA, LM Studio…), so switching vendors is a normal action, not an edge case. The prompt now fires unconditionally, showing the current value in brackets as the default — a bare Enter keeps it (same provider, new key stays one keystroke), typing a new URL switches provider and persists it. Ping-before-persist and prior-value rollback on a rejected (401/403) key are unchanged and now cover switching between two already-customized providers, not just the fresh-install case. The model-name prompt's hardcoded `qwen-plus` example (EN+TR) was replaced with a neutral "check your provider's docs" pointer, since `base_url` is now free-form and a per-vendor example would need permanent upkeep.
+
 ## [0.4.8] - 2026-07-27
 
 ### Fixed
@@ -939,10 +945,11 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
+[0.4.9]: https://github.com/firatkutay/cli-comrade/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/firatkutay/cli-comrade/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/firatkutay/cli-comrade/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/firatkutay/cli-comrade/compare/v0.4.5...v0.4.6
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.8...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.9...HEAD
 [0.4.5]: https://github.com/firatkutay/cli-comrade/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/firatkutay/cli-comrade/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/firatkutay/cli-comrade/compare/v0.4.2...v0.4.3

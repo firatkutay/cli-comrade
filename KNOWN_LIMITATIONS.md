@@ -1,10 +1,10 @@
 # Bilinen Kısıtlar / Known Limitations
 
-Bu dosya, mevcut sürüm hattının (şu anda `v0.3.0`) dürüst "bilinen
+Bu dosya, mevcut sürüm hattının (şu anda `v0.4.10`) dürüst "bilinen
 sorunlar" listesidir ve her sürümle güncel tutulur. Hiçbir madde
 gizlenmedi ya da hafifletilmedi.
 
-This file is the current release line's (currently `v0.3.0`) honest
+This file is the current release line's (currently `v0.4.10`) honest
 known-issues list, kept up to date with every release. Nothing here is
 hidden or downplayed.
 
@@ -65,32 +65,78 @@ hidden or downplayed.
 
 ### Yayın (release) kanalları — üçüncü taraf incelemesi bekleyenler
 
-v0.1.0'dan mevcut v0.3.0'a kadar her sürüm gerçek GitHub Releases olarak yayınlandı;
-Homebrew (`firatkutay/tap`) ve Scoop (`firatkutay/scoop-bucket`) kanalları
-v0.1.2/v0.1.3'ten bu yana canlı ve her release'de otomatik güncelleniyor.
-Kalan açık maddeler:
+v0.1.0'dan mevcut v0.4.10'a kadar her sürüm gerçek GitHub Releases olarak
+yayınlandı; Homebrew (`firatkutay/tap`) ve Scoop
+(`firatkutay/scoop-bucket`) kanalları v0.1.2/v0.1.3'ten bu yana canlı ve
+her release'de otomatik güncelleniyor. **npm de v0.4.6'dan (paketler
+v0.4.8'den itibaren fiilen yayında) bu yana canlı bir kanaldır**: npm
+Trusted Publishing (OIDC, kalıcı bir `NPM_TOKEN`/`NODE_AUTH_TOKEN`
+olmadan) ile `cli-comrade` dispatcher paketi ve beş platforma özgü
+`@firatkutay/comrade-{linux-x64,linux-arm64,darwin-x64,darwin-arm64,win32-x64}`
+paketi, hepsi `v0.4.10` sürümünde yayınlanıyor (bkz.
+`npm/`, `scripts/build-npm-packages.sh`, `.github/workflows/release.yml`,
+`docs/INSTALL.md`'nin "npm" bölümü). **Tasarım gereği bir sınır**: npm
+(veya pnpm/yarn/bun) ile kurulmuş bir `comrade`, `comrade upgrade` ile
+kendi kendini güncellemeyi reddeder — paket yöneticisinin kendi
+bookkeeping'i ile senkronizasyonu bozmamak için kasıtlı
+(`COMRADE_MANAGED_BY=npm` sinyali / `node_modules` yol tespiti; bkz.
+`internal/cli` içindeki upgrade reddi ve `docs/INSTALL.md`). `--check`
+bu redden asla etkilenmez. Kalan açık maddeler:
 
 - **winget**: `microsoft/winget-pkgs`'e `cli.comrade` kimliğiyle
-  gönderildi, moderatör incelemesi bekliyor (bkz. `docs/INSTALL.md`).
-- **Snap**: paket hazır (`snap/snapcraft.yaml` + classic confinement)
-  ama Snap Store kaydı ve classic onayı bekliyor (bkz. `docs/INSTALL.md`).
+  gönderilen PR `#408127` (0.4.9 sürümü için) **AÇIK** durumda;
+  `Azure-Pipeline-Passed`, `Validation-Completed`, `New-Package`
+  etiketlerini taşıyor — önceki `Needs-CLA` engeli kalktı ve dört
+  eski/aşılmış PR kapatıldı. Ancak henüz hiçbir şey merge edilmedi:
+  `microsoft/winget-pkgs` deposunda
+  `manifests/c/cli/comrade` yolu hâlâ mevcut değil (404). Moderatör
+  incelemesi sürüyor (bkz. `docs/INSTALL.md`).
+- **Snap**: paket hazır (`snap/snapcraft.yaml` + classic confinement,
+  `.github/workflows/snap.yml`) ama Snap Store kaydı ve classic onayı
+  bekliyor (bkz. `docs/INSTALL.md`).
 
-### Güvenlik sertleştirmesi — bilinen kalan boşluklar (v0.3.0)
+### Güvenlik sertleştirmesi — bilinen kalan boşluklar (v0.4.10'a kadar)
 
 v0.3.0, kendi-kendini-güncelleme imza doğrulamasını, `base_url`
 doğrulamasını, redaction kapsamını ve yıkıcı-komut sınıflandırıcısını
-sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
+sertleştirdi; v0.4.0 sınıflandırıcıya `mvdan.cc/sh` tabanlı bir
+niyet/etki katmanı ekledi; v0.4.2–v0.4.5 bu katmanı kontrol yapılarına
+(if/while/for/case) ve döngü sabit-noktasına genişletti (issue #33);
+v0.4.9–v0.4.10 Slack webhook/token redaction kapsamını genişletti
+(bkz. `docs/SECURITY.md` ve `CHANGELOG.md`). Dürüstçe kalan boşluklar:
 
-- **Yıkıcı komut sınıflandırıcısı imza tabanlıdır**, niyet tabanlı değil —
-  bu yüzden tanınmayan bir getir aracı (httpie'nin `http` komutu, BSD
-  `fetch`) `internal/safety/escalation.go`'daki fetch kalıplarından
-  kasıtlı olarak hariç tutulur (her ikisi de sıradan kelimelerle/URL
-  şema alt dizgileriyle çakışıp yanlış pozitif üretir), ve kabuk
-  değişkeni dolaylaması (`R=rm; $R -rf /`) hiç yakalanmaz —
-  `internal/safety/tokenize.go`'nun `normalizeCommand`'ı kasıtlı olarak
-  değişken genişletmesi yapmaz. Uzun vadeli düzeltme imza listesini
-  genişletmek değil, **niyet tabanlı** (komutun ne yapacağını
-  yorumlayan) bir sınıflandırmaya geçmektir.
+- ~~**Yıkıcı komut sınıflandırıcısı imza tabanlıdır, niyet tabanlı
+  değildir — ... kabuk değişkeni dolaylaması hiç yakalanmaz**~~ —
+  **DÜZELTİLDİ (v0.4.0), ama yalnızca bash/POSIX hedeflerinde**:
+  `internal/safety/effect_bash.go`'nun `analyzeBashEffect`'i komutu
+  `mvdan.cc/sh/v3` ile ayrıştırıp basit literal atamalar üzerinden
+  değişkenleri çözüyor ve AYNI yerleşik denylist/escalation
+  eşleştiricilerini ÇÖZÜLMÜŞ metne karşı yeniden çalıştırıyor — yani
+  `R=rm; $R -rf /` artık hiç yakalanmıyor DEĞİL
+  (`effect_differential_test.go`/`effect_fuzz_test.go`'daki tam bu
+  vaka ile doğrulanmıştır). Ayrı bir yapısal kontrol
+  (`checkFetcherPipeline`) tanınmayan bir getir aracının (httpie'nin
+  `http` komutu, BSD `fetch`) KOMUT-SÖZCÜĞÜ konumunda bir yorumlayıcıya
+  (`sh`/`bash`/`zsh`/`python*`/`pwsh`) pipe edilmesini de yakalıyor —
+  imza katmanının kendi regex'i
+  (`internal/safety/escalation.go`'daki `fetchPipeInterpreterPattern`)
+  bu iki kelimeyi hâlâ kasıtlı olarak dışarıda bırakıyor (sıradan
+  kelimelerle/URL şema alt dizgileriyle çakışıp yanlış pozitif
+  üretecekleri için), ama AST katmanı komut-sözcüğü konumunu regex'in
+  hiç göremediği bir bilgiyle ayırt edip aynı boşluğu (yalnızca bu
+  pipe-edilmiş biçim için) kapatıyor.
+  **Gerçek kalan boşluk**: bu AST etki katmanı yalnızca bash/POSIX
+  hedeflerinde çalışır (`internal/safety/effect.go`'nun
+  `dialectForGOOS`'u, Windows dışındaki her GOOS için `dialectBash`
+  döndürür) — Windows/PowerShell tarafında (`dialectNone`) HİÇBİR AST
+  analizi çalışmaz, bu yüzden PowerShell'de bir değişken dolaylaması
+  (`$R = 'rm'; & $R -rf /`) imza katmanının `normalizeCommand`'ı
+  (`internal/safety/tokenize.go`, kasıtlı olarak değişken genişletmesi
+  yapmaz) tarafından hâlâ hiç yakalanmıyor. Kısacası sınıflandırıcı
+  artık tam anlamıyla "salt imza tabanlı" değil — bash hedefleri için
+  kısıtlı ama gerçek bir çözümleme katmanı kazandı — ama tam
+  "niyet tabanlı" da değil, ve bu boşluk yalnızca Windows/PowerShell
+  komutlarında sürüyor.
 - **`base_url` alternatif kodlama (decimal/hex IP) reddetmez, yalnızca
   uyarır** — `internal/config/validate.go`'nun metadata/link-local
   kontrolü yalnızca `net.ParseIP`'nin ayrıştırdığı gerçek IP
@@ -106,6 +152,17 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
   (yani zaten hatalı biçimlendirilmiş) bir DSN parolası, `@`'ye kadar
   eşleşmediği için maskelenmeden kalabilir. Standart biçimli DSN'ler
   etkilenmez.
+- **Discord ve Microsoft Teams gelen-webhook URL'leri maskelenmiyor
+  (issue #58)** — Slack'in gelen-webhook'ları
+  (`hooks.slack.com/...`, workflows/triggers dahil, v0.4.10'da
+  sertleştirildi) `internal/redact/redact.go`'nun `apiKeyPatterns`
+  listesinde maskelenirken, aynı derecede bearer-eşdeğeri bir sırrı
+  URL yoluna gömen Discord
+  (`https://discord.com/api/webhooks/<id>/<token>`) ve Microsoft Teams
+  (`https://<tenant>.webhook.office.com/webhookb2/.../IncomingWebhook/...`)
+  biçimleri için henüz karşılık gelen bir kalıp
+  yok. Gerçek `redact.New(false,false).Apply()` boru hattı üzerinden
+  her ikisinin de değişmeden sızdığı doğrulandı. Takip: issue #58.
 - **STRICT konumdaki `~kullanıcı` çözümlemesi artık `destructive` değil
   `elevated` seviyesine çıkıyor** — `internal/safety/effect_bash.go`'nun
   `wordHasLeadingUnescapedTilde` kapısı, gerçek `os/user.Lookup` host
@@ -294,34 +351,80 @@ sertleştirdi (bkz. `docs/SECURITY.md`). Dürüstçe kalan boşluklar:
 
 ### Release channels — awaiting third-party review
 
-Every release from v0.1.0 through the current v0.3.0 has shipped as real GitHub
-Releases. The Homebrew (`firatkutay/tap`) and Scoop
+Every release from v0.1.0 through the current v0.4.10 has shipped as
+real GitHub Releases. The Homebrew (`firatkutay/tap`) and Scoop
 (`firatkutay/scoop-bucket`) channels have been live and auto-updated on
-every release since v0.1.2/v0.1.3. Remaining open items:
+every release since v0.1.2/v0.1.3. **npm has also been a live channel
+since v0.4.6 (packages actually publishing successfully from v0.4.8
+on)**: via npm Trusted Publishing (OIDC, no persistent
+`NPM_TOKEN`/`NODE_AUTH_TOKEN` ever), the `cli-comrade` dispatcher
+package and five platform-specific
+`@firatkutay/comrade-{linux-x64,linux-arm64,darwin-x64,darwin-arm64,win32-x64}`
+packages are all published at `v0.4.10` (see `npm/`,
+`scripts/build-npm-packages.sh`, `.github/workflows/release.yml`, and
+the "npm" section of `docs/INSTALL.md`). **A deliberate design limit**:
+a `comrade` installed via npm (or pnpm/yarn/bun) has `comrade upgrade`
+refuse to self-update, so it can never desync the package manager's own
+bookkeeping (detected via the `COMRADE_MANAGED_BY=npm` signal / a
+`node_modules` path segment; see the upgrade refusal in `internal/cli`
+and `docs/INSTALL.md`). `--check` is never affected by this refusal.
+Remaining open items:
 
-- **winget**: submitted to `microsoft/winget-pkgs` under the id
-  `cli.comrade`, awaiting moderator review (see `docs/INSTALL.md`).
-- **Snap**: the package is prepared (`snap/snapcraft.yaml`, classic
-  confinement) but awaiting Snap Store registration and classic-
-  confinement approval (see `docs/INSTALL.md`).
+- **winget**: the PR submitted to `microsoft/winget-pkgs` under the id
+  `cli.comrade` (`#408127`, for version 0.4.9) is **OPEN**, carrying the
+  `Azure-Pipeline-Passed`, `Validation-Completed`, and `New-Package`
+  labels — the earlier `Needs-CLA` blocker is cleared and four
+  superseded PRs were closed. Nothing has merged yet, though:
+  `manifests/c/cli/comrade` still does not exist in
+  `microsoft/winget-pkgs` (404). Moderator review is ongoing (see
+  `docs/INSTALL.md`).
+- **Snap**: the package is prepared (`snap/snapcraft.yaml`,
+  `.github/workflows/snap.yml`, classic confinement) but awaiting Snap
+  Store registration and classic-confinement approval (see
+  `docs/INSTALL.md`).
 
-### Security hardening — known residual gaps (v0.3.0)
+### Security hardening — known residual gaps (through v0.4.10)
 
 v0.3.0 hardened self-update signature verification, `base_url`
-validation, redaction coverage, and the destructive-command classifier
-(see `docs/SECURITY.md`). The honest gaps that remain:
+validation, redaction coverage, and the destructive-command classifier;
+v0.4.0 added an `mvdan.cc/sh`-based intent/effect layer to the
+classifier; v0.4.2–v0.4.5 extended that layer to control structures
+(if/while/for/case) and loop fixpoint resolution (issue #33);
+v0.4.9–v0.4.10 widened Slack webhook/token redaction coverage (see
+`docs/SECURITY.md` and `CHANGELOG.md`). The honest gaps that remain:
 
-- **The destructive-command classifier is signature-based, not
-  intent-based** — an unrecognized fetch tool (httpie's `http`
-  command, BSD `fetch`) is deliberately excluded from
-  `internal/safety/escalation.go`'s fetch patterns (both collide with
-  ordinary English words / the `http(s)://` URL-scheme substring and
-  would false-positive too broadly), and shell-variable indirection
-  (`R=rm; $R -rf /`) is never caught at all —
-  `internal/safety/tokenize.go`'s `normalizeCommand` deliberately does
-  no variable expansion. The long-term fix is not a bigger signature
-  allowlist but moving to **intent-based** classification
-  (interpreting what the command will actually do).
+- ~~**The destructive-command classifier is signature-based, not
+  intent-based ... shell-variable indirection is never caught at
+  all**~~ — **FIXED (v0.4.0), but bash/POSIX targets only**:
+  `internal/safety/effect_bash.go`'s `analyzeBashEffect` parses the
+  command with `mvdan.cc/sh/v3`, resolves variables through simple
+  literal assignments, and re-runs the SAME builtin denylist/escalation
+  matchers against the RESOLVED text — so `R=rm; $R -rf /` is no longer
+  never caught (verified by exactly this case in
+  `effect_differential_test.go`/`effect_fuzz_test.go`). A separate
+  structural check (`checkFetcherPipeline`) also catches an
+  unrecognized fetch tool (httpie's `http` command, BSD `fetch`) in
+  COMMAND-WORD position piped into an interpreter
+  (`sh`/`bash`/`zsh`/`python*`/`pwsh`) — the signature layer's own
+  regex (`internal/safety/escalation.go`'s
+  `fetchPipeInterpreterPattern`) still deliberately excludes both words
+  (they collide with ordinary English words / the `http(s)://`
+  URL-scheme substring and would false-positive too broadly), but the
+  AST layer disambiguates using structural command-word position — a
+  piece of information the regex never has — closing that same gap for
+  this one piped shape.
+  **The real remaining gap**: this AST effect layer only runs for
+  bash/POSIX targets (`internal/safety/effect.go`'s `dialectForGOOS`
+  returns `dialectBash` for every GOOS except Windows) — on the
+  Windows/PowerShell side (`dialectNone`) NO AST analysis runs at all,
+  so a PowerShell variable indirection (`$R = 'rm'; & $R -rf /`) is
+  still never caught by the signature layer's own
+  `normalizeCommand` (`internal/safety/tokenize.go`, which still
+  deliberately does no variable expansion). In short, the classifier is
+  no longer purely "signature-based" — bash targets now get a real,
+  if scoped, resolution layer — but it is not fully "intent-based"
+  either, and this gap now lives specifically in Windows/PowerShell
+  commands.
 - **`base_url` alt-encoding (decimal/hex IP) warns, it does not reject**
   — `internal/config/validate.go`'s metadata/link-local check only
   recognizes a literal IP address parsed by `net.ParseIP`; a
@@ -336,6 +439,17 @@ validation, redaction coverage, and the destructive-command classifier
   password that itself contains an unescaped `/` or `@` (already a
   malformed DSN) won't match through to the terminating `@` and can be
   left unmasked. Standard-shaped DSNs are unaffected.
+- **Discord and Microsoft Teams incoming-webhook URLs are not masked
+  (issue #58)** — Slack's incoming webhooks
+  (`hooks.slack.com/...`, including the workflows/triggers families,
+  hardened in v0.4.10) are masked by
+  `internal/redact/redact.go`'s `apiKeyPatterns` list, but Discord
+  (`https://discord.com/api/webhooks/<id>/<token>`) and Microsoft Teams
+  (`https://<tenant>.webhook.office.com/webhookb2/.../IncomingWebhook/...`)
+  URLs — which embed an equally
+  bearer-equivalent secret in their path — have no corresponding
+  pattern yet. Verified unchanged through the real
+  `redact.New(false,false).Apply()` pipeline. Tracked as issue #58.
 - **A STRICT-position `~username` resolution now tops out at `elevated`,
   not `destructive`** — `internal/safety/effect_bash.go`'s
   `wordHasLeadingUnescapedTilde` gate removes the real `os/user.Lookup`

@@ -33,6 +33,18 @@ coverage.html
 *.snap
 .snapcraft/
 
+# Local environment files. This project's whole purpose is keeping secrets
+# out of an LLM payload (see internal/redact), and .env is exactly where a
+# provider base_url + API key would sit during local dev. GitHub push
+# protection (enabled 2026-07-29) only flags vendor-recognized token
+# formats -- a key for a self-hosted or less-common openai_compat endpoint
+# would not necessarily trip it, so this pattern is the guard that does not
+# depend on the vendor being recognized. Negated so a committed template
+# stays possible.
+.env
+.env.*
+!.env.example
+
 # OS cruft
 .DS_Store
 Thumbs.db
@@ -44,6 +56,26 @@ Thumbs.db
 # Local scratch state (never versioned)
 .remember/
 .claude/
+
+# Other agent/assistant tool directories. Consistency fix alongside .claude/
+# above: PR #59 (an auto-generated "ECC bundle", closed 2026-07-29) created
+# .codex/ and .agents/ trees, so anyone who checks that branch out locally
+# would otherwise get a dirty `git status`.
+.codex/
+.agents/
+.cursor/
+.aider/
+
+# Go build/debug artifacts. `go test -c` writes *.test binaries;
+# `go test -cpuprofile`/`-memprofile` writes *.prof; Delve writes
+# __debug_bin*. (*.out is already covered by the Coverage block above --
+# not duplicated here.)
+*.test
+*.prof
+__debug_bin*
+
+# Log files
+*.log
 
 # Playwright MCP browser console/page logs, dropped into the repo CWD
 # when Playwright is driven from here (e.g. noVNC-based macOS QA) —

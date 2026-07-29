@@ -114,7 +114,26 @@ var (
 		regexp.MustCompile(`\bghp_[A-Za-z0-9]{20,}`),
 		regexp.MustCompile(`\bgho_[A-Za-z0-9]{20,}`),
 		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}`),
-		regexp.MustCompile(`\bxox[baprs]-[A-Za-z0-9-]{10,}`),
+		// Slack bot/app/user/refresh/etc tokens. The prefix alternation
+		// covers every "xox*" family Slack issues (b=bot, a=legacy app,
+		// p=user, r=refresh, s=legacy workspace, c=browser session,
+		// e=token-rotation refresh) plus the separately-prefixed "xapp-"
+		// (app-level/Socket Mode) token. The optional
+		// `(?:\.(?:xox[abceprs]|xapp))?` second segment additionally
+		// matches Slack's compound rotation form "xoxe.xoxp-...", so that
+		// whole token — not just its "xoxp-..." tail — is masked as one
+		// match. The token body requires a 10+ char floor
+		// (`[A-Za-z0-9_-]{10,}`, matching the existing api_key length
+		// convention) that includes "_" and "-" so hyphen-delimited
+		// segments and underscore-bearing tokens are both consumed in
+		// full; any further "."-joined segments are optional
+		// (`(?:\.[A-Za-z0-9_-]+)*`) and each requires at least one
+		// trailing char, which is what keeps a sentence-final period
+		// (e.g. "xoxb-ABCDEFGHIJ. Next") from being swallowed into the
+		// match — the dot only extends the token when more token-shaped
+		// text immediately follows it, never when it's followed by
+		// whitespace/EOL.
+		regexp.MustCompile(`\b(?:xox[abceprs]|xapp)(?:\.(?:xox[abceprs]|xapp))?-[A-Za-z0-9_-]{10,}(?:\.[A-Za-z0-9_-]+)*`),
 		// Google API key (also covers Gemini keys — "google" is a
 		// first-class provider).
 		regexp.MustCompile(`\bAIza[0-9A-Za-z_\-]{35}\b`),
@@ -135,8 +154,23 @@ var (
 		regexp.MustCompile(`\bnpm_[0-9A-Za-z]{36}`),
 		// GCP OAuth access token.
 		regexp.MustCompile(`\bya29\.[0-9A-Za-z_\-]+`),
-		// Slack incoming webhook URL.
-		regexp.MustCompile(`https://hooks\.slack\.com/services/[A-Za-z0-9/]+`),
+		// Slack webhook URL (incoming webhook, workflow, trigger, and any
+		// future path family Slack adds under this host) — the secret
+		// lives in the path, not in a specific family name, and
+		// hooks.slack.com serves only webhook ingestion, so there is
+		// nothing else on that host to falsely match by dropping the
+		// family enumeration. The scheme is optional and matched
+		// case-insensitively ((?i)): the secret is exposed identically
+		// whether pasted with "https://", "http://", "HTTPS://", or with
+		// no scheme at all (e.g. bare in a curl command missing the
+		// leading protocol), so requiring a specific-case scheme would
+		// under-match a still-live secret. In a redaction context
+		// over-matching only costs model context, while under-matching
+		// leaks a live secret, so this is deliberately permissive: no
+		// length floor on the token segment, and a wide token charset
+		// (including "_" and "-", both used by real workflow/trigger
+		// IDs).
+		regexp.MustCompile(`(?i)(?:https?://)?hooks\.slack\.com/[A-Za-z0-9_+/-]+`),
 	}
 
 	// jwtPattern matches a three-segment base64url JWT. It runs after

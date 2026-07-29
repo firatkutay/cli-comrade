@@ -214,6 +214,72 @@ func TestApplyNewSecretShapes(t *testing.T) {
 			rawSecret:  "https://hooks.slack.com/services/TTEST000/BTEST0000/ZZZZZZZZZZZZZZZZZZtest",
 		},
 		{
+			name:       "Slack workflow webhook URL",
+			input:      "export W=https://hooks.slack.com/workflows/TTEST000GHZ/ATEST0000FF7AA/442660231TESTTEST/FTESTZZreCkhPmwBtaqbNtest",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "https://hooks.slack.com/workflows/TTEST000GHZ/ATEST0000FF7AA/442660231TESTTEST/FTESTZZreCkhPmwBtaqbNtest",
+		},
+		{
+			name:       "Slack trigger webhook URL",
+			input:      "SLACK_WEBHOOK_URL=https://hooks.slack.com/triggers/TTEST00ABC456/8675309TEST/abcd1234efghTESTtest",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "https://hooks.slack.com/triggers/TTEST00ABC456/8675309TEST/abcd1234efghTESTtest",
+		},
+		{
+			name:       "Slack incoming webhook URL over http scheme",
+			input:      "curl http://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4ad666eMgbitest",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "http://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4ad666eMgbitest",
+		},
+		{
+			name:       "Slack incoming webhook URL with underscore and hyphen in token",
+			input:      "url: https://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4_d666eMgbi-test",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "https://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4_d666eMgbi-test",
+		},
+		{
+			name:       "Slack webhook URL with no scheme at all",
+			input:      "webhook hooks.slack.com/services/TTEST000/BTEST0000/ZZTESTtoken pasted bare",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "hooks.slack.com/services/TTEST000/BTEST0000/ZZTESTtoken",
+		},
+		{
+			name:       "Slack webhook URL with uppercase HTTPS scheme",
+			input:      "HTTPS://hooks.slack.com/services/TTEST000/BTEST0000/ZZTESTtoken in script",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "HTTPS://hooks.slack.com/services/TTEST000/BTEST0000/ZZTESTtoken",
+		},
+		{
+			name:       "Slack app-level token (xapp-)",
+			input:      "socket mode token xapp-1-TESTfake9Zk1 in config",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "xapp-1-TESTfake9Zk1",
+		},
+		{
+			name:       "Slack token-rotation refresh token (xoxe-)",
+			input:      "refresh token xoxe-1-TESTfake7Qm2 in payload",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "xoxe-1-TESTfake7Qm2",
+		},
+		{
+			name:       "Slack browser session token (xoxc-)",
+			input:      "session token xoxc-1234-TESTfake5Rb leaked",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "xoxc-1234-TESTfake5Rb",
+		},
+		{
+			name:       "Slack bot token with underscore in token body",
+			input:      "bot token xoxb-fake_TEST_9Zk1 in payload",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "xoxb-fake_TEST_9Zk1",
+		},
+		{
+			name:       "Slack compound rotation token (xoxe.xoxp-)",
+			input:      "compound token xoxe.xoxp-1-TESTfake3Nc8 leaked",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "xoxe.xoxp-1-TESTfake3Nc8",
+		},
+		{
 			name:       "Azure storage AccountKey",
 			input:      "DefaultEndpointsProtocol=https;AccountName=foo;AccountKey=pTyGJMuHbEL31IeL2HPcHyGcFRl1SPnXNYvMIHa/2o==;EndpointSuffix=core.windows.net",
 			wantMasked: "AccountKey=[REDACTED:credential]",
@@ -344,6 +410,31 @@ func TestApplyCredentialKVSingleQuotedValueWithColonSeparator(t *testing.T) {
 	assert.NotContains(t, got, "top secret value")
 }
 
+// TestApplySlackWebhookWithUnderscoreMasksWholeToken pins the exact
+// regression this token family was originally fixed for: under the old
+// regex, an underscore inside the token's final path segment truncated the
+// match and left the token's tail on the wire, while the table test above
+// only asserted Contains/NotContains — both of which also hold for that
+// truncated old output, so that test alone did not guard the regression.
+// This asserts full byte-for-byte equality so the whole URL, not just a
+// prefix of it, is gone.
+func TestApplySlackWebhookWithUnderscoreMasksWholeToken(t *testing.T) {
+	r := New(false, false)
+	got := r.Apply("url: https://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4_d666eMgbi-test")
+	assert.Equal(t, "url: [REDACTED:api_key]", got)
+}
+
+// TestApplySlackTokenSentenceFinalPeriodNotSwallowed pins the boundary
+// safety the widened xox*/xapp- token charset (now including ".") must
+// preserve: a "."-joined continuation segment is only consumed when it is
+// followed by more token-shaped text, never when it's followed by
+// whitespace/EOL, so a sentence-final period stays outside the match.
+func TestApplySlackTokenSentenceFinalPeriodNotSwallowed(t *testing.T) {
+	r := New(false, false)
+	got := r.Apply("bot token xoxb-ABCDEFGHIJKL. Next sentence.")
+	assert.Equal(t, "bot token [REDACTED:api_key]. Next sentence.", got)
+}
+
 func TestApplyFalsePositives(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -358,6 +449,7 @@ func TestApplyFalsePositives(t *testing.T) {
 		{"Stripe publishable key pk_live_ is left intact (not a secret)", "publishable key pk_live_51H8xYzABCDEFGHIJKLMNOPQR is safe to embed client-side"},
 		{"credential-less HTTPS URL does not trigger connStringPattern", "see https://example.com/path for details"},
 		{"HTTP URL with port but no @ does not trigger connStringPattern", "server is at http://host:8080/db right now"},
+		{"Slack API docs URL does not trigger the webhook pattern", "see https://api.slack.com/messaging/webhooks for details"},
 	}
 
 	for _, tc := range cases {

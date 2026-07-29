@@ -40,6 +40,18 @@ useDefault = true
 # provider. None are real credentials. Allowlisted per rule ID + exact
 # file path (not a blanket ignore) so a real secret added to either file,
 # or a genuine finding anywhere else in the repo, still fails the gate.
+#
+# The slack-webhook-url rule additionally needs the same treatment:
+# gitleaks' built-in rule requires 43+ contiguous [A-Za-z0-9+/] chars after
+# the "services/workflows/triggers" segment, and internal/redact/redact_test.go's
+# fake Slack webhook/workflow/trigger URL fixtures (all clearly-fake,
+# TEST-marked path segments used to prove the redactor masks these URLs)
+# exceed that floor.
+#
+# slack-app-token similarly fires on the file's fake "xapp-1-..." fixture
+# (added to prove the redactor's xox*/xapp- pattern now covers the
+# app-level/Socket Mode token family) — same rationale, same fake/TEST-marked
+# value, same narrow per-path allowlist.
 
 [[rules]]
 id = "generic-api-key"
@@ -81,5 +93,15 @@ id = "jwt"
 
 [[rules]]
 id = "private-key"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]
+
+[[rules]]
+id = "slack-webhook-url"
+  [[rules.allowlists]]
+  paths = [ '''internal/redact/redact_test\.go''' ]
+
+[[rules]]
+id = "slack-app-token"
   [[rules.allowlists]]
   paths = [ '''internal/redact/redact_test\.go''' ]

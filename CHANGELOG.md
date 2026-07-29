@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.10] - 2026-07-29
+
+### Security
+
+- **The Slack webhook redaction pattern now masks any `hooks.slack.com` path, with or without a scheme, case-insensitively — and no longer leaks a partial token on an already-narrower match.** Only `https://hooks.slack.com/services/...` was ever masked; Slack's `workflows/` (Workflow Builder) and `triggers/` (Platform triggers) webhook URLs — each carrying an equally bearer-equivalent secret in their final path segment — were sent to third-party LLM providers verbatim, as was any `http://` (non-TLS), scheme-less (`hooks.slack.com/...` pasted bare), or uppercase-scheme (`HTTPS://...`) incoming webhook. A restrictive `[A-Za-z0-9/]+` token charset also stopped matching partway through a token containing `_`, leaving the remainder of a live secret on the wire alongside the `[REDACTED:api_key]` marker. The pattern is now `(?i)(?:https?://)?hooks\.slack\.com/[A-Za-z0-9_+/-]+` — the three-family path enumeration (`services|workflows|triggers`) is dropped entirely since `hooks.slack.com` serves only webhook ingestion and the secret lives in the path, not a specific family name, so this no longer silently under-matches if Slack adds a fourth family. Deliberately permissive otherwise (no length floor, wide token charset), since in a redaction context over-matching only costs model context while under-matching leaks a live secret.
+- **Slack bot/app tokens (`xox*`) now also cover the `xapp-` (app-level/Socket Mode), `xoxe-` (token-rotation refresh), and `xoxc-` (browser session) token families, and no longer leak the whole token when it contains an underscore.** The token charset previously excluded `_`, so a token like `xoxb-...with_underscore-...` broke the match at the first underscore and leaked the entire token — worse than the partial-match case above, since nothing at all was masked. The charset now includes `_` and `-`, plus an optional `.`-joined continuation (used by Slack's compound rotation form, `xoxe.xoxp-...`) that only extends the match when more token-shaped text immediately follows the `.` — never when followed by whitespace/end-of-string, so a sentence-final period (e.g. "the token is xoxb-ABCDEFGHIJ. Next:") is never swallowed into the mask.
+
 ## [0.4.9] - 2026-07-27
 
 ### Fixed
@@ -945,11 +952,12 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
+[0.4.10]: https://github.com/firatkutay/cli-comrade/compare/v0.4.9...v0.4.10
 [0.4.9]: https://github.com/firatkutay/cli-comrade/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/firatkutay/cli-comrade/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/firatkutay/cli-comrade/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/firatkutay/cli-comrade/compare/v0.4.5...v0.4.6
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.9...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.10...HEAD
 [0.4.5]: https://github.com/firatkutay/cli-comrade/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/firatkutay/cli-comrade/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/firatkutay/cli-comrade/compare/v0.4.2...v0.4.3

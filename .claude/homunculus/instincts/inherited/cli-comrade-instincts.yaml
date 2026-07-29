@@ -1,0 +1,352 @@
+# Instincts generated from https://github.com/firatkutay/cli-comrade
+# Generated: 2026-07-29T04:02:01.088Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: cli-comrade-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/firatkutay/cli-comrade
+---
+
+# Cli Comrade Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: fix, docs
+
+## Evidence
+
+- 3 commits analyzed
+- Detected conventional commit pattern
+- Examples: fix(redact): mask Slack workflow and trigger webhook URLs, docs(changelog): update v0.4.10 entry for the widened Slack coverage
+
+---
+id: cli-comrade-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/firatkutay/cli-comrade
+---
+
+# Cli Comrade Commit Length
+
+## Action
+
+Write moderate-length commit messages (~62 characters)
+
+## Evidence
+
+- Average commit message length: 62 chars
+- Based on 3 commits
+
+---
+id: cli-comrade-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/firatkutay/cli-comrade
+---
+
+# Cli Comrade Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case
+
+---
+id: cli-comrade-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/firatkutay/cli-comrade
+---
+
+# Cli Comrade Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: cli-comrade-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/firatkutay/cli-comrade
+---
+
+# Cli Comrade Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: cli-comrade-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/firatkutay/cli-comrade
+---
+
+# Cli Comrade Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: cli-comrade-workflow-update-redaction-logic-and-tests
+trigger: "when doing update redaction logic and tests"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/firatkutay/cli-comrade
+---
+
+# Cli Comrade Workflow Update Redaction Logic And Tests
+
+## Action
+
+Follow the update-redaction-logic-and-tests workflow:
+1. Edit redaction logic in internal/redact/redact.go
+2. Update or add tests in internal/redact/redact_test.go
+3. Document the change in CHANGELOG.md
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: internal/redact/redact.go, internal/redact/redact_test.go, CHANGELOG.md
+
+---
+id: cli-comrade-instinct-file-naming
+trigger: "When creating or renaming a file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct File Naming
+
+## Action
+
+Use snake_case for file names
+
+## Evidence
+
+- Pattern in namingConventions.files
+- All files in internal/ use snake_case
+
+---
+id: cli-comrade-instinct-function-naming
+trigger: "When defining a function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Function Naming
+
+## Action
+
+Use camelCase for function names
+
+## Evidence
+
+- Pattern in namingConventions.functions
+- Seen in internal/redact/redact.go
+
+---
+id: cli-comrade-instinct-constant-naming
+trigger: "When declaring a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern in namingConventions.constants
+- Seen in internal/redact/redact.go
+
+---
+id: cli-comrade-instinct-import-style
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle
+- Seen in internal/redact/redact.go
+
+---
+id: cli-comrade-instinct-export-style
+trigger: "When exporting functions or types"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle
+- Go convention, seen in internal/redact/redact.go
+
+---
+id: cli-comrade-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Test Location
+
+## Action
+
+Place tests in a separate file with _test.go suffix in the same directory as the code
+
+## Evidence
+
+- testLocation: separate
+- internal/redact/redact_test.go
+
+---
+id: cli-comrade-instinct-test-update-on-feature-change
+trigger: "When changing logic in a Go source file"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Test Update On Feature Change
+
+## Action
+
+Update or add corresponding tests in the paired _test.go file
+
+## Evidence
+
+- Workflow update-redaction-logic-and-tests
+- internal/redact/redact.go and internal/redact/redact_test.go changed together in commits
+
+---
+id: cli-comrade-instinct-commit-format
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Commit Format
+
+## Action
+
+Use conventional commit format: <type>(<scope>): <description>, with type fix or docs
+
+## Evidence
+
+- commits.type: conventional
+- commits.prefixes: fix, docs
+- Examples: fix(redact): mask Slack workflow and trigger webhook URLs
+
+---
+id: cli-comrade-instinct-commit-length
+trigger: "When composing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Commit Length
+
+## Action
+
+Keep commit message length around 62 characters on average
+
+## Evidence
+
+- commits.averageLength: 62
+
+---
+id: cli-comrade-instinct-update-redaction-workflow
+trigger: "When someone needs to improve or fix the redaction of sensitive information (e.g., Slack tokens/URLs)"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: firatkutay/cli-comrade
+---
+
+# Cli Comrade Instinct Update Redaction Workflow
+
+## Action
+
+Edit redaction logic in internal/redact/redact.go, update or add tests in internal/redact/redact_test.go, and document the change in CHANGELOG.md
+
+## Evidence
+
+- Workflow: update-redaction-logic-and-tests
+- Files: internal/redact/redact.go, internal/redact/redact_test.go, CHANGELOG.md
+- Commit sequence in workflow
+

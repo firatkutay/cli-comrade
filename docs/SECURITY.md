@@ -225,7 +225,13 @@ cosign-signature verification" yorum bloğuna, imza testleri için
   yerel olarak çalıştırıldı ve gerçek hiçbir kimlik bilgisi bulunamadı —
   yalnızca `.gitleaks.toml`'da kural+dosya yolu bazında allowlist'lenen,
   `internal/redact`'in test fixture'larındaki bilinçli sahte değerler
-  (AWS'nin kendi örnek anahtarı, jwt.io'nun örnek JWT'si, vb.). Bu tam
+  (AWS'nin kendi örnek anahtarı, jwt.io'nun örnek JWT'si, vb.). v0.4.10'da
+  (PR #57) bu allowlist, gitleaks'in yerleşik `slack-webhook-url` ve
+  `slack-app-token` kurallarını da kapsayacak şekilde genişledi — ikisi de
+  yine `internal/redact/redact_test.go`'a özel, aynı kural-ID + dosya-yolu
+  prensibiyle (`.gitleaks.toml`): gitleaks'in yerleşik Slack kuralları,
+  bu dosyanın bilinçli olarak gerçekçi webhook/workflow/trigger URL'leri
+  ve `xapp-1-...` fixture'ıyla eşleşiyor. Bu tam
   geçmiş taraması periyodik olarak (örn. yıllık) veya bir dış katkıcı
   onboard edilmeden önce elle tekrarlanmalı — CI gate'ine dahil değil.
 - **sbom-scan**: `syft` her push/PR'da bir CycloneDX kaynak SBOM'u üretir
@@ -243,6 +249,80 @@ cosign-signature verification" yorum bloğuna, imza testleri için
   sayıyor. `grype`'ı `--fail-on high` ile bloke edici yapmak, zaten
   triyaj edilmiş bu bulguda her PR'ı kırardı — tam olarak bu işin
   kaçınmaya çalıştığı "yok sayılan gate" durumu.
+
+### GitHub-native secret scanning ve CodeQL triyaj (2026-07-29)
+
+Yukarıdaki bölüm yalnızca **gitleaks** CI işini (çalışma ağacı taraması)
+belgeler — GitHub'ın kendi secret scanning'i bugüne kadar hiç açık
+değildi (`secret_scanning: disabled`,
+`secret_scanning_push_protection: disabled`). 2026-07-29 itibarıyla
+ikisi de `enabled`. `secret_scanning_validity_checks` ise **açılamadı**
+ve `disabled` kalmaya devam ediyor — bu dürüstçe not edilsin diye burada
+kayıtlı.
+
+**Push protection kanıtını çoktan verdi.** v0.4.10 geliştirmesi
+sırasında, yeni bir redaction test fixture'ı gerçek bir Slack token'ına
+benzediği için push protection bir push'u BLOKLADI; geliştirici değeri
+açıkça `TEST` etiketli, sahte bir değerle değiştirdi. Bu, kontrolün
+gerçekten çalıştığının somut kanıtı — ve `internal/redact/redact_test.go`
+içindeki fixture'ların (`xoxb-fake_TEST_9Zk1`, `xapp-1-TESTfake9Zk1` gibi)
+neden bilinçli olarak sahte göründüğünü gelecekteki katkıcılara açıklıyor.
+
+**Geçmiş üzerinde bir secret-scanning uyarısı — `used_in_tests` olarak
+çözüldü.** Uyarı #1, tip "Google API Key", konum
+`internal/redact/redact_test.go:152`. Redaction test tablosundaki
+sentetik bir fixture: test, değerin `[REDACTED:api_key]`'e maskelendiğini
+ve ham dizenin çıktıda bulunmadığını doğruluyor. Yalnızca `:152`'de
+(girdi) ve `:154`'te (bulunmamalı doğrulaması) geçtiği, ağacın veya git
+geçmişinin başka hiçbir yerinde geçmediği doğrulandı; `used_in_tests`
+nedeniyle çözüldü. Ayrıca ayrı bir kontrolle doğrulandı: deponun commit
+geçmişinin tamamında yapılan taramada **sıfır** gerçek sızmış kimlik
+bilgisi bulundu (yukarıdaki gitleaks tam-geçmiş taramasıyla aynı sonuç).
+
+**İki CodeQL uyarısı yanlış pozitif olarak kapatıldı — asıl kayda
+geçirilmesi gereken bu.** Uyarı **#1** ve **#3**, ikisi de kural
+`go/regex/missing-regexp-anchor` (CWE-20, `security_severity_level: high`),
+ikisi de `internal/redact/redact.go`'daki Slack incoming-webhook
+dedektörü üzerinde. #3, #1'in yeniden yükselmiş hali: v0.4.10 (#57 PR'ı)
+o satırı GERÇEKTEN düzenledi — eski
+`https://hooks\.slack\.com/services/[A-Za-z0-9/]+` deseni yeni
+`(?i)(?:https?://)?hooks\.slack\.com/[A-Za-z0-9_+/-]+` ile değiştirildi
+(commit `8915480`) — bu yalnızca bir satır-numarası kayması değil,
+deseni yeniden yazan gerçek bir düzenleme, dolayısıyla CodeQL aynı satırı
+yeni bir uyarı numarasıyla (#3) yeniden bildirdi.
+
+Kayda geçirilecek gerekçe (her iddia kodla karşılaştırılarak doğrulandı):
+
+- Bu bir **dedektör**, doğrulayıcı değil. Tek tüketicisi
+  `internal/redact/redact.go`'daki `apiKeyPatterns` maskeleme döngüsü
+  (satır 247-249) — `ReplaceAllString` ile `[REDACTED:api_key]`'e ikame
+  yapıyor. Depoda hiçbir kod yolu bunu bir boolean'a, dallanmaya, ya da
+  erişim kararına çevirmiyor. Paket yalnızca `Redactor`, `New`, ve
+  `Apply`'ı export ediyor (`redact.go:10,18,238`); desenler export
+  edilmiyor ve hiç geri döndürülmüyor. Tek importer `internal/llm/client.go`'daki
+  `Client.redactPayload` (`client.go:432`, import `client.go:12`).
+- Kuralın önermesi — "bu bir URL üzerinde regex olarak kullanıldığında"
+  — burada geçerli değil: desen bir URL'yi *bulmak için* bir haystack'e
+  uygulanıyor, bir URL'yi *doğrulamak için* asla.
+- **Risk yönü ters.** Fazla eşleşme yalnızca modele biraz fazladan bağlam
+  maliyeti getirir; eksik eşleşme canlı bir sırrı sızdırır. Bu yüzden
+  ankajsız (unanchored) form tasarım gereği zorunludur ve ankajlamak bir
+  güvenlik düzeltmesi değil, bir GERİLEME olurdu — ampirik olarak
+  doğrulandı: ankajlı bir varyant (`^...$`), bir komut satırına gömülü
+  bir webhook'u eşleştiremiyor
+  (`curl -X POST https://hooks.slack.com/services/... -d @x.json`) —
+  yani gerçekçi her girdide.
+- Bu satır işaretlendi, aynı blokta eşit derecede ankajsız olan diğer 25
+  kardeşi işaretlenmedi — TEK NEDENİ bu bloktaki tek bir literal TLD/host
+  adı (`hooks\.slack\.com`) içeren desen olması; kuralın hostname
+  sezgiseli buna göre çalışıyor, ankajlama olarak değil
+  (`internal/redact/redact.go`'daki 26 `regexp.MustCompile` çağrısının
+  tamamı doğrulandı — hiçbiri ankajlı değil, yalnızca satır 173 literal
+  bir host adı içeriyor).
+- **Bunun tekrar edeceği beklenmeli**: o satıra yapılacak herhangi bir
+  gelecekteki düzenleme yeni bir numarayla yeni bir uyarı doğuracaktır
+  (#1→#3 geçişi bunu zaten kanıtladı). Doğru tepki bu gerekçeyle YENİDEN
+  kapatmaktır, regex'i ankajlamak değil.
 
 ### Yeniden üretilebilir (reproducible) release binary'leri
 
@@ -497,7 +577,13 @@ The `gitleaks` and `sbom-scan` jobs in `.github/workflows/ci.yml`:
   the golden-test-fixture false positives allowlisted per rule + exact
   file path in `.gitleaks.toml` (deliberately fake values in
   `internal/redact`'s own test fixtures — AWS's own example key, jwt.io's
-  example JWT, etc.). Re-run that full-history scan manually on a
+  example JWT, etc.). In v0.4.10 (PR #57) this allowlist grew to also
+  cover gitleaks' built-in `slack-webhook-url` and `slack-app-token`
+  rules — both scoped to the same `internal/redact/redact_test.go` path
+  under the same rule-ID + file-path principle (`.gitleaks.toml`):
+  gitleaks' built-in Slack rules match this file's deliberately realistic
+  webhook/workflow/trigger URL fixtures and its `xapp-1-...` fixture.
+  Re-run that full-history scan manually on a
   standing cadence (e.g. annually) or before onboarding an external
   contributor — it is not wired into the per-PR gate.
 - **sbom-scan**: `syft` generates a CycloneDX source SBOM on every
@@ -515,6 +601,79 @@ The `gitleaks` and `sbom-scan` jobs in `.github/workflows/ci.yml`:
   Making grype blocking at `--fail-on high` would fail every PR on this
   one already-triaged finding — exactly the "gate people learn to ignore"
   outcome this job is designed to avoid.
+
+### GitHub-native secret scanning and CodeQL triage (2026-07-29)
+
+The section above only documents the **gitleaks** CI job (a working-tree
+scan) — GitHub's own secret scanning had never been enabled at all
+(`secret_scanning: disabled`,
+`secret_scanning_push_protection: disabled`). As of 2026-07-29 both are
+`enabled`. `secret_scanning_validity_checks` **could not be enabled** and
+remains `disabled` — noted here honestly rather than glossed over.
+
+**Push protection has already proven itself.** During v0.4.10
+development, push protection BLOCKED a push because a new redaction test
+fixture looked like a real Slack token; the developer replaced it with
+an obviously-fake, `TEST`-marked value. That's concrete evidence the
+control actually works — and it explains to future contributors why
+fixtures in `internal/redact/redact_test.go` (e.g.
+`xoxb-fake_TEST_9Zk1`, `xapp-1-TESTfake9Zk1`) look deliberately fake.
+
+**One secret-scanning alert on history — resolved as
+`used_in_tests`.** Alert #1, type "Google API Key", located at
+`internal/redact/redact_test.go:152`. It's a synthetic fixture in the
+redaction test table: the test asserts the value is masked to
+`[REDACTED:api_key]` and that the raw string is absent from the output.
+Verified it appears only at `:152` (input) and `:154` (must-not-appear
+assertion), nowhere else in the tree or in git history; resolved with
+reason `used_in_tests`. Also verified separately: a full-history search
+found **zero** real leaked credentials across the repo's commits (the
+same conclusion as the gitleaks full-history scan above).
+
+**Two CodeQL alerts dismissed as false positives — this is the main
+thing to record.** Alerts **#1** and **#3**, both rule
+`go/regex/missing-regexp-anchor` (CWE-20, `security_severity_level: high`),
+both on the Slack incoming-webhook detector in
+`internal/redact/redact.go`. #3 is #1 re-raised: v0.4.10 (PR #57)
+actually edited that line — the old
+`https://hooks\.slack\.com/services/[A-Za-z0-9/]+` pattern was replaced
+with the new `(?i)(?:https?://)?hooks\.slack\.com/[A-Za-z0-9_+/-]+`
+(commit `8915480`) — this isn't merely a line-number shift, it's a real
+edit that rewrote the pattern, so CodeQL re-reported the same line under
+a new alert number (#3).
+
+The reasoning to record (every claim verified against the code):
+
+- The regex is a **detector**, not a validator. Its only consumer is
+  the `apiKeyPatterns` masking loop in `internal/redact/redact.go`
+  (lines 247-249) — it calls `ReplaceAllString` to substitute
+  `[REDACTED:api_key]`. No code path anywhere in the repo turns it into
+  a boolean, a branch, or an access decision. The package exports only
+  `Redactor`, `New`, and `Apply` (`redact.go:10,18,238`); the patterns
+  are unexported and never returned. The sole importer is
+  `Client.redactPayload` in `internal/llm/client.go`
+  (`client.go:432`, imported at `client.go:12`).
+- The rule's premise — "when this is used as a regular expression on a
+  URL" — does not hold here: the pattern is applied *to a haystack to
+  find a URL*, never *to a URL to validate it*.
+- **The risk direction is inverted.** Over-matching only costs the model
+  some context; under-matching leaks a live secret. So the unanchored
+  form is required by design, and anchoring would be a security
+  regression, not a fix — verified empirically: an anchored variant
+  (`^...$`) fails to match a webhook embedded in a command line
+  (`curl -X POST https://hooks.slack.com/services/... -d @x.json`) —
+  i.e. every realistic input.
+- This line was flagged and its 25 equally-unanchored siblings in the
+  same block were not, solely because it is the only pattern in that
+  block containing a literal TLD/hostname (`hooks\.slack\.com`) — which
+  is what the query's hostname heuristic keys on, not anchoring as such
+  (verified: all 26 `regexp.MustCompile` calls in
+  `internal/redact/redact.go` — none are anchored, and only line 173
+  contains a literal hostname).
+- **Expect this to recur**: any future edit to that line will raise a
+  new alert with a new number (the #1 → #3 transition already proves
+  this). The correct response is to re-dismiss with this same reasoning,
+  not to anchor the regex.
 
 ### Reproducible release binaries
 

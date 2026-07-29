@@ -214,6 +214,30 @@ func TestApplyNewSecretShapes(t *testing.T) {
 			rawSecret:  "https://hooks.slack.com/services/TTEST000/BTEST0000/ZZZZZZZZZZZZZZZZZZtest",
 		},
 		{
+			name:       "Slack workflow webhook URL",
+			input:      "export W=https://hooks.slack.com/workflows/TTEST000GHZ/ATEST0000FF7AA/442660231TESTTEST/FTESTZZreCkhPmwBtaqbNtest",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "https://hooks.slack.com/workflows/TTEST000GHZ/ATEST0000FF7AA/442660231TESTTEST/FTESTZZreCkhPmwBtaqbNtest",
+		},
+		{
+			name:       "Slack trigger webhook URL",
+			input:      "SLACK_WEBHOOK_URL=https://hooks.slack.com/triggers/TTEST00ABC456/8675309TEST/abcd1234efghTESTtest",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "https://hooks.slack.com/triggers/TTEST00ABC456/8675309TEST/abcd1234efghTESTtest",
+		},
+		{
+			name:       "Slack incoming webhook URL over http scheme",
+			input:      "curl http://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4ad666eMgbitest",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "http://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4ad666eMgbitest",
+		},
+		{
+			name:       "Slack incoming webhook URL with underscore and hyphen in token",
+			input:      "url: https://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4_d666eMgbi-test",
+			wantMasked: "[REDACTED:api_key]",
+			rawSecret:  "https://hooks.slack.com/services/T024TTTTT/BTEST72BBL/AZTESTu0pA4_d666eMgbi-test",
+		},
+		{
 			name:       "Azure storage AccountKey",
 			input:      "DefaultEndpointsProtocol=https;AccountName=foo;AccountKey=pTyGJMuHbEL31IeL2HPcHyGcFRl1SPnXNYvMIHa/2o==;EndpointSuffix=core.windows.net",
 			wantMasked: "AccountKey=[REDACTED:credential]",
@@ -358,6 +382,7 @@ func TestApplyFalsePositives(t *testing.T) {
 		{"Stripe publishable key pk_live_ is left intact (not a secret)", "publishable key pk_live_51H8xYzABCDEFGHIJKLMNOPQR is safe to embed client-side"},
 		{"credential-less HTTPS URL does not trigger connStringPattern", "see https://example.com/path for details"},
 		{"HTTP URL with port but no @ does not trigger connStringPattern", "server is at http://host:8080/db right now"},
+		{"Slack API docs URL does not trigger the webhook pattern", "see https://api.slack.com/messaging/webhooks for details"},
 	}
 
 	for _, tc := range cases {

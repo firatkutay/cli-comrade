@@ -135,8 +135,14 @@ var (
 		regexp.MustCompile(`\bnpm_[0-9A-Za-z]{36}`),
 		// GCP OAuth access token.
 		regexp.MustCompile(`\bya29\.[0-9A-Za-z_\-]+`),
-		// Slack incoming webhook URL.
-		regexp.MustCompile(`https://hooks\.slack\.com/services/[A-Za-z0-9/]+`),
+		// Slack incoming webhook / workflow / trigger URL — all three path
+		// families carry a bearer-equivalent secret in their final
+		// segment. In a redaction context over-matching only costs model
+		// context, while under-matching leaks a live secret, so this is
+		// deliberately permissive: no length floor on the token segment,
+		// a wide token charset (including "_" and "-", both used by real
+		// workflow/trigger IDs), and both http/https schemes.
+		regexp.MustCompile(`https?://hooks\.slack\.com/(?:services|workflows|triggers)/[A-Za-z0-9_+/-]+`),
 	}
 
 	// jwtPattern matches a three-segment base64url JWT. It runs after

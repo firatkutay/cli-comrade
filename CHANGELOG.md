@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.10] - 2026-07-29
+
+### Security
+
+- **The Slack incoming-webhook redaction pattern now also masks `workflows/` and `triggers/` webhook URLs, and no longer leaks a partial token on an already-narrower match.** Only `https://hooks.slack.com/services/...` was ever masked; Slack's `workflows/` (Workflow Builder) and `triggers/` (Platform triggers) webhook URLs — each carrying an equally bearer-equivalent secret in their final path segment — were sent to third-party LLM providers verbatim, as was any `http://` (non-TLS) incoming webhook. A restrictive `[A-Za-z0-9/]+` token charset also stopped matching partway through a token containing `_`, leaving the remainder of a live secret on the wire alongside the `[REDACTED:api_key]` marker. The pattern is now `https?://hooks\.slack\.com/(?:services|workflows|triggers)/[A-Za-z0-9_+/-]+` — deliberately permissive (no length floor, wide token charset, both schemes), since in a redaction context over-matching only costs model context while under-matching leaks a live secret.
+
 ## [0.4.9] - 2026-07-27
 
 ### Fixed

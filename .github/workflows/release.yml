@@ -110,7 +110,7 @@ jobs:
       # pattern the action's own README documents under "Publishing SBOMs
       # with releases" for exactly this "SBOM produced outside/before the
       # release step" case.
-      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: cyclonedx-json
@@ -143,7 +143,7 @@ jobs:
             exit 1
           fi
 
-      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
           # Exact pin, not a "~> v2.16" range: the v0.1.1 incident was
@@ -215,7 +215,7 @@ jobs:
       # workspace, so it carries none of the git-cleanliness risk the
       # comment above the generate step warns about.
       - name: Attach source SBOM to the GitHub Release
-        uses: anchore/sbom-action/publish-sbom@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action/publish-sbom@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           sbom-artifact-match: "^sbom-source\\.cdx\\.json$"
 

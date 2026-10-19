@@ -3,6 +3,9 @@ package cli
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -170,4 +173,113 @@ func TestI18nSmokeFullSentenceErrorsRenderTurkish(t *testing.T) {
 		assert.Contains(t, err.Error(), "bilinmeyen sağlayıcı")
 		assert.NotContains(t, err.Error(), "unknown provider")
 	})
+}
+
+// withConfiguredLanguage isolates the config dir, writes a config file
+// whose only setting is general.language=lang, and empties every language
+// env var — so the config value alone decides the --help language (the
+// exact path a user who ran `comrade config set general.language tr` takes).
+func withConfiguredLanguage(t *testing.T, lang string) {
+	t.Helper()
+	dir := withIsolatedConfigDir(t)
+	t.Setenv("COMRADE_LANG", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cli-comrade"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "cli-comrade", "config.toml"),
+		[]byte("[general]\nlanguage = \""+lang+"\"\n"), 0o600))
+}
+
+// TestI18nSmokeUndoDoctorReviewHelpFollowsConfiguredLanguage pins the help
+// text that used to leak English into a Turkish UI: undo's Short/Long,
+// doctor's Short, config profile's Shorts, and the --review/--no-review/
+// --live/--run/--list flag descriptions. Each --help screen must be fully
+// in the configured language — the TR render must contain none of the
+// English strings, and the EN render none of the Turkish ones.
+func TestI18nSmokeUndoDoctorReviewHelpFollowsConfiguredLanguage(t *testing.T) {
+	cases := []struct {
+		args []string
+		en   []string
+		tr   []string
+	}{
+		{
+			args: []string{"--help"},
+			en: []string{
+				"Reverse the last reversible action, or show manual undo steps",
+				"Run a read-only self-diagnostic and report any problems found",
+				"show the full plan for review/edit before running it",
+				"never show the plan review/edit screen for this run",
+				"Help about any command",
+				"help for comrade",
+				"version for comrade",
+			},
+			tr: []string{
+				"Geri alınabilir son işlemi geri alır veya elle geri alma adımlarını gösterir",
+				"Salt okunur bir öz tanılama çalıştırır ve bulunan sorunları raporlar",
+				"çalıştırmadan önce tam planı gözden geçirme/düzenleme ekranını göster",
+				"bu çalıştırma için plan gözden geçirme/düzenleme ekranını asla gösterme",
+				"Herhangi bir komut hakkında yardım gösterir",
+				"comrade için yardımı gösterir",
+				"comrade sürümünü gösterir",
+			},
+		},
+		{
+			args: []string{"undo", "--help"},
+			en: []string{
+				"Always confirms every step interactively (ask mode)",
+				"Only runs recorded within audit.retention_days are eligible targets.",
+				"undo a specific recorded run by id",
+				"list recent recorded runs instead of undoing one",
+				"help for undo",
+			},
+			tr: []string{
+				"Her adım her zaman etkileşimli olarak onaylatılır (ask modu)",
+				"Yalnızca audit.retention_days süresi içinde kaydedilmiş çalıştırmalar hedef olarak seçilebilir.",
+				"belirli bir kayıtlı çalıştırmayı kimliğine göre geri al",
+				"son kayıtlı çalıştırmaları listele",
+				"undo için yardımı gösterir",
+			},
+		},
+		{
+			args: []string{"doctor", "--help"},
+			en: []string{
+				"Run a read-only self-diagnostic and report any problems found",
+				"send a real, minimal authenticated request to the active provider",
+			},
+			tr: []string{
+				"Salt okunur bir öz tanılama çalıştırır ve bulunan sorunları raporlar",
+				"aktif sağlayıcıya gerçek, minimal bir kimlik doğrulamalı istek gönder",
+			},
+		},
+		{
+			args: []string{"config", "profile", "--help"},
+			en:   []string{"Manage named config profiles", "Activate a defined config profile"},
+			tr:   []string{"Adlandırılmış yapılandırma profillerini yönetir", "Tanımlı bir yapılandırma profilini etkinleştirir"},
+		},
+	}
+
+	for _, tc := range cases {
+		name := strings.Join(tc.args, " ")
+		t.Run("tr/"+name, func(t *testing.T) {
+			withConfiguredLanguage(t, "tr")
+			out := execRoot(t, "dev", tc.args...)
+			for _, want := range tc.tr {
+				assert.Contains(t, out, want)
+			}
+			for _, unwanted := range tc.en {
+				assert.NotContains(t, out, unwanted)
+			}
+		})
+		t.Run("en/"+name, func(t *testing.T) {
+			withConfiguredLanguage(t, "en")
+			out := execRoot(t, "dev", tc.args...)
+			for _, want := range tc.en {
+				assert.Contains(t, out, want)
+			}
+			for _, unwanted := range tc.tr {
+				assert.NotContains(t, out, unwanted)
+			}
+		})
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -226,4 +227,85 @@ func TestHookHelpRendersNonEmptyUsageLine(t *testing.T) {
 
 	rootOut := execRoot(t, "dev", "--help")
 	assert.NotContains(t, rootOut, "\n  hook ", "hook must stay hidden from root's own --help listing")
+}
+
+// TestEveryHelpVisibleCommandAndFlagIsTranslated is the drift guard for
+// help.go's render-time override maps: every command a user can see in
+// --help (i.e. not Hidden, and not under a Hidden parent) must have a
+// helpShortByPath entry, a non-empty Long must have a helpLongByPath
+// entry, and every one of its own flags must have a flagUsageByName
+// entry. Without it, a newly added command or flag silently renders its
+// construction-time English text in every language — exactly how
+// undo/doctor/config profile and --review/--no-review/--live/--run/--list
+// shipped untranslated.
+func TestEveryHelpVisibleCommandAndFlagIsTranslated(t *testing.T) {
+	root := newRootWithCobraDefaults()
+	isTranslatedFlag := func(name string) bool {
+		_, fixed := flagUsageByName[name]
+		_, named := flagUsageWithCommandName[name]
+		return fixed || named
+	}
+
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if cmd.Hidden {
+			return
+		}
+		cmd.InitDefaultHelpFlag()
+		path := cmd.CommandPath()
+		if _, ok := helpShortByPath[path]; !ok {
+			t.Errorf("%q has no helpShortByPath entry; its Short %q would render untranslated", path, cmd.Short)
+		}
+		if _, ok := helpLongByPath[path]; cmd.Long != "" && !ok {
+			t.Errorf("%q sets Long but has no helpLongByPath entry", path)
+		}
+		cmd.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) {
+			if !isTranslatedFlag(f.Name) {
+				t.Errorf("%q --%s has no flagUsageByName entry; its usage %q would render untranslated", path, f.Name, f.Usage)
+			}
+		})
+		cmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+			if !isTranslatedFlag(f.Name) {
+				t.Errorf("%q persistent --%s has no flagUsageByName entry", path, f.Name)
+			}
+		})
+		for _, child := range cmd.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
+}
+
+// TestHelpOverrideMapsHaveNoStaleEntries is the reverse check: every
+// helpShortByPath/helpLongByPath key must still name a real command, so a
+// renamed or removed command can't leave a dead catalog mapping behind.
+func TestHelpOverrideMapsHaveNoStaleEntries(t *testing.T) {
+	root := newRootWithCobraDefaults()
+	paths := map[string]bool{}
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		paths[cmd.CommandPath()] = true
+		for _, child := range cmd.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
+
+	for path := range helpShortByPath {
+		assert.True(t, paths[path], "helpShortByPath key %q names no command in the tree", path)
+	}
+	for path := range helpLongByPath {
+		assert.True(t, paths[path], "helpLongByPath key %q names no command in the tree", path)
+	}
+}
+
+// newRootWithCobraDefaults builds the real command tree and then adds what
+// cobra otherwise only adds lazily during Execute — its "help" subcommand
+// and root's -v/--version flag — so the drift guards above see the same
+// tree a real --help render does.
+func newRootWithCobraDefaults() *cobra.Command {
+	root := NewRootCmd("dev")
+	root.InitDefaultHelpCmd()
+	root.InitDefaultVersionFlag()
+	return root
 }

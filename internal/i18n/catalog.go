@@ -649,6 +649,43 @@ const (
 	MsgHelpShortHookRecord MessageID = "help_short_hook_record"
 	// MsgHelpShortUpgrade is `comrade upgrade`'s --help text.
 	MsgHelpShortUpgrade MessageID = "help_short_upgrade"
+	// MsgHelpShortUndo is `comrade undo`'s --help text.
+	MsgHelpShortUndo MessageID = "help_short_undo"
+	// MsgHelpShortDoctor is `comrade doctor`'s --help text.
+	MsgHelpShortDoctor MessageID = "help_short_doctor"
+	// MsgHelpShortConfigProfile is `comrade config profile`'s --help text.
+	MsgHelpShortConfigProfile MessageID = "help_short_config_profile"
+	// MsgHelpShortConfigProfileList is `comrade config profile list`'s --help text.
+	MsgHelpShortConfigProfileList MessageID = "help_short_config_profile_list"
+	// MsgHelpShortConfigProfileShow is `comrade config profile show`'s --help text.
+	MsgHelpShortConfigProfileShow MessageID = "help_short_config_profile_show"
+	// MsgHelpShortConfigProfileUse is `comrade config profile use`'s --help text.
+	MsgHelpShortConfigProfileUse MessageID = "help_short_config_profile_use"
+	// MsgHelpShortConfigProfileAdd is `comrade config profile add`'s --help text.
+	MsgHelpShortConfigProfileAdd MessageID = "help_short_config_profile_add"
+	// MsgHelpShortConfigProfileRemove is `comrade config profile remove`'s --help text.
+	MsgHelpShortConfigProfileRemove MessageID = "help_short_config_profile_remove"
+	// MsgHelpShortConfigProfileSet is `comrade config profile set`'s --help text.
+	MsgHelpShortConfigProfileSet MessageID = "help_short_config_profile_set"
+
+	// MsgHelpLongUndo is `comrade undo`'s multi-line --help Long text.
+	// Same render-time override as the Short text above, keyed by
+	// internal/cli/help.go's helpLongByPath map.
+	MsgHelpLongUndo MessageID = "help_long_undo"
+
+	// cobra adds its own "help" subcommand and -h/--help, -v/--version
+	// flags lazily at Execute time with hardcoded English text; these
+	// replace that text at render time like everything else above.
+
+	// MsgHelpShortHelp is cobra's built-in `comrade help`'s --help text.
+	MsgHelpShortHelp MessageID = "help_short_help"
+	// MsgHelpLongHelp is cobra's built-in `comrade help`'s Long text.
+	MsgHelpLongHelp MessageID = "help_long_help"
+	// MsgFlagHelp is -h/--help's description. One arg: the command's name.
+	MsgFlagHelp MessageID = "flag_help"
+	// MsgFlagVersion is root's -v/--version description. One arg: the
+	// command's name.
+	MsgFlagVersion MessageID = "flag_version"
 
 	// -- root --help command-group titles and Examples section -----------
 	//
@@ -1690,6 +1727,24 @@ var catalogEN = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 	MsgHelpShortUpgrade: "Check for or install a newer released version of comrade",
 	MsgFlagCheck:        "only report whether a newer version is available; do not download or install it",
 
+	MsgHelpShortUndo:                "Reverse the last reversible action, or show manual undo steps",
+	MsgHelpShortDoctor:              "Run a read-only self-diagnostic and report any problems found",
+	MsgHelpShortConfigProfile:       "Manage named config profiles",
+	MsgHelpShortConfigProfileList:   "List every defined config profile",
+	MsgHelpShortConfigProfileShow:   "Print a profile's own key/value overrides (defaults to the active profile)",
+	MsgHelpShortConfigProfileUse:    "Activate a defined config profile",
+	MsgHelpShortConfigProfileAdd:    "Create a new, empty config profile",
+	MsgHelpShortConfigProfileRemove: "Delete a config profile",
+	MsgHelpShortConfigProfileSet:    "Validate and persist a key's value inside a config profile",
+	MsgHelpLongUndo: "Reverse the last reversible action, or show manual undo steps.\n" +
+		"Always confirms every step interactively (ask mode) — there is no --auto/--yolo bypass for undo.\n" +
+		"Only runs recorded within audit.retention_days are eligible targets.",
+	MsgHelpShortHelp: "Help about any command",
+	MsgHelpLongHelp: "Help provides help for any command in the application.\n" +
+		"Simply type comrade help [path to command] for full details.",
+	MsgFlagHelp:    "help for %s",
+	MsgFlagVersion: "version for %s",
+
 	MsgHelpGroupCore:  "Core:",
 	MsgHelpGroupSetup: "Setup:",
 	MsgHelpGroupInfo:  "Info:",
@@ -2026,6 +2081,24 @@ var catalogTR = Catalog{ // #nosec G101 -- this is a user-facing UI-text catalog
 
 	MsgHelpShortUpgrade: "comrade'in daha yeni bir yayımlanmış sürümünü denetler veya kurar",
 	MsgFlagCheck:        "yalnızca daha yeni bir sürüm olup olmadığını bildirir; indirmez veya kurmaz",
+
+	MsgHelpShortUndo:                "Geri alınabilir son işlemi geri alır veya elle geri alma adımlarını gösterir",
+	MsgHelpShortDoctor:              "Salt okunur bir öz tanılama çalıştırır ve bulunan sorunları raporlar",
+	MsgHelpShortConfigProfile:       "Adlandırılmış yapılandırma profillerini yönetir",
+	MsgHelpShortConfigProfileList:   "Tanımlı tüm yapılandırma profillerini listeler",
+	MsgHelpShortConfigProfileShow:   "Bir profilin kendi anahtar/değer geçersiz kılmalarını yazdırır (varsayılan: aktif profil)",
+	MsgHelpShortConfigProfileUse:    "Tanımlı bir yapılandırma profilini etkinleştirir",
+	MsgHelpShortConfigProfileAdd:    "Yeni, boş bir yapılandırma profili oluşturur",
+	MsgHelpShortConfigProfileRemove: "Bir yapılandırma profilini siler",
+	MsgHelpShortConfigProfileSet:    "Bir yapılandırma profilindeki bir anahtarın değerini doğrular ve kaydeder",
+	MsgHelpLongUndo: "Geri alınabilir son işlemi geri alır veya elle geri alma adımlarını gösterir.\n" +
+		"Her adım her zaman etkileşimli olarak onaylatılır (ask modu) — undo için --auto/--yolo ile atlama yoktur.\n" +
+		"Yalnızca audit.retention_days süresi içinde kaydedilmiş çalıştırmalar hedef olarak seçilebilir.",
+	MsgHelpShortHelp: "Herhangi bir komut hakkında yardım gösterir",
+	MsgHelpLongHelp: "Uygulamadaki herhangi bir komut için yardım gösterir.\n" +
+		"Tüm ayrıntılar için comrade help [komut yolu] yazın.",
+	MsgFlagHelp:    "%s için yardımı gösterir",
+	MsgFlagVersion: "%s sürümünü gösterir",
 
 	MsgHelpGroupCore:  "Temel:",
 	MsgHelpGroupSetup: "Kurulum:",

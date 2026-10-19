@@ -181,3 +181,33 @@ func TestEveryDeclaredMessageIDIsInBothCatalogs(t *testing.T) {
 		}
 	}
 }
+
+// TestHelpTextIsActuallyTranslated catches the specific gap
+// TestCatalogsCoverIdenticalKeys can't: a --help key (every help_short_*
+// command Short, help_long_* command Long and flag_* flag description)
+// whose catalogTR value is just the English text copied over. Each of
+// these renders directly in `comrade --help`, so an untranslated copy
+// shows a Turkish user English text with nothing failing.
+func TestHelpTextIsActuallyTranslated(t *testing.T) {
+	helpPrefixes := []string{"help_short_", "help_long_", "flag_"}
+	checked := 0
+	for _, id := range declaredMessageIDs(t) {
+		isHelpText := false
+		for _, prefix := range helpPrefixes {
+			if strings.HasPrefix(string(id), prefix) {
+				isHelpText = true
+				break
+			}
+		}
+		if !isHelpText {
+			continue
+		}
+		checked++
+		if catalogEN[id] == catalogTR[id] {
+			t.Errorf("MessageID %q has identical EN and TR text (%q); the Turkish entry was never translated", id, catalogEN[id])
+		}
+	}
+	if checked == 0 {
+		t.Fatal("matched zero help_short_/help_long_/flag_ MessageIDs; the key naming convention changed and this test needs updating")
+	}
+}

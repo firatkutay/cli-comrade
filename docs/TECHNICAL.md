@@ -208,7 +208,7 @@ orienting in a package.
 
 | Concern | Choice | Why (as documented in-repo) |
 |---|---|---|
-| Language / toolchain | Go 1.25 (module), toolchain `go1.26.5` (`go.mod`) | Single static cross-compiled binary |
+| Language / toolchain | Go 1.25 (module), toolchain `go1.26.9` (`go.mod`) | Single static cross-compiled binary |
 | CLI framework | `spf13/cobra` v1.10.2 | Subcommand tree, flag parsing, help generation |
 | Config | `spf13/viper` v1.21.0 | TOML file load/merge; OS-specific path resolution is comrade's own (`internal/config/paths.go`), not viper's |
 | TUI | `charm.land/bubbletea/v2` v2.0.8 + `charm.land/bubbles/v2` + `charm.land/lipgloss/v2` | Confirm prompts, chat input, colored status output |

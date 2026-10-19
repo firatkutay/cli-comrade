@@ -152,17 +152,12 @@ v0.4.9–v0.4.10 Slack webhook/token redaction kapsamını genişletti
   (yani zaten hatalı biçimlendirilmiş) bir DSN parolası, `@`'ye kadar
   eşleşmediği için maskelenmeden kalabilir. Standart biçimli DSN'ler
   etkilenmez.
-- **Discord ve Microsoft Teams gelen-webhook URL'leri maskelenmiyor
-  (issue #58)** — Slack'in gelen-webhook'ları
-  (`hooks.slack.com/...`, workflows/triggers dahil, v0.4.10'da
-  sertleştirildi) `internal/redact/redact.go`'nun `apiKeyPatterns`
-  listesinde maskelenirken, aynı derecede bearer-eşdeğeri bir sırrı
-  URL yoluna gömen Discord
-  (`https://discord.com/api/webhooks/<id>/<token>`) ve Microsoft Teams
-  (`https://<tenant>.webhook.office.com/webhookb2/.../IncomingWebhook/...`)
-  biçimleri için henüz karşılık gelen bir kalıp
-  yok. Gerçek `redact.New(false,false).Apply()` boru hattı üzerinden
-  her ikisinin de değişmeden sızdığı doğrulandı. Takip: issue #58.
+- **JSON-kaçışlı eğik çizgili webhook URL'leri maskelenmiyor** —
+  `internal/redact/redact.go`'daki webhook URL kalıpları (Slack, Discord,
+  Teams, Mattermost, PagerDuty) düz `/` bekler; PHP `json_encode` gibi
+  `/`'yi `\/` olarak kaçışlayan bir serileştiricinin çıktısındaki URL
+  (`https:\/\/discord.com\/api\/webhooks\/...`) eşleşmez ve sırrıyla
+  birlikte değişmeden gönderilir.
 - **STRICT konumdaki `~kullanıcı` çözümlemesi artık `destructive` değil
   `elevated` seviyesine çıkıyor** — `internal/safety/effect_bash.go`'nun
   `wordHasLeadingUnescapedTilde` kapısı, gerçek `os/user.Lookup` host
@@ -439,17 +434,12 @@ v0.4.9–v0.4.10 widened Slack webhook/token redaction coverage (see
   password that itself contains an unescaped `/` or `@` (already a
   malformed DSN) won't match through to the terminating `@` and can be
   left unmasked. Standard-shaped DSNs are unaffected.
-- **Discord and Microsoft Teams incoming-webhook URLs are not masked
-  (issue #58)** — Slack's incoming webhooks
-  (`hooks.slack.com/...`, including the workflows/triggers families,
-  hardened in v0.4.10) are masked by
-  `internal/redact/redact.go`'s `apiKeyPatterns` list, but Discord
-  (`https://discord.com/api/webhooks/<id>/<token>`) and Microsoft Teams
-  (`https://<tenant>.webhook.office.com/webhookb2/.../IncomingWebhook/...`)
-  URLs — which embed an equally
-  bearer-equivalent secret in their path — have no corresponding
-  pattern yet. Verified unchanged through the real
-  `redact.New(false,false).Apply()` pipeline. Tracked as issue #58.
+- **Webhook URLs with JSON-escaped slashes are not masked** — the
+  webhook URL patterns in `internal/redact/redact.go` (Slack, Discord,
+  Teams, Mattermost, PagerDuty) expect a literal `/`; a URL emitted by a
+  serializer that escapes `/` as `\/` (e.g. PHP `json_encode`:
+  `https:\/\/discord.com\/api\/webhooks\/...`) does not match and is
+  sent unchanged, secret included.
 - **A STRICT-position `~username` resolution now tops out at `elevated`,
   not `destructive`** — `internal/safety/effect_bash.go`'s
   `wordHasLeadingUnescapedTilde` gate removes the real `os/user.Lookup`

@@ -217,7 +217,7 @@ dosyayı okuyarak başlayın.
 
 | Konu | Seçim | Neden (depodaki dokümantasyona göre) |
 |---|---|---|
-| Dil / toolchain | Go 1.25 (modül), toolchain `go1.26.5` (`go.mod`) | Tek statik, cross-compile edilebilir binary |
+| Dil / toolchain | Go 1.25 (modül), toolchain `go1.26.9` (`go.mod`) | Tek statik, cross-compile edilebilir binary |
 | CLI framework | `spf13/cobra` v1.10.2 | Alt komut ağacı, flag ayrıştırma, help üretimi |
 | Config | `spf13/viper` v1.21.0 | TOML dosya yükleme/birleştirme; OS'e özel yol çözümlemesi viper'ın değil comrade'ın kendisinindir (`internal/config/paths.go`) |
 | TUI | `charm.land/bubbletea/v2` v2.0.8 + `charm.land/bubbles/v2` + `charm.land/lipgloss/v2` | Onay prompt'ları, chat girdisi, renkli durum çıktısı |

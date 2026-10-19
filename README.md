@@ -65,10 +65,12 @@ always asks (see [Safety](#how-it-stays-safe) below).
 | `comrade "install docker"` (or `comrade do "..."`) | Turns a free-text request into a multi-step plan and runs it per the active mode. |
 | `comrade explain "git rebase -i HEAD~5"` | Explains a command flag-by-flag without running it. |
 | `comrade chat` | Interactive, context-preserving chat session. |
+| `comrade undo` | Reverses the last reversible action, or shows manual undo steps. Always confirms each step — no `--auto`/`--yolo` bypass. |
 
 Plus setup/utility commands: `comrade auth` (login/logout/status),
 `comrade config` (get/set), `comrade init` (shell integration),
-`comrade history`, `comrade upgrade`.
+`comrade doctor` (read-only self-diagnostic), `comrade history`,
+`comrade upgrade`.
 
 ### Behavior modes
 
@@ -80,6 +82,10 @@ Plus setup/utility commands: `comrade auth` (login/logout/status),
 
 > The prompt and its accepted keys follow the interface language — a
 > Turkish interface shows `[e]vet [h]ayır [d]üzenle [a]çıkla [t]ümü` instead.
+
+Override the mode for a single run with `--auto`, `--ask` or `--info`;
+`--dry-run` prints the generated plan without running it, and `--review`
+opens it for editing (reorder, skip, edit, delete steps) before it runs.
 
 **Non-negotiable safety exception:** even in `auto` mode, any step classified
 `destructive` always requires confirmation. This can only be waived by
@@ -95,8 +101,9 @@ together — and doing so prints a loud warning on every use.
   catastrophic patterns (`rm -rf /`, `mkfs`, `dd of=/dev/...`,
   `diskpart clean`, fork bombs, etc.) regardless of mode.
 - **Redaction** (`internal/redact`) — every payload sent to the LLM is
-  scrubbed of API-key-shaped strings, `password=`/`token=`, bearer headers,
-  etc. before it leaves the machine.
+  scrubbed of API-key-shaped strings, webhook URLs (Slack, Discord, Teams,
+  Mattermost, PagerDuty), `password=`/`token=`, bearer headers, etc. before
+  it leaves the machine.
 - **Audit log** (`internal/audit`) — every executed command is recorded:
   timestamp, mode, command, risk class, exit code.
 - **Keychain-backed secrets** — API keys go through the OS keychain
@@ -105,10 +112,9 @@ together — and doing so prints a loud warning on every use.
 - **Self-update signature verification** — `comrade upgrade` verifies a
   cosign signature of the release's `checksums.txt` against a public key
   embedded in the binary, fully offline, before trusting the checksum or
-  replacing the running executable. `scripts/install.sh` verifies the same
-  signature with the same embedded key before it ever installs anything
-  (`scripts/install.ps1` doesn't have this yet — tracked as
-  [issue #43](https://github.com/firatkutay/cli-comrade/issues/43)).
+  replacing the running executable. Both install scripts
+  (`scripts/install.sh` and `scripts/install.ps1`) verify the same
+  signature with the same embedded key before they ever install anything.
 - **Reproducible release binaries** — release builds pass `-trimpath`, so a
   binary built from a clean checkout at a release tag is byte-identical to
   the signed release artifact — anyone can verify it independently instead
@@ -224,7 +230,7 @@ hidden, ~4ms, silent on any error) so it can never drift from what Tab
 would offer:
 
 ```text
-comrade ▍ [auth|chat|config|do|explain|fix|help|history|init|upgrade]
+comrade ▍ [auth|chat|config|do|doctor|explain|fix|help|history|init|undo|upgrade]
 ```
 
 | Shell | How suggestions appear |
@@ -329,10 +335,12 @@ $ comrade "/var/log altında disk alanı boşalt"
 | `comrade "docker kur"` (ya da `comrade do "..."`) | Serbest metin isteği çok adımlı bir plana çevirir ve etkin moda göre çalıştırır. |
 | `comrade explain "git rebase -i HEAD~5"` | Bir komutu çalıştırmadan, bayrak bayrak açıklar. |
 | `comrade chat` | Bağlamı koruyan interaktif sohbet oturumu. |
+| `comrade undo` | Son geri alınabilir işlemi geri alır ya da elle geri alma adımlarını gösterir. Her adım için daima onay ister — `--auto`/`--yolo` ile atlanamaz. |
 
 Ayrıca kurulum/yardımcı komutlar: `comrade auth` (login/logout/status),
 `comrade config` (get/set), `comrade init` (shell entegrasyonu),
-`comrade history`, `comrade upgrade`.
+`comrade doctor` (salt-okunur öz-teşhis), `comrade history`,
+`comrade upgrade`.
 
 ### Davranış modları
 
@@ -344,6 +352,11 @@ Ayrıca kurulum/yardımcı komutlar: `comrade auth` (login/logout/status),
 
 > Prompt ve kabul edilen tuşlar arayüz diline göre değişir — İngilizce
 > arayüzde bunun yerine `[y]es [n]o [e]dit [x]plain [a]ll` gösterilir.
+
+Modu tek bir çalıştırma için `--auto`, `--ask` ya da `--info` ile
+değiştirebilirsiniz; `--dry-run` üretilen planı çalıştırmadan yazdırır,
+`--review` ise planı çalışmadan önce düzenlemeye açar (adımları sırala,
+atla, düzenle, sil).
 
 **Pazarlık edilemez güvenlik istisnası:** `auto` modda bile risk sınıfı
 `destructive` olan her adım daima onay ister. Bu yalnızca config'te
@@ -360,8 +373,9 @@ basılır.
   yıkıcı kalıpları (`rm -rf /`, `mkfs`, `dd of=/dev/...`, `diskpart clean`,
   fork bomb vb.) mod ne olursa olsun sert biçimde engeller.
 - **Redaction** (`internal/redact`) — LLM'e giden her payload, makineden
-  çıkmadan önce API-key benzeri dizeler, `password=`/`token=`, bearer
-  başlıkları vb. için temizlenir.
+  çıkmadan önce API-key benzeri dizeler, webhook URL'leri (Slack, Discord,
+  Teams, Mattermost, PagerDuty), `password=`/`token=`, bearer başlıkları
+  vb. için temizlenir.
 - **Audit log** (`internal/audit`) — çalıştırılan her komut kaydedilir:
   zaman damgası, mod, komut, risk sınıfı, exit code.
 - **Keychain destekli sırlar** — API anahtarları işletim sistemi
@@ -371,11 +385,9 @@ basılır.
 - **Kendi kendini güncelleme imza doğrulaması** — `comrade upgrade`,
   binary'ye gömülü bir public key'e karşı release'in `checksums.txt`'inin
   cosign imzasını, tamamen offline olarak, checksum'a güvenmeden veya
-  çalışan executable'ı değiştirmeden önce doğrular. `scripts/install.sh`
-  da aynı gömülü anahtarla aynı imzayı, herhangi bir şey kurmadan önce
-  doğrular (`scripts/install.ps1`'de bu henüz yok —
-  [issue #43](https://github.com/firatkutay/cli-comrade/issues/43) olarak
-  takip ediliyor).
+  çalışan executable'ı değiştirmeden önce doğrular. Her iki kurulum
+  script'i (`scripts/install.sh` ve `scripts/install.ps1`) de aynı gömülü
+  anahtarla aynı imzayı, herhangi bir şey kurmadan önce doğrular.
 - **Yeniden üretilebilir (reproducible) release binary'leri** — release
   derlemeleri `-trimpath` ile yapılır, bu yüzden temiz bir checkout'tan bir
   release tag'inde derlenen binary, imzalanmış release artifact'iyle byte-
@@ -492,7 +504,7 @@ tetikler; Tab-tamamlama ile tamamen aynı komut ağacından beslenir
 Tab'ın sunacağından asla sapamaz:
 
 ```text
-comrade ▍ [auth|chat|config|do|explain|fix|help|history|init|upgrade]
+comrade ▍ [auth|chat|config|do|doctor|explain|fix|help|history|init|undo|upgrade]
 ```
 
 | Shell | Öneriler nasıl görünür |

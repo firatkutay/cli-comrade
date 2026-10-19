@@ -66,7 +66,17 @@ var (
 	// the match one character short of the marker's own closing
 	// bracket on a repeat pass, leaving a stray extra `]` behind — the
 	// exact inverse idempotency bug.
-	credentialKVPattern = regexp.MustCompile(`(?i)((?:[A-Za-z0-9]+[_.\-])?(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|client[_-]?secret)(?:[_.\-][A-Za-z0-9]+)?)(\s*(?::|=)\s*)("[^"]*"|'[^']*'|[^\s,;)}]+)`)
+	//
+	// The "sig" key name covers the `sig=<signature>` query parameter
+	// that authenticates a Microsoft Teams Workflows (Power Automate /
+	// Logic Apps) webhook URL — the successor to the webhook.office.com
+	// incoming webhook — and an Azure SAS URL; in both the signature is
+	// the bearer-equivalent secret. "signature=" and "design=" do not
+	// match, since the separator must follow "sig" directly. The
+	// routing_key / service_key / integration_key names cover PagerDuty
+	// integration keys in config files (e.g. Alertmanager's
+	// `routing_key: <key>`).
+	credentialKVPattern = regexp.MustCompile(`(?i)((?:[A-Za-z0-9]+[_.\-])?(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|client[_-]?secret|sig|routing[_-]?key|service[_-]?key|integration[_-]?key)(?:[_.\-][A-Za-z0-9]+)?)(\s*(?::|=)\s*)("[^"]*"|'[^']*'|[^\s,;)}]+)`)
 
 	// connStringPattern matches a `scheme://user:password@` connection
 	// string (postgres://, mysql://, mongodb://, redis://, amqp://, ...)
@@ -170,7 +180,37 @@ var (
 		// length floor on the token segment, and a wide token charset
 		// (including "_" and "-", both used by real workflow/trigger
 		// IDs).
-		regexp.MustCompile(`(?i)(?:https?://)?hooks\.slack\.com/[A-Za-z0-9_+/-]+`),
+		regexp.MustCompile(`(?i)(?:https?://)?hooks\.slack\.com(?::[0-9]+)?/[A-Za-z0-9_+/-]+`),
+		// The webhook URL patterns below follow the Slack pattern's
+		// conventions: scheme optional and case-insensitive, no length
+		// floor, and a wide token charset (no "." so a sentence-final
+		// period is never swallowed), because the secret is the path
+		// itself and under-matching leaks a live secret. Each also accepts
+		// an explicit port ("host:443/...", common in copied Azure/Teams
+		// URLs) and "%" so a percent-encoded path ("%40" for "@") is
+		// consumed in full instead of leaking its tail.
+		//
+		// Discord webhook URL: /api/webhooks/<id>/<token>, on discord.com
+		// or the legacy discordapp.com, including the ptb./canary. client
+		// hosts and the versioned /api/v<N>/webhooks/ form.
+		regexp.MustCompile(`(?i)(?:https?://)?(?:(?:ptb|canary)\.)?discord(?:app)?\.com(?::[0-9]+)?/api/(?:v[0-9]+/)?webhooks/[A-Za-z0-9_%+/-]+`),
+		// Microsoft Teams incoming webhook URL. <tenant>.webhook.office.com
+		// serves only webhook ingestion, so (like hooks.slack.com) any
+		// path on it is masked; the legacy outlook.office.com /
+		// outlook.office365.com host serves far more than webhooks, so
+		// there the /webhook/ or /webhookb2/ path is required. "@" is in
+		// the charset because the path embeds "<group-guid>@<tenant-guid>".
+		regexp.MustCompile(`(?i)(?:https?://)?(?:[A-Za-z0-9-]+\.)*webhook\.office\.com(?::[0-9]+)?/[A-Za-z0-9_@%+/-]+`),
+		regexp.MustCompile(`(?i)(?:https?://)?outlook\.office(?:365)?\.com(?::[0-9]+)?/webhook(?:b2)?/[A-Za-z0-9_@%+/-]+`),
+		// Mattermost incoming webhook URL. The host is self-hosted, so the
+		// anchor is the /hooks/ path plus Mattermost's fixed 26-char
+		// lowercase-alphanumeric hook ID; the host part is optional so a
+		// bare "POST /hooks/<id>" access-log line is masked too.
+		regexp.MustCompile(`(?:(?i:https?://)?[A-Za-z0-9.-]+(?::[0-9]+)?)?/hooks/[a-z0-9]{26}\b`),
+		// PagerDuty Events API URLs that carry the integration key in the
+		// path (the v1 /integration/<key>/enqueue and the /x-ere/<key>
+		// custom-event forms), on both the US and EU service regions.
+		regexp.MustCompile(`(?i)(?:https?://)?events\.(?:eu\.)?pagerduty\.com(?::[0-9]+)?/(?:integration|x-ere)/[A-Za-z0-9_%+/-]+`),
 	}
 
 	// jwtPattern matches a three-segment base64url JWT. It runs after

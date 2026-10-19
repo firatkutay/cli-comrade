@@ -74,10 +74,12 @@ geçer. Zorunlu desen aileleri her zaman aktiftir (kapatılamaz): API key
 biçimleri — `sk-`, `ghp_`/`gho_`, `AKIA...`, Slack `xox[baprs]-`, Google
 `AIza...`, GitHub `github_pat_...`/`ghs_...`, GitLab `glpat-...`, Stripe
 `sk_live_`/`sk_test_`, Google OAuth `GOCSPX-...`, SendGrid `SG....`, npm
-`npm_...`, GCP OAuth `ya29....`, Slack incoming-webhook URL'leri — JWT'ler,
+`npm_...`, GCP OAuth `ya29....`, Slack, Discord, Microsoft Teams,
+Mattermost ve PagerDuty webhook URL'leri — JWT'ler,
 PEM özel anahtar blokları, `key=value`/`key: value` biçimli kimlik bilgisi
 çiftleri (bileşik/önekli adlar dahil: `DB_PASSWORD=`,
-`AWS_SECRET_ACCESS_KEY=`), `scheme://kullanıcı:parola@` bağlantı dizeleri,
+`AWS_SECRET_ACCESS_KEY=`, Teams Workflows/Azure SAS `sig=`),
+`scheme://kullanıcı:parola@` bağlantı dizeleri,
 Azure `AccountKey=...`, ve `Authorization: Bearer ...` / `Authorization: Basic ...` başlıkları. İki opsiyonel aile config ile açılır:
 `privacy.redact_emails`, `privacy.redact_ips`. Env var İÇERİKLERİ
 ASLA gönderilmez — yalnızca isimleri, o da `context.send_env_names`
@@ -425,10 +427,12 @@ Mandatory pattern families are always active (cannot be turned off): API
 key formats — `sk-`, `ghp_`/`gho_`, `AKIA...`, Slack `xox[baprs]-`, Google
 `AIza...`, GitHub `github_pat_...`/`ghs_...`, GitLab `glpat-...`, Stripe
 `sk_live_`/`sk_test_`, Google OAuth `GOCSPX-...`, SendGrid `SG....`, npm
-`npm_...`, GCP OAuth `ya29....`, Slack incoming-webhook URLs — JWTs, full
+`npm_...`, GCP OAuth `ya29....`, Slack, Discord, Microsoft Teams,
+Mattermost and PagerDuty webhook URLs — JWTs, full
 PEM private-key blocks, `key=value`/`key: value`-shaped credential pairs
 (including compound/prefixed names like `DB_PASSWORD=`,
-`AWS_SECRET_ACCESS_KEY=`), `scheme://user:pass@` connection strings, Azure
+`AWS_SECRET_ACCESS_KEY=`, Teams Workflows/Azure SAS `sig=`),
+`scheme://user:pass@` connection strings, Azure
 `AccountKey=...`, and `Authorization: Bearer ...` / `Authorization: Basic ...` headers. Two optional families are config-gated: `privacy.redact_emails`,
 `privacy.redact_ips`. Environment variable CONTENTS are never sent —
 only their names, and only when `context.send_env_names` is opted in.

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Discord, Microsoft Teams, Mattermost and PagerDuty webhook URLs are now redacted before any payload reaches an LLM provider** (#58). Like Slack webhooks, these URLs carry a bearer-equivalent secret in their path (anyone holding one can post to the channel), but only `hooks.slack.com` was masked, so the others went to third-party providers verbatim whenever they appeared in stderr, a command line, or chat content. New `apiKeyPatterns` entries follow the Slack pattern's conventions (scheme optional and case-insensitive, no length floor, a wide token charset without `.` so a sentence-final period is never swallowed): Discord `discord.com`/`discordapp.com` (including `ptb.`/`canary.` and `/api/v<N>/webhooks/`); Teams `<tenant>.webhook.office.com` and the legacy `outlook.office.com`/`outlook.office365.com` `/webhook(b2)/` form; Mattermost `/hooks/<26-char id>` on any host, or with no host at all as in an access-log line; and PagerDuty `events.(eu.)pagerduty.com/integration/<key>` and `/x-ere/<key>`. Every webhook host pattern, Slack's included, now also accepts an explicit port (`host:443/...`, common in copied Azure/Teams URLs, previously left the whole URL unmasked), and the Discord/Teams/PagerDuty charsets accept `%` so a percent-encoded `%40` in a Teams path no longer leaks the path's tail. The credential key/value rule also gains `sig`, which masks the `sig=` signature that authenticates a Teams Workflows (Power Automate) webhook URL, the successor to the `webhook.office.com` connector, and an Azure SAS URL, plus `routing_key`/`service_key`/`integration_key` for PagerDuty integration keys in config files such as Alertmanager's. Google Chat webhook URLs were already covered by the existing `token=` and `AIza...` rules; a test now pins that.
+
 ## [0.4.10] - 2026-07-29
 
 ### Security

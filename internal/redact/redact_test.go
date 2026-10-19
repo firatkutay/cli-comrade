@@ -435,6 +435,133 @@ func TestApplySlackTokenSentenceFinalPeriodNotSwallowed(t *testing.T) {
 	assert.Equal(t, "bot token [REDACTED:api_key]. Next sentence.", got)
 }
 
+// TestApplyWebhookURLsMaskedExactly covers the bearer-equivalent webhook
+// URL families beyond Slack (#58). It asserts full byte-for-byte output,
+// not Contains/NotContains, so a match that stops partway through the
+// token (leaving its tail on the wire) fails the test.
+func TestApplyWebhookURLsMaskedExactly(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "Discord webhook URL",
+			input: "curl -X POST https://discord.com/api/webhooks/1234567890TEST/TESTfakeToken_abc-DEF -d @msg.json",
+			want:  "curl -X POST [REDACTED:api_key] -d @msg.json",
+		},
+		{
+			name:  "Discord webhook URL on legacy discordapp.com with versioned API path",
+			input: "DISCORD_URL=https://discordapp.com/api/v10/webhooks/1234567890TEST/TESTfakeToken_abc-DEF",
+			want:  "DISCORD_URL=[REDACTED:api_key]",
+		},
+		{
+			name:  "Discord webhook URL on canary host, no scheme, sentence-final period",
+			input: "use canary.discord.com/api/webhooks/1234567890TEST/TESTfakeToken. Then retry.",
+			want:  "use [REDACTED:api_key]. Then retry.",
+		},
+		{
+			name:  "Discord webhook URL with uppercase scheme",
+			input: "HTTPS://discord.com/api/webhooks/1234567890TEST/TESTfakeToken in script",
+			want:  "[REDACTED:api_key] in script",
+		},
+		{
+			name:  "Microsoft Teams incoming webhook URL",
+			input: "url: https://contosoTEST.webhook.office.com/webhookb2/00000000-TEST-0000-0000-000000000000@11111111-TEST-1111-1111-111111111111/IncomingWebhook/TESTfake0123456789abcdef/22222222-TEST-2222-2222-222222222222/V2TESTfake_token-abc",
+			want:  "url: [REDACTED:api_key]",
+		},
+		{
+			name:  "Microsoft Teams legacy outlook.office.com webhook URL",
+			input: "posting to https://outlook.office.com/webhook/00000000-TEST-0000@11111111-TEST/IncomingWebhook/TESTfake/22222222-TEST failed",
+			want:  "posting to [REDACTED:api_key] failed",
+		},
+		{
+			name:  "Microsoft Teams Workflows URL masks the sig= signature",
+			input: "https://prod-00.westusTEST.logic.azure.com:443/workflows/TESTfake0123/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=TESTfakeSignature_abc-123",
+			want:  "https://prod-00.westusTEST.logic.azure.com:443/workflows/TESTfake0123/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=[REDACTED:credential]",
+		},
+		{
+			name:  "Mattermost incoming webhook URL",
+			input: "curl -i -X POST http://localhost:8065/hooks/test0fake0hook0id0abcdefgh -d payload",
+			want:  "curl -i -X POST [REDACTED:api_key] -d payload",
+		},
+		{
+			name:  "Mattermost webhook path in an access log line without a host",
+			input: `"POST /hooks/test0fake0hook0id0abcdefgh HTTP/1.1" 200`,
+			want:  `"POST [REDACTED:api_key] HTTP/1.1" 200`,
+		},
+		{
+			name:  "PagerDuty v1 integration URL",
+			input: "endpoint https://events.pagerduty.com/integration/TESTfake0123456789abcdef0000test/enqueue returned 400",
+			want:  "endpoint [REDACTED:api_key] returned 400",
+		},
+		{
+			name:  "PagerDuty EU custom-event URL",
+			input: "events.eu.pagerduty.com/x-ere/TESTfake0123456789abcdef0000test",
+			want:  "[REDACTED:api_key]",
+		},
+		{
+			name:  "Discord webhook URL with explicit port",
+			input: "https://discord.com:443/api/webhooks/1234567890TEST/TESTfakeToken_abc-DEF sent",
+			want:  "[REDACTED:api_key] sent",
+		},
+		{
+			name:  "Microsoft Teams webhook URL with explicit port",
+			input: "https://contosoTEST.webhook.office.com:443/webhookb2/1111-TEST@2222-TEST/IncomingWebhook/TESTfake/3333-TEST sent",
+			want:  "[REDACTED:api_key] sent",
+		},
+		{
+			name:  "Microsoft Teams webhook URL with percent-encoded @",
+			input: "https://contosoTEST.webhook.office.com/webhookb2/1111-TEST%402222-TEST/IncomingWebhook/TESTfake/3333-TEST sent",
+			want:  "[REDACTED:api_key] sent",
+		},
+		{
+			name:  "Microsoft Teams webhook URL on a multi-label host",
+			input: "https://a.contosoTEST.webhook.office.com/webhookb2/1111-TEST@2222-TEST/IncomingWebhook/TESTfake sent",
+			want:  "[REDACTED:api_key] sent",
+		},
+		{
+			name:  "Microsoft Teams legacy outlook.office.com webhook URL with explicit port",
+			input: "https://outlook.office.com:443/webhook/1111-TEST@2222-TEST/IncomingWebhook/TESTfake/3333-TEST sent",
+			want:  "[REDACTED:api_key] sent",
+		},
+		{
+			name:  "PagerDuty integration URL with explicit port",
+			input: "https://events.pagerduty.com:443/integration/TESTfake0123456789abcdef0000test/enqueue sent",
+			want:  "[REDACTED:api_key] sent",
+		},
+		{
+			name:  "Slack webhook URL with explicit port",
+			input: "https://hooks.slack.com:443/services/TTEST000/BTEST0000/ZZTESTtoken sent",
+			want:  "[REDACTED:api_key] sent",
+		},
+		{
+			name:  "PagerDuty routing_key in Alertmanager config",
+			input: "    routing_key: TESTfake0123456789abcdef0000test",
+			want:  "    routing_key: [REDACTED:credential]",
+		},
+		{
+			name:  "PagerDuty service_key in Alertmanager config",
+			input: "    service_key: TESTfake0123456789abcdef0000test",
+			want:  "    service_key: [REDACTED:credential]",
+		},
+		{
+			name:  "Google Chat webhook URL masks both key and token query params",
+			input: "https://chat.googleapis.com/v1/spaces/AAAATESTfake/messages?key=AIzaSyTESTfakeKey0000000000000000000000&token=TESTfakeChatToken_abc%3D",
+			want:  "https://chat.googleapis.com/v1/spaces/AAAATESTfake/messages?key=[REDACTED:api_key]&token=[REDACTED:credential]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(false, false)
+			once := r.Apply(tc.input)
+			assert.Equal(t, tc.want, once)
+			assert.Equal(t, once, r.Apply(once), "applying Apply twice must be a no-op the second time")
+		})
+	}
+}
+
 func TestApplyFalsePositives(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -450,6 +577,11 @@ func TestApplyFalsePositives(t *testing.T) {
 		{"credential-less HTTPS URL does not trigger connStringPattern", "see https://example.com/path for details"},
 		{"HTTP URL with port but no @ does not trigger connStringPattern", "server is at http://host:8080/db right now"},
 		{"Slack API docs URL does not trigger the webhook pattern", "see https://api.slack.com/messaging/webhooks for details"},
+		{"Discord docs URL does not trigger the webhook pattern", "see https://discord.com/developers/docs/resources/webhook for details"},
+		{"Outlook web mail URL does not trigger the Teams webhook pattern", "open https://outlook.office.com/mail/inbox to check"},
+		{"GitHub repo hook API path does not trigger the Mattermost pattern", "GET https://api.github.com/repos/octo/demo/hooks/12345 returned 404"},
+		{"PagerDuty v2 enqueue URL carries no key in its path", "POST https://events.pagerduty.com/v2/enqueue with a JSON body"},
+		{"signature= and design= do not trigger the sig= credential key", "signature=abc123 design=flat"},
 	}
 
 	for _, tc := range cases {

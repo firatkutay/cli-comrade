@@ -439,6 +439,12 @@ func TestApplySlackTokenSentenceFinalPeriodNotSwallowed(t *testing.T) {
 // URL families beyond Slack (#58). It asserts full byte-for-byte output,
 // not Contains/NotContains, so a match that stops partway through the
 // token (leaving its tail on the wire) fails the test.
+// fakeGoogleAPIKey is a TEST-marked, AIza-shaped fixture (AIza + 35
+// chars, the shape apiKeyPatterns masks). It is assembled by concatenation
+// so the literal key shape never appears in the source, which keeps
+// GitHub secret scanning from raising a "Google API Key" alert on it.
+const fakeGoogleAPIKey = "AIza" + "SyTESTfakeKey" + "0000000000000000000000"
+
 func TestApplyWebhookURLsMaskedExactly(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -547,7 +553,7 @@ func TestApplyWebhookURLsMaskedExactly(t *testing.T) {
 		},
 		{
 			name:  "Google Chat webhook URL masks both key and token query params",
-			input: "https://chat.googleapis.com/v1/spaces/AAAATESTfake/messages?key=AIzaSyTESTfakeKey0000000000000000000000&token=TESTfakeChatToken_abc%3D",
+			input: "https://chat.googleapis.com/v1/spaces/AAAATESTfake/messages?key=" + fakeGoogleAPIKey + "&token=TESTfakeChatToken_abc%3D",
 			want:  "https://chat.googleapis.com/v1/spaces/AAAATESTfake/messages?key=[REDACTED:api_key]&token=[REDACTED:credential]",
 		},
 	}

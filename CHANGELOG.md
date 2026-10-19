@@ -5,12 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.11] - 2026-10-19
 
 ### Security
 
 - **Go toolchain bumped from go1.26.5 to go1.26.9** to pick up the standard-library security fixes (`net/http`, `net/textproto`, `crypto/tls`, `encoding/asn1`, `net/url`) that `govulncheck` reports as reachable from this codebase on go1.26.5. Built binaries now include these fixes; no code change was needed.
 - **Discord, Microsoft Teams, Mattermost and PagerDuty webhook URLs are now redacted before any payload reaches an LLM provider** (#58). Like Slack webhooks, these URLs carry a bearer-equivalent secret in their path (anyone holding one can post to the channel), but only `hooks.slack.com` was masked, so the others went to third-party providers verbatim whenever they appeared in stderr, a command line, or chat content. New `apiKeyPatterns` entries follow the Slack pattern's conventions (scheme optional and case-insensitive, no length floor, a wide token charset without `.` so a sentence-final period is never swallowed): Discord `discord.com`/`discordapp.com` (including `ptb.`/`canary.` and `/api/v<N>/webhooks/`); Teams `<tenant>.webhook.office.com` and the legacy `outlook.office.com`/`outlook.office365.com` `/webhook(b2)/` form; Mattermost `/hooks/<26-char id>` on any host, or with no host at all as in an access-log line; and PagerDuty `events.(eu.)pagerduty.com/integration/<key>` and `/x-ere/<key>`. Every webhook host pattern, Slack's included, now also accepts an explicit port (`host:443/...`, common in copied Azure/Teams URLs, previously left the whole URL unmasked), and the Discord/Teams/PagerDuty charsets accept `%` so a percent-encoded `%40` in a Teams path no longer leaks the path's tail. The credential key/value rule also gains `sig`, which masks the `sig=` signature that authenticates a Teams Workflows (Power Automate) webhook URL, the successor to the `webhook.office.com` connector, and an Azure SAS URL, plus `routing_key`/`service_key`/`integration_key` for PagerDuty integration keys in config files such as Alertmanager's. Google Chat webhook URLs were already covered by the existing `token=` and `AIza...` rules; a test now pins that.
+
+### Changed
+
+- **Dependencies updated** (#68): `charm.land/bubbles/v2` 2.1.1 → 2.2.1, `charm.land/bubbletea/v2` 2.0.8 → 2.0.9, `charm.land/lipgloss/v2` 2.0.5 → 2.0.6, `mvdan.cc/sh/v3` 3.13.1 → 3.14.1 (the shell parser behind the safety classifier's AST layer; the full safety test suite passes on it), `golang.org/x/term` 0.45.0 → 0.46.0, and `github.com/stretchr/testify` 1.11.1 → 1.12.1 (tests only).
+- **CI/release actions updated** (#69): `anchore/sbom-action` and `anchore/sbom-action/publish-sbom` 0.24.0 → 0.24.3, `anchore/scan-action` 7.4.0 → 7.4.2, `goreleaser/goreleaser-action` 7.2.3 → 7.3.0.
 
 ## [0.4.10] - 2026-07-29
 
@@ -959,12 +964,13 @@ for this RC's honest, bilingual known-issues list. **No git tag was cut**
   Actions CI (build/test/lint across ubuntu/macos/windows), base
   `.goreleaser.yaml`, README, LICENSE.
 
+[0.4.11]: https://github.com/firatkutay/cli-comrade/compare/v0.4.10...v0.4.11
 [0.4.10]: https://github.com/firatkutay/cli-comrade/compare/v0.4.9...v0.4.10
 [0.4.9]: https://github.com/firatkutay/cli-comrade/compare/v0.4.8...v0.4.9
 [0.4.8]: https://github.com/firatkutay/cli-comrade/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/firatkutay/cli-comrade/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/firatkutay/cli-comrade/compare/v0.4.5...v0.4.6
-[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.10...HEAD
+[Unreleased]: https://github.com/firatkutay/cli-comrade/compare/v0.4.11...HEAD
 [0.4.5]: https://github.com/firatkutay/cli-comrade/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/firatkutay/cli-comrade/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/firatkutay/cli-comrade/compare/v0.4.2...v0.4.3

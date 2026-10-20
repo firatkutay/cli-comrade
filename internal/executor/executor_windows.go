@@ -14,7 +14,7 @@ import "os/exec"
 // Windows branch is otherwise unit-guarded (t.Skip when powershell is
 // absent) rather than exercised in this Linux/WSL2 development
 // environment.
-func setProcAttr(cmd *exec.Cmd) {}
+func setProcAttr(_ *exec.Cmd) {}
 
 // killProcessGroup kills the direct child process. It does not guarantee
 // killing further-nested grandchildren PowerShell itself spawned — see

@@ -31,8 +31,10 @@ import (
 // docs/history/UYGULAMA_PLANI.md FAZ 9's "cobra Short/Long help text ... these render
 // in --help and are user-facing" requirement.
 //
-// Long is not covered: no command in this tree sets it (every command
-// uses Short only), so there is nothing to translate there.
+// Long gets the same render-time override from helpLongByPath (below) for
+// the few commands that set one. TestEveryHelpVisibleCommandAndFlagIsTranslated
+// (help_test.go) fails if a new visible command or flag is added without
+// an entry here or in flagUsageByName.
 // groupCore/groupSetup/groupInfo are root's three cobra command-group IDs
 // (root.go's root.AddGroup / each subcommand's GroupID) — plain string
 // constants, never user-visible themselves; only each *cobra.Group's Title
@@ -77,6 +79,37 @@ var helpShortByPath = map[string]i18n.MessageID{
 	"comrade hook":            i18n.MsgHelpShortHook,
 	"comrade hook record":     i18n.MsgHelpShortHookRecord,
 	"comrade upgrade":         i18n.MsgHelpShortUpgrade,
+	"comrade undo":            i18n.MsgHelpShortUndo,
+	"comrade doctor":          i18n.MsgHelpShortDoctor,
+
+	"comrade config profile":        i18n.MsgHelpShortConfigProfile,
+	"comrade config profile list":   i18n.MsgHelpShortConfigProfileList,
+	"comrade config profile show":   i18n.MsgHelpShortConfigProfileShow,
+	"comrade config profile use":    i18n.MsgHelpShortConfigProfileUse,
+	"comrade config profile add":    i18n.MsgHelpShortConfigProfileAdd,
+	"comrade config profile remove": i18n.MsgHelpShortConfigProfileRemove,
+	"comrade config profile set":    i18n.MsgHelpShortConfigProfileSet,
+
+	// cobra's own lazily-added help subcommand (InitDefaultHelpCmd).
+	"comrade help": i18n.MsgHelpShortHelp,
+}
+
+// helpLongByPath is helpShortByPath's counterpart for a command's
+// multi-line Long text, which cobra renders verbatim at the top of that
+// command's own --help — only commands that actually set Long appear here.
+var helpLongByPath = map[string]i18n.MessageID{
+	"comrade undo": i18n.MsgHelpLongUndo,
+	"comrade help": i18n.MsgHelpLongHelp,
+}
+
+// flagUsageWithCommandName covers the two flags cobra itself registers
+// lazily at Execute time (InitDefaultHelpFlag/InitDefaultVersionFlag),
+// whose English description embeds the command's name ("help for undo") —
+// so unlike flagUsageByName's fixed text, each MessageID here takes that
+// name as its one argument.
+var flagUsageWithCommandName = map[string]i18n.MessageID{
+	"help":    i18n.MsgFlagHelp,
+	"version": i18n.MsgFlagVersion,
 }
 
 // flagUsageByName maps a flag's NAME (not its command path — the same
@@ -103,6 +136,11 @@ var flagUsageByName = map[string]i18n.MessageID{
 	"check":        i18n.MsgFlagCheck,
 	"profile":      i18n.MsgFlagProfile,
 	"from-current": i18n.MsgFlagProfileFromCurrent,
+	"review":       i18n.MsgFlagReview,
+	"no-review":    i18n.MsgFlagNoReview,
+	"live":         i18n.MsgFlagLive,
+	"run":          i18n.MsgFlagUndoRun,
+	"list":         i18n.MsgFlagUndoList,
 }
 
 // enUsageDefault renders id in English — the flag-registration-time
@@ -180,7 +218,8 @@ func renderMaybeColorized(cmd *cobra.Command, cfg config.Config, tr i18n.Transla
 
 // applyTranslatedHelp resolves the active Translator/Config (helpConfig)
 // and, walking every command in root's tree: overwrites Short when
-// CommandPath() is a helpShortByPath key, AND overwrites every one of
+// CommandPath() is a helpShortByPath key (and Long when it is a
+// helpLongByPath key), AND overwrites every one of
 // that command's own (non-inherited) flags' Usage when the flag's name is
 // a flagUsageByName key — cobra/pflag read both fields directly off the
 // struct when rendering, so both need the same lazy, render-time
@@ -206,9 +245,15 @@ func applyTranslatedHelp(root *cobra.Command, newLoader loaderFactory) (i18n.Tra
 		if id, ok := helpShortByPath[cmd.CommandPath()]; ok {
 			cmd.Short = tr.T(id)
 		}
+		if id, ok := helpLongByPath[cmd.CommandPath()]; ok {
+			cmd.Long = tr.T(id)
+		}
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
 			if id, ok := flagUsageByName[f.Name]; ok {
 				f.Usage = tr.T(id)
+			}
+			if id, ok := flagUsageWithCommandName[f.Name]; ok {
+				f.Usage = tr.T(id, cmd.DisplayName())
 			}
 		})
 		for _, child := range cmd.Commands() {
